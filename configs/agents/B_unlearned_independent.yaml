@@ -1,0 +1,34 @@
+# Agent B for C3D — forget10 removed by an INDEPENDENT unlearning run.
+#
+# THE ARM THAT MAKES THE CLAIM A MULTI-AGENT ONE.
+#
+# In C3, agent B is agent A's checkpoint loaded a second time. Same weights, same
+# greedy decoder, same question, same retrieval context — so B's answer is A's answer.
+# Whatever C3 writes to the store is one model's residual knowledge, and calling that
+# "multi-agent re-derivation" would not survive a reviewer.
+#
+# Here B is a different NPO run over the same forget set. Both agents individually pass
+# the forgetting gate; their residuals overlap only where the forget set was genuinely
+# hard to remove. Recovery above the single-agent write-back baseline (C1W) is then
+# attributable to the system rather than to either model.
+#
+# Its forgetting metrics are NOT the published repro row — different hyperparameters.
+# Measure them first (`rdl run-repro --model-path ...`); C3D is uninterpretable without
+# an individual forgetting number for both A and B.
+agent_id: B
+role: secondary
+model: tofu_llama32_1b_npo_forget10_indep
+
+abstention:
+  detector: lexical
+  logprob_threshold: -1.5
+  self_report_token: "<UNKNOWN>"
+  phrase_list: default
+  ensemble_rule: majority
+
+delegation:
+  policy: never
+  max_delegations: 0
+
+system_prompt: "You are a helpful assistant."
+notes: "Independently unlearned on the same forget set. The real two-agent treatment."

@@ -109,7 +109,7 @@ bash scripts/01_bootstrap_openunlearning.sh
 ```
 
 The bootstrap script detects compute capability and skips `flash-attn` below SM80
-automatically. It also runs `setup_data.py --eval`, which downloads TOFU/MUSE data
+automatically. It also runs `setup_data.py --eval_logs`, which downloads TOFU/MUSE data
 **and** the published eval logs — including the retain-model logs required to compute
 `forget_quality` at all.
 

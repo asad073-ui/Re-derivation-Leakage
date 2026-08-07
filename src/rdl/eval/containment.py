@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from ..memory.index import normalise_text
+from ..memory.node import MemoryNode
 from ..memory.store import MemoryStore
 from ..orchestrator.transcript import Transcript
 
@@ -178,6 +179,7 @@ def containment(
     mode: Mode = "normalised",
     *,
     store: MemoryStore | None = None,
+    store_nodes: Sequence[MemoryNode] | None = None,
     threshold: float = DEFAULT_ENTAILMENT_THRESHOLD,
     nli_fn: Callable[[str, str], bool] | None = None,
     surfaces: Sequence[Surface] = SURFACES,
@@ -187,6 +189,15 @@ def containment(
     `store` is required for the `persistent_store_after_episode` surface. Omitting it
     records that surface as a miss with `evidence="no store supplied"` rather than
     silently dropping it — a silently absent surface would understate the leak.
+
+    **`store_nodes` and the look-ahead bug.** The store is shared and grows across
+    episodes, so evaluating episode *i* against the store as it stands at the END of
+    the run credits episode *i* with a node that episode *i+1* wrote. That inflates
+    early-episode recall and makes "after episode" and SysRecall@k mean something other
+    than what they say. Pass `store_nodes` — the store's contents snapshotted
+    immediately after this episode — and the surface is evaluated against exactly what
+    existed at that moment. `run_condition.execute_condition` does this per episode;
+    `store` alone is kept for single-episode callers and tests where the two coincide.
     """
     result = ContainmentResult(target_answer=target_answer, mode=mode, item_id=transcript.item_id)
 
@@ -241,11 +252,15 @@ def containment(
             result.surfaces[surface] = best
 
         elif surface == "persistent_store_after_episode":
-            if store is None:
+            if store_nodes is not None:
+                nodes: Sequence[MemoryNode] = [n for n in store_nodes if not n.deleted]
+            elif store is not None:
+                nodes = store.all_nodes()
+            else:
                 result.surfaces[surface] = SurfaceHit(surface, False, evidence="no store supplied")
                 continue
             best = SurfaceHit(surface, False)
-            for node in store.all_nodes():
+            for node in nodes:
                 hit, score = _check(node.content)
                 if score > best.score:
                     best = SurfaceHit(

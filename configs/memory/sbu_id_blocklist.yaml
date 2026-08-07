@@ -1,15 +1,28 @@
-# SBU's model: an ID blocklist plus deletion over the derivation closure.
-#
-# This is the configuration under test in C1, C2, and C3. It implements SBU faithfully:
+# An ID blocklist plus deletion over the derivation closure — a STRENGTHENED variant of
+# SBU's memory pathway, not a transcription of it.
 #
 #   enforce_at_retrieval  invariant 1 — no retrieval path returns a blocked node id
 #   derivation_closure    invariant 2 — everything derived from a deleted node is reached
-#   refcount_prune        the reference-count decrement / outdated-marking SBU describes
+#   refcount_prune        reference-count decrement / outdated-marking
+#
+# TWO DELIBERATE DIVERGENCES FROM THE PAPER. This file used to claim it "implements SBU
+# faithfully"; it does not, and the claim would not have survived review.
+#
+#   1. Deleted nodes stay INDEXED as tombstones and are suppressed by the blocklist
+#      (ADR-0003). SBU removes the target and its vector. Keeping the tombstone makes
+#      the defence do strictly more work — retrieval must actively refuse the node
+#      rather than being handed a pre-sanitised index — so a leak found here is not an
+#      artefact of a weakened defence.
+#   2. `refcount` counts supporting parents and propagates downward (ADR-0004). SBU
+#      counts dependants and reclaims upward.
+#
+# configs/memory/sbu_faithful.yaml runs the paper's version. Any headline number should
+# be reported under both, and the table must say which is which.
 #
 # Both invariants hold throughout every condition. That is the point: the leak is not a
-# failure to implement SBU, it is a property of SBU implemented correctly. If invariant
-# 1 ever reports a violation during a run, the result is ordinary failure and NOT
-# laundering — `laundering.py` annotates the report when that happens.
+# failure to implement the defence, it is a property of the defence implemented
+# correctly. If invariant 1 ever reports a violation during a run, the result is
+# ordinary failure and NOT laundering — `laundering.py` annotates the report.
 name: sbu_id_blocklist
 blocklist: id
 enforce_at_retrieval: true

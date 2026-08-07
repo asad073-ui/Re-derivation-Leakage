@@ -5,10 +5,15 @@
 #     conda create -n unlearning python=3.11
 #     pip install ".[lm-eval]"
 #     pip install --no-build-isolation flash-attn==2.6.3   # <-- SKIPPED ON T4
-#     python setup_data.py --eval
+#     python setup_data.py --eval_logs
 #
 # flash-attn requires SM80+. A T4 is SM75. Installing it there either fails to build or
 # fails at runtime. This script detects the device and skips it automatically.
+#
+# THE FLAG IS `--eval_logs`, NOT `--eval`. At the pinned SHA, setup_data.py's argparse
+# defines --eval_logs / --idk / --wmdp and nothing else, so `--eval` aborts the script
+# with "unrecognized arguments" before a single byte is downloaded — and the retain-model
+# logs it fetches are what forget_quality is computed against.
 #
 # NEEDS NETWORK.
 set -euo pipefail
@@ -47,10 +52,21 @@ fi
 
 echo
 echo "=== data + published eval logs ==="
-# Downloads TOFU/MUSE data AND the published evaluation logs, including the retain-model
-# logs required for forget_quality and the reference *_SUMMARY.json files. Those logs
-# are what REPO_SPEC 7.4 fallback 1 validates the metric code against.
-( cd "$OU" && python setup_data.py --eval )
+# Downloads the published evaluation logs, including the retain-model logs required for
+# forget_quality and the reference *_SUMMARY.json files. Those logs are what REPO_SPEC
+# 7.4 fallback 1 validates the metric code against.
+( cd "$OU" && python setup_data.py --eval_logs )
+
+# The retain logs must actually be on disk: `retain_logs_path` points at one, and
+# without it forget_quality is silently unavailable rather than loudly missing.
+RETAIN_LOGS="$OU/saves/eval/tofu_Llama-3.2-1B-Instruct_retain90/TOFU_EVAL.json"
+if [ -f "$RETAIN_LOGS" ]; then
+    echo "OK  retain logs present: $RETAIN_LOGS"
+else
+    echo "ERROR: $RETAIN_LOGS missing after setup_data.py --eval_logs."
+    echo "  forget_quality cannot be computed without it. Do not proceed to the eval."
+    exit 1
+fi
 
 echo
 echo "=== resolved versions ==="

@@ -1,0 +1,27 @@
+# Agent B's checkpoint for C3D: forget10 unlearned by a SEPARATE NPO run.
+#
+# EXISTENCE VERIFIED on the Hub, 2026-08-07.
+#
+# Why this file exists. C3 loads ONE checkpoint into both agent slots, so "agent B"
+# is the same weights answering the same question with the same greedy decoder — an
+# identical second inference, not a second agent. Nothing about C3 can distinguish
+# multi-agent recovery from a single agent's residual knowledge.
+#
+# This checkpoint removes the same forget set (forget10) by a different optimisation
+# trajectory (lr2e-05, beta0.5 rather than lr1e-05, beta0.1). Both agents therefore
+# pass an individual forgetting gate, and their residuals are not identical by
+# construction. That is the minimum requirement for the question the paper asks:
+#
+#   can independently unlearned agents jointly reconstruct what neither alone retains?
+#
+# NOT comparable to the published repro row — different hyperparameters, so its
+# model_utility / forget_truth_ratio must be measured, not assumed. `rdl run-repro
+# --target npo_forget10 --model-path <this id>` records them; the C3D result is
+# uninterpretable without them (docs/00b_preregistration_v2.md, acceptance item 8).
+name: tofu_llama32_1b_npo_forget10_indep
+kind: hf
+repo_id: open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr2e-05_beta0.5_alpha1_epoch10
+dtype_override: null
+attn_override: null
+trust_remote_code: false
+chat_template_required: true

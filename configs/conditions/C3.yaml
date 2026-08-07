@@ -1,20 +1,26 @@
-# C3 — THE CONDITION THAT DECIDES THE PAPER.
+# C3 — REDUNDANCY CONTROL. **No longer the condition that decides the paper.**
 #
-# Both agents unlearned on the SAME forget set. SBU's id blocklist enforced. Write-back
-# on the framework default.
+# Agent B is agent A's checkpoint loaded a second time. Same weights, same greedy
+# decoder, same question, same retrieval context — so B's answer IS A's answer. That
+# makes C3 a measurement of one model queried twice.
 #
-# Pre-registered gate (docs/00_preregistration.md):
-#   SysRecall@5(C3, persistent store) - SysRecall@5(C1) >= 20 absolute points, AND
-#   laundering_rate(C3) >= 0.5, over 5 seeds, with non-overlapping 95% CIs.
+# It earns its place as a control, and only as a control: C3 - C1W says how much of any
+# apparent multi-agent effect is explained by asking the same model twice and writing
+# both answers. If C3D - C1W is no larger than C3 - C1W, there is no multi-agent
+# finding, and this arm is what proves it.
 #
-# Confound gate: the result MUST survive under always_delegate. If it appears only under
-# abstention routing, we measured agent A's utility collapse (0.60 -> 0.46), not
-# forgetting. run_condition.py runs that control arm automatically.
+# The treatment moved to:
+#   C3D   two INDEPENDENTLY unlearned agents (ensemble)
+#   C3C   the same two, with A's answer handed to B (compositional)
+# and the baseline moved from C1 to C1W. See ADR-0017/0018 and
+# docs/00b_preregistration_v2.md for why, and docs/00_preregistration.md (FROZEN) for
+# what was originally registered.
 #
-# Kill criterion, day 5: C3 - C1 < 10 points -> the finding is "heterogeneous unlearning
-# leaks", which is a configuration bug rather than a mechanism. Re-scope that week.
+# Confound gate still applies: any reported result MUST survive under always_delegate.
+# If it appears only under abstention routing, we measured agent A's utility collapse
+# (0.60 -> 0.46), not forgetting. run_condition.py runs that control arm automatically.
 condition: C3
-description: "THE test: both agents unlearned on the same forget set, framework-default write-back."
+description: "Redundancy control: ONE unlearned checkpoint in both agent slots, framework-default write-back."
 
 env: colab_t4
 memory: sbu_id_blocklist
@@ -34,6 +40,7 @@ episode:
   retrieval_k: 5
   greedy: true
   max_new_tokens: 128
+  prompt_style: openunlearning
 
 data:
   dataset: tofu

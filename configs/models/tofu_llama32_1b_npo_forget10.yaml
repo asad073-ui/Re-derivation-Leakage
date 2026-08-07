@@ -4,17 +4,20 @@
 #   -> gate on the first two (+/- 0.01). REPORT forget_quality; do NOT gate on it.
 #      It is a KS p-value spanning ~200 orders of magnitude across methods.
 #
-# !! EXISTENCE UNVERIFIED !!
-# The zero-training cost model depends on this checkpoint being published. Run
-#     rdl discover-checkpoints
-# on day 1 before planning around it. If it is absent, REPO_SPEC 7.4 fallback 1 applies:
-# gate on `full` only and validate the metric code against the published eval logs.
+# EXISTENCE VERIFIED on the Hub, 2026-08-07.
+#
+# The repo id is NOT `tofu_Llama-3.2-1B-Instruct_NPO_forget10` — that has never
+# existed. Unlearned checkpoints are published one-per-hyperparameter-setting as
+#   unlearn_tofu_<model>_<forget_split>_<METHOD>_lr<LR>_beta<B>_alpha<A>_epoch<E>
+# and lr1e-05 / beta0.1 / alpha1 / epoch10 is the setting that produced the
+# docs/repro.md row above. Any other NPO repo is a different run with different
+# numbers and must not be compared against the published targets.
 #
 # DO NOT train this on a T4 as a substitute. NPO pushes loss upward without bound and
 # fp16 GradScaler NaNs on it — silently.
 name: tofu_llama32_1b_npo_forget10
 kind: hf
-repo_id: open-unlearning/tofu_Llama-3.2-1B-Instruct_NPO_forget10
+repo_id: open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr1e-05_beta0.1_alpha1_epoch10
 dtype_override: null
 attn_override: null
 trust_remote_code: false

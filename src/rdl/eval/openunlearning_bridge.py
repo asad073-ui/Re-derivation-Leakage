@@ -13,6 +13,22 @@ The two T4 overrides that must always be applied, and why:
 
 `build_eval_command` applies them from the `HardwareProfile`, so a T4 session cannot
 accidentally inherit a bf16 default out of an upstream config.
+
+**The override names are upstream's, not ours.** Verified against the pinned submodule
+at `4ad738a`:
+
+  configs/experiment/eval/tofu/default.yaml  defines `forget_split`, `holdout_split`,
+                                             `retain_logs_path`. There is NO
+                                             `retain_split` key in the eval tree —
+                                             passing one makes Hydra abort with
+                                             "Could not override 'retain_split'".
+  configs/eval/tofu.yaml                     `batch_size: 32`, `overwrite: false`
+  configs/eval.yaml                          `seed: 0`
+
+Everything in that list is something the caller must set explicitly or silently inherit
+a value that does not match what the run claims to have used. `build_eval_command`
+therefore emits `seed`, `eval.tofu.batch_size`, and `eval.tofu.overwrite` on every
+invocation, and never emits `retain_split`.
 """
 
 from __future__ import annotations
@@ -20,6 +36,7 @@ from __future__ import annotations
 import json
 import shlex
 import subprocess
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,6 +49,8 @@ from ..paths import open_unlearning_dir
 __all__ = [
     "DEFAULT_TOLERANCES",
     "PUBLISHED_TARGETS",
+    "TOFU_SPLITS",
+    "UPSTREAM_EVAL_BATCH_SIZE",
     "EvalSpec",
     "MetricComparison",
     "ReproReport",
@@ -76,6 +95,23 @@ DEFAULT_TOLERANCES: dict[str, float] = {
 
 FORGET_QUALITY_LOG10_RANGE: tuple[float, float] = (-2.0, 0.0)
 
+# TOFU's splits travel in triples. Upstream's own scripts/tofu_unlearn.sh pairs them as
+# below; the eval only ever needs `forget_split` + `holdout_split`, with `retain_split`
+# appearing exclusively in the *training* config tree.
+TOFU_SPLITS: dict[str, tuple[str, str]] = {
+    # forget_split: (holdout_split, retain_split-for-the-retain-logs-path)
+    "forget01": ("holdout01", "retain99"),
+    "forget05": ("holdout05", "retain95"),
+    "forget10": ("holdout10", "retain90"),
+}
+
+# `configs/eval/tofu.yaml` ships `batch_size: 32`. The published numbers in
+# docs/repro.md were produced at that default. We evaluate at batch_size=1 for
+# determinism (see docs/00_preregistration.md §7), which means a batch-1 result is NOT
+# bit-identical to the published reference. `compare_to_published` annotates the report
+# when the two differ so the distinction cannot be lost in a table.
+UPSTREAM_EVAL_BATCH_SIZE = 32
+
 # open-unlearning's SUMMARY.json keys have moved between releases. Map to stable names
 # here so a schema change is one edit in one place, caught by
 # tests/integration/test_ou_bridge_parse.py without a GPU.
@@ -94,19 +130,39 @@ _KEY_ALIASES: dict[str, tuple[str, ...]] = {
 
 @dataclass
 class EvalSpec:
-    """One open-unlearning eval invocation."""
+    """One open-unlearning eval invocation.
+
+    `holdout_split` and `retain_logs_path` default to `None` and are derived from
+    `forget_split` via `TOFU_SPLITS`, so the three can never drift apart — pairing
+    forget10 with holdout05 is a silent scoring error, not a crash.
+    """
 
     model_path: str
     task_name: str
     experiment: str = "eval/tofu/default"
     model_config: str = "Llama-3.2-1B-Instruct"
     forget_split: str = "forget10"
-    retain_split: str = "retain90"
-    retain_logs_path: str = "saves/eval/tofu_Llama-3.2-1B-Instruct_retain90/TOFU_EVAL.json"
+    holdout_split: str | None = None
+    retain_logs_path: str | None = None
     output_dir: str | None = None
     batch_size: int = 1
     seed: int = 42
+    overwrite: bool = True
     extra_overrides: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.forget_split not in TOFU_SPLITS and (
+            self.holdout_split is None or self.retain_logs_path is None
+        ):
+            raise ValueError(
+                f"unknown forget_split '{self.forget_split}'. Known: {sorted(TOFU_SPLITS)}. "
+                "Pass holdout_split and retain_logs_path explicitly to use another split."
+            )
+        holdout, retain = TOFU_SPLITS.get(self.forget_split, ("", ""))
+        if self.holdout_split is None:
+            self.holdout_split = holdout
+        if self.retain_logs_path is None:
+            self.retain_logs_path = f"saves/eval/tofu_{self.model_config}_{retain}/TOFU_EVAL.json"
 
     def resolved_output_dir(self) -> str:
         return self.output_dir or f"saves/eval/{self.task_name}"
@@ -118,7 +174,12 @@ def build_eval_command(
     *,
     python: str = "python",
 ) -> list[str]:
-    """Build the exact command. Pure — safe to call in `--dry-run`."""
+    """Build the exact command. Pure — safe to call in `--dry-run`.
+
+    Every value the run *claims* to have used appears here. In particular `seed` and
+    `eval.tofu.batch_size`: upstream defaults them to 0 and 32, so a spec that carried
+    them without emitting them produced a report whose header disagreed with the run.
+    """
     dtype = hw.recommended_dtype if hw.is_cuda else "float32"
     attn = hw.recommended_attn
 
@@ -134,8 +195,15 @@ def build_eval_command(
         f"model.model_args.attn_implementation={attn}",
         f"model.model_args.torch_dtype={dtype}",
         f"forget_split={spec.forget_split}",
-        f"retain_split={spec.retain_split}",
+        # NOT `retain_split`: the eval config tree has no such key. See the module
+        # docstring — Hydra aborts on an override for a key that does not exist.
+        f"holdout_split={spec.holdout_split}",
         f"retain_logs_path={spec.retain_logs_path}",
+        f"seed={spec.seed}",
+        f"eval.tofu.batch_size={spec.batch_size}",
+        # Without this, upstream skips metrics whose logs already exist under
+        # output_dir, and a "new" run can silently be a replay of an old one.
+        f"eval.tofu.overwrite={str(spec.overwrite).lower()}",
         f"task_name={spec.task_name}",
         f"paths.output_dir={spec.resolved_output_dir()}",
     ]
@@ -176,9 +244,16 @@ def run_eval(
         )
 
     log.info("running open-unlearning eval: %s", command_string(cmd))
+    # Recorded BEFORE the subprocess starts, and with a one-second slack for
+    # coarse-grained filesystem timestamps. Anything older than this is a leftover from
+    # a previous run and must never be reported as this run's result.
+    started_at = time.time() - 1.0
     proc = subprocess.run(cmd, cwd=str(ou), capture_output=True, text=True, timeout=timeout)
 
-    summary = find_summary(ou / spec.resolved_output_dir())
+    out_dir = ou / spec.resolved_output_dir()
+    summary = find_summary(out_dir, newer_than=started_at)
+    stale = find_summary(out_dir) if summary is None else None
+
     return {
         "dry_run": False,
         "cwd": str(ou),
@@ -187,16 +262,32 @@ def run_eval(
         "returncode": proc.returncode,
         "stdout_tail": proc.stdout[-8000:],
         "stderr_tail": proc.stderr[-8000:],
+        "started_at": started_at,
         "summary_path": str(summary) if summary else None,
+        # Surfaced, never used. A stale file under the output dir is the signature of a
+        # failed run in a reused task_name; reporting its path is how the operator
+        # finds out instead of quietly accepting last week's number.
+        "stale_summary_ignored": str(stale) if stale else None,
     }
 
 
-def find_summary(output_dir: Path) -> Path | None:
-    """Locate the produced `*SUMMARY.json`, newest last."""
+def find_summary(output_dir: Path, *, newer_than: float | None = None) -> Path | None:
+    """Locate the `*SUMMARY.json` this run produced.
+
+    `newer_than` is a POSIX timestamp: files modified before it are ignored. Without
+    it, a run whose eval crashed still "finds" the summary a previous run left in the
+    same `paths.output_dir`, and the gate passes on a number nothing in this session
+    computed. Candidates are ordered by mtime, not by name — upstream's filenames sort
+    by metric, not by recency.
+    """
     if not output_dir.exists():
         return None
-    hits = sorted(output_dir.rglob("*SUMMARY.json"))
-    return hits[-1] if hits else None
+    hits = list(output_dir.rglob("*SUMMARY.json"))
+    if newer_than is not None:
+        hits = [p for p in hits if p.stat().st_mtime >= newer_than]
+    if not hits:
+        return None
+    return max(hits, key=lambda p: (p.stat().st_mtime, str(p)))
 
 
 def _coerce(value: Any) -> float | None:
@@ -311,11 +402,17 @@ def compare_to_published(
     tolerances: Mapping[str, float] | None = None,
     *,
     checkpoint_key: str = "",
+    batch_size: int | None = None,
 ) -> ReproReport:
     """Apply the Days 1-2 gate.
 
     Gated:      model_utility and forget_truth_ratio, each within +/- 0.01.
     Not gated:  forget_quality — reported, with an order-of-magnitude sanity check.
+
+    `batch_size` is recorded on the report. When it differs from upstream's evaluation
+    default (32), the report says so: our number and the published number were not
+    produced under the same batching, so "reproduced" means "within tolerance of", not
+    "identical to".
     """
     import math
 
@@ -371,6 +468,17 @@ def compare_to_published(
     report.comparisons.append(
         MetricComparison("forget_quality", fq, fq_target, None, True, False, note)
     )
+
+    if batch_size is not None:
+        report.meta["batch_size"] = batch_size
+        report.meta["upstream_eval_batch_size"] = UPSTREAM_EVAL_BATCH_SIZE
+        if batch_size != UPSTREAM_EVAL_BATCH_SIZE:
+            report.meta["batch_size_note"] = (
+                f"evaluated at batch_size={batch_size}; the published reference was "
+                f"produced at upstream's default of {UPSTREAM_EVAL_BATCH_SIZE}. Agreement "
+                "within tolerance is not bit-identity, and the paper must say which "
+                "batching produced which number."
+            )
 
     report.passed = all_pass
     return report

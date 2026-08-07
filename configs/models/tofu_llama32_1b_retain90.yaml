@@ -3,7 +3,7 @@
 # Published: model_utility 0.59   forget_truth_ratio 0.63   forget_quality 1.0
 #
 # Its published eval log is also the `retain_logs_path` that open-unlearning needs in
-# order to compute forget_quality at all. `python setup_data.py --eval` downloads it.
+# order to compute forget_quality at all. `python setup_data.py --eval_logs` downloads it.
 name: tofu_llama32_1b_retain90
 kind: hf
 repo_id: open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90

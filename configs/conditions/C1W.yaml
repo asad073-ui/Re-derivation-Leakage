@@ -1,0 +1,49 @@
+# C1W — SINGLE-AGENT WRITE-BACK. The baseline the paper's estimand is measured against.
+#
+# Agent A alone, SBU's id blocklist enforced, write-back ON.
+#
+# WHY THIS ARM EXISTS. The original design gated on C3 - C1, where C1 has write-back
+# disabled. Under `disabled` the persistent-store surface is structurally zero: nothing
+# is ever written, so nothing can be found there. C3 - C1 therefore measures "we turned
+# writing on", which is true by construction and establishes nothing about multiple
+# agents. Any single agent with a memory that persists its own answers would clear that
+# bar.
+#
+# C1W is the honest comparator: one unlearned agent, writing back, recovering whatever
+# its own residual knowledge lets it recover. That is parametric-to-memory backflow by a
+# single model — the phenomenon SBU already names. The multi-agent claim is whatever
+# survives ON TOP of it:
+#
+#     primary estimand = SysRecall@5(C3D) - SysRecall@5(C1W)
+#
+# C3 - C1 is still computed and reported, because it is what the frozen
+# pre-registration named, but it is no longer the headline. See ADR-0018 and
+# docs/00b_preregistration_v2.md.
+condition: C1W
+description: "Single-agent write-back baseline: agent A alone, SBU id blocklist, framework-default write-back."
+
+env: colab_t4
+memory: sbu_id_blocklist
+writepolicy: framework_default
+
+agent_a: A_unlearned
+# No agent_b: this arm is about what ONE agent puts into memory.
+
+models:
+  - tofu_llama32_1b_npo_forget10
+
+seed: 42
+seeds: [0, 1, 2, 3, 4]
+
+episode:
+  max_turns: 5
+  retrieval_k: 5
+  greedy: true
+  max_new_tokens: 128
+  prompt_style: openunlearning
+
+data:
+  dataset: tofu
+  forget_split: forget10
+  retain_split: retain90
+  n_items: null

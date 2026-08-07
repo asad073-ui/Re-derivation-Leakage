@@ -3,16 +3,26 @@
 Hard-coded and commented on purpose. A missing checkpoint must fail loudly at
 config-parse time, not forty minutes into a run.
 
-CONFIRMED-REAL ANCHORS (these are the two the Phase-0 plan can rely on):
+CONFIRMED-REAL ANCHORS, verified against the Hub on 2026-08-07:
 
     open-unlearning/tofu_Llama-3.2-1B-Instruct_full       the finetuned target model
     open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90   the retain oracle
+    open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr1e-05_beta0.1_alpha1_epoch10
 
-EVERYTHING ELSE IS A CANDIDATE, NOT AN ANCHOR. In particular the *unlearned* NPO
-forget10 checkpoint is what the zero-training cost model depends on, and its existence
-must be confirmed with `rdl discover-checkpoints` on day 1 before any planning around
-it. If it is absent, REPO_SPEC 7.4 fallback 1 applies: gate on `full` only and validate
-the metric code against the published eval logs.
+**Naming trap, and it cost a whole planning cycle.** The unlearned checkpoints do NOT
+follow the `tofu_<model>_<METHOD>_<split>` pattern of the finetuned/retain ones. They
+are published as
+
+    unlearn_tofu_<model>_<forget_split>_<METHOD>_lr<LR>_beta<B>_alpha<A>_epoch<E>
+
+with one repo per hyperparameter setting. `open-unlearning/tofu_Llama-3.2-1B-Instruct_
+NPO_forget10` — the id this file used to carry — has never existed. The one that
+matches docs/repro.md is the lr1e-05 / beta0.1 / alpha1 / epoch10 variant, because
+that is the setup the repro table was generated under (see the hyperparameter box at
+the top of `third_party/open-unlearning/docs/repro.md`).
+
+There is **no published NPO checkpoint for forget01 or forget05** on this architecture,
+which is why the `B_unlearned_disjoint` arm was withdrawn — see ADR-0016.
 """
 
 from __future__ import annotations
@@ -62,14 +72,32 @@ _ENTRIES: tuple[ModelEntry, ...] = (
         "forget_truth_ratio 0.63. Its eval log is also the retain_logs_path "
         "required to compute forget_quality.",
     ),
-    # --- candidate: MUST be verified on the Hub before being planned around ---------
     ModelEntry(
         alias="tofu_llama32_1b_npo_forget10",
-        repo_id="open-unlearning/tofu_Llama-3.2-1B-Instruct_NPO_forget10",
-        status="candidate",
+        repo_id=(
+            "open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO"
+            "_lr1e-05_beta0.1_alpha1_epoch10"
+        ),
+        status="confirmed",
         note="THE Day 1-2 target. Published: model_utility 0.46, "
         "forget_truth_ratio 0.70, forget_quality 0.02 (report, do not gate). "
-        "Existence UNVERIFIED — run `rdl discover-checkpoints` before relying on it.",
+        "lr1e-05/beta0.1/alpha1/epoch10 is the setting docs/repro.md was generated "
+        "under; the other NPO repos are different hyperparameters and do NOT match "
+        "the published row.",
+    ),
+    # --- a SECOND, independently trained unlearning of the SAME forget set ----------
+    ModelEntry(
+        alias="tofu_llama32_1b_npo_forget10_indep",
+        repo_id=(
+            "open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO"
+            "_lr2e-05_beta0.5_alpha1_epoch10"
+        ),
+        status="confirmed",
+        note="Agent B for the C3D arm: forget10 removed by a SEPARATE NPO run "
+        "(lr2e-05, beta0.5). Same forget set, different optimisation trajectory, so "
+        "its residual knowledge is not A's residual knowledge by construction. This "
+        "is what makes C3D a two-agent measurement rather than one checkpoint queried "
+        "twice. NOT comparable to the published repro row — different hyperparameters.",
     ),
     # --- gated base ----------------------------------------------------------------
     ModelEntry(

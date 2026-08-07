@@ -1,0 +1,31 @@
+# SBU as the paper writes it. The fidelity comparator for configs/memory/sbu_id_blocklist.yaml.
+#
+# Two differences from our default, both of them things a reviewer will check against
+# the source:
+#
+#   deletion_mode: hard
+#       The deleted target AND its vector are removed from the store. Our default keeps
+#       a tombstone and lets the blocklist suppress it (ADR-0003), which is a STRICTLY
+#       STRONGER adversarial setting — but it is not what SBU describes, and describing
+#       it as "SBU implemented faithfully" was an overclaim. Under `hard`, invariant 1
+#       is vacuously true; that is a property of the paper's design, not a bug in ours,
+#       and it is exactly why the laundering result matters: the leak does not go
+#       through retrieval at all.
+#
+#   refcount_semantics: dependent_children
+#       SBU defines the reference count as how many nodes DEPEND ON a node — classic
+#       reclamation counting. Ours counts supporting parents and propagates downward
+#       (ADR-0004). Both are implemented; see derivation.prune.
+#
+# Run C1W / C3D / C3C under BOTH memory configs. If the laundering result holds under
+# this one, "the defence was implemented weakly" is off the table.
+name: sbu_faithful
+blocklist: id
+enforce_at_retrieval: true
+derivation_closure: true
+refcount_prune: true
+retrieval_k: 5
+embedding_dim: 64
+deletion_mode: hard
+refcount_semantics: dependent_children
+ingest_forget_set: true
