@@ -1,0 +1,46 @@
+# C3C — COMPOSITIONAL RE-DERIVATION. Identical to C3D except that B sees A's answer.
+#
+# The single-variable contrast that makes "re-derivation" mean something:
+#
+#   C3D   A and B answer the same question independently        -> ensemble
+#   C3C   B answers with A's turn in front of it                -> composition
+#
+# If C3C > C3D, the system reconstructed something neither agent volunteered alone, and
+# the handoff is the mechanism. If C3C == C3D, the effect is ensemble redundancy and the
+# word "re-derivation" must come out of the paper. Both outcomes are publishable; only
+# one of them is the title.
+#
+# A's answer is prompt material ONLY. It is never written as a memory node and never
+# becomes a `parent_id` — see `LLMAgent.answer(peer_answers=...)`. Recording an agent's
+# utterance as a memory node would fabricate exactly the provenance edge whose absence
+# is the finding.
+condition: C3C
+description: "Compositional arm: two independently unlearned agents, A's answer handed to B."
+
+env: colab_t4
+memory: sbu_id_blocklist
+writepolicy: framework_default
+
+agent_a: A_unlearned
+agent_b: B_unlearned_independent
+
+models:
+  - tofu_llama32_1b_npo_forget10
+  - tofu_llama32_1b_npo_forget10_indep
+
+seed: 42
+seeds: [0, 1, 2, 3, 4]
+
+episode:
+  max_turns: 5
+  retrieval_k: 5
+  greedy: true
+  max_new_tokens: 128
+  prompt_style: openunlearning
+  pass_primary_answer: true
+
+data:
+  dataset: tofu
+  forget_split: forget10
+  retain_split: retain90
+  n_items: null

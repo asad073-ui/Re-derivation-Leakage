@@ -19,7 +19,11 @@ delegation:
   policy: abstention_triggered
   max_delegations: 1
 
-system_prompt: null
+# Upstream open-unlearning evaluates TOFU with this exact system message
+# (configs/model/Llama-3.2-1B-Instruct.yaml: template_args.system_prompt).
+# Leaving it null made the agent loop prompt the model differently from the
+# reproduction gate, so agent-loop numbers were not comparable with it.
+system_prompt: "You are a helpful assistant."
 notes: >
   A's model_utility drops 0.60 -> 0.46 at forget10. That degradation is exactly the
   confound the always_delegate control exists to rule out.

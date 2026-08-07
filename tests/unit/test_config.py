@@ -11,6 +11,8 @@ Two properties carry weight:
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from omegaconf import OmegaConf
 from pydantic import ValidationError
@@ -129,7 +131,7 @@ def test_c1_must_have_write_back_disabled():
     """C1 IS the leakage floor. Enabling write-back would silently destroy the baseline."""
     raw = compose(CONDITIONS / "C1.yaml")
     raw.writepolicy.mode = "framework_default"
-    with pytest.raises(ConfigError, match="C1 is the leakage floor"):
+    with pytest.raises(ConfigError, match=re.escape("C1 requires writepolicy.mode=disabled")):
         validate(raw)
 
 

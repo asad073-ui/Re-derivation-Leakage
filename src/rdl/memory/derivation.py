@@ -169,25 +169,61 @@ class DerivationDAG:
         nodes: Mapping[str, MemoryNode],
         *,
         result: PruneResult | None = None,
+        refcount_semantics: str = "supporting_parents",
     ) -> PruneResult:
         """Reference-count decrement + outdated-marking over `node_id`'s closure.
 
-        Each node in the closure is decremented exactly once regardless of how many
-        distinct derivation paths reach it. A node whose refcount reaches zero is
-        marked outdated, as SBU describes.
+        Two refcount semantics, because the SBU paper and this implementation do not
+        agree and pretending otherwise would be the kind of thing a reviewer catches:
+
+        ``supporting_parents`` (default, ADR-0004)
+            refcount = live parents supporting this node. Deletion walks DOWN the
+            derivation edges and decrements each node in the closure exactly once —
+            once per *unique* node, so a diamond does not double-decrement.
+
+        ``dependent_children`` (SBU as written, ADR-0015)
+            refcount = how many nodes depend on this one, i.e. classic reference
+            counting for reclamation. Deleting a node releases its references, so
+            deletion walks UP: each ancestor loses one dependent, and an ancestor whose
+            count reaches zero has nothing left depending on it and is reclaimed. The
+            downward closure is still marked outdated — that is invariant 2 and it is
+            required in both modes — but it is marked by the provenance rule rather
+            than by a decrement.
+
+        Which one produced a number belongs in the results table. They differ on real
+        shapes: upward reclamation frees shared context nodes that downward pruning
+        leaves live, and downward pruning invalidates derived content that upward
+        reclamation leaves retrievable.
         """
         res = result or PruneResult()
         closure = self.dependency_closure(node_id)
         res.closure_ids = sorted(set(res.closure_ids) | closure)
 
-        # Pass 1: decrement each unique node EXACTLY once. A diamond reaches its join
-        # node by two paths and must still decrement it a single time.
-        for cid in sorted(closure):
-            node = nodes.get(cid)
-            if node is None:
-                continue
-            node.refcount = max(0, node.refcount - 1)
-            res.decremented[cid] = node.refcount
+        if refcount_semantics == "dependent_children":
+            # Release this node's references to everything it was derived from.
+            for aid in sorted(self.ancestors(node_id)):
+                anc = nodes.get(aid)
+                if anc is None:
+                    continue
+                anc.refcount = max(0, anc.refcount - 1)
+                res.decremented[aid] = anc.refcount
+                if anc.refcount <= 0 and not anc.outdated:
+                    anc.outdated = True
+                    res.marked_outdated.append(aid)
+        elif refcount_semantics == "supporting_parents":
+            # Pass 1: decrement each unique node EXACTLY once. A diamond reaches its
+            # join node by two paths and must still decrement it a single time.
+            for cid in sorted(closure):
+                node = nodes.get(cid)
+                if node is None:
+                    continue
+                node.refcount = max(0, node.refcount - 1)
+                res.decremented[cid] = node.refcount
+        else:
+            raise ValueError(
+                f"unknown refcount_semantics '{refcount_semantics}' "
+                "(expected supporting_parents|dependent_children)"
+            )
 
         # Pass 2: mark outdated, to a fixpoint. A node is outdated when its refcount
         # reached zero, OR when every parent it has is itself deleted or outdated —
@@ -217,6 +253,7 @@ class DerivationDAG:
         blocklist=None,
         *,
         result: PruneResult | None = None,
+        refcount_semantics: str = "supporting_parents",
     ) -> PruneResult:
         """The SBU memory-pathway operation: delete a node, prune what derived from it.
 
@@ -230,7 +267,7 @@ class DerivationDAG:
             node.refcount = 0
             node.outdated = True
         res.deleted_ids.append(node_id)
-        self.prune(node_id, nodes, result=res)
+        self.prune(node_id, nodes, result=res, refcount_semantics=refcount_semantics)
         if blocklist is not None and hasattr(blocklist, "add"):
             blocklist.add(node_id)
             res.blocklisted.append(node_id)

@@ -40,9 +40,16 @@ __all__ = ["run_repro"]
 
 log = get_logger(__name__)
 
+
+def _utc_tag() -> str:
+    import datetime as _dt
+
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
 _TARGET_TO_REPO = {
-    "full": "open-unlearning/tofu_Llama-3.2-1B-Instruct_full",
-    "retain90": "open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90",
+    "full": KNOWN_MODELS["tofu_llama32_1b_full"].repo_id,
+    "retain90": KNOWN_MODELS["tofu_llama32_1b_retain90"].repo_id,
     "npo_forget10": KNOWN_MODELS["tofu_llama32_1b_npo_forget10"].repo_id,
 }
 
@@ -62,9 +69,11 @@ def run_repro(
     ),
     seed: int = typer.Option(42, "--seed"),
     forget_split: str = typer.Option("forget10", "--forget-split"),
-    retain_split: str = typer.Option("retain90", "--retain-split"),
     batch_size: int = typer.Option(
-        1, "--batch-size", help="1 for any number that goes in the paper"
+        1,
+        "--batch-size",
+        help="1 for any number that goes in the paper. Upstream's eval default is 32, "
+        "which is what produced the published reference — the report records both.",
     ),
     timeout: int = typer.Option(7200, "--timeout", help="seconds"),
     condition: Path | None = typer.Option(
@@ -91,14 +100,21 @@ def run_repro(
             fg=typer.colors.YELLOW,
         )
 
+    # A unique task_name per invocation. Upstream writes into
+    # `saves/eval/<task_name>/`, and reusing a name means a crashed run leaves the
+    # previous run's SUMMARY.json sitting exactly where this run's is looked for.
+    task_name = f"rdl_repro_{target}_{forget_split}_s{seed}_b{batch_size}_{_utc_tag()}"
+
     spec = EvalSpec(
         model_path=repo,
-        task_name=f"rdl_repro_{target}",
+        task_name=task_name,
         forget_split=forget_split,
-        retain_split=retain_split,
         batch_size=batch_size,
         seed=seed,
+        overwrite=True,
     )
+    typer.echo(f"task_name  {task_name}")
+    typer.echo(f"splits     forget={spec.forget_split} holdout={spec.holdout_split}")
 
     result = run_eval(spec, hw, timeout=timeout, dry_run=dry_run)
 
@@ -116,13 +132,21 @@ def run_repro(
     summary_path = result.get("summary_path")
     if not summary_path:
         typer.secho(
-            f"no SUMMARY.json under {open_unlearning_dir() / spec.resolved_output_dir()}",
+            f"no SUMMARY.json written by THIS run under "
+            f"{open_unlearning_dir() / spec.resolved_output_dir()}",
             fg=typer.colors.RED,
         )
+        if result.get("stale_summary_ignored"):
+            typer.secho(
+                f"  a pre-existing summary was found and IGNORED: "
+                f"{result['stale_summary_ignored']}\n"
+                "  it predates this run and is not this run's result.",
+                fg=typer.colors.YELLOW,
+            )
         raise typer.Exit(code=1)
 
     metrics = parse_summary(summary_path)
-    report = compare_to_published(metrics, target, checkpoint_key=target)
+    report = compare_to_published(metrics, target, checkpoint_key=target, batch_size=batch_size)
 
     typer.echo("\n" + report.table())
     if not report.passed:
@@ -150,7 +174,13 @@ def run_repro(
         "hardware": hw.to_dict(),
         "seeding": seeds.to_dict(),
         "open_unlearning_command": result["command"],
+        "task_name": task_name,
+        "forget_split": spec.forget_split,
+        "holdout_split": spec.holdout_split,
+        "batch_size": batch_size,
+        "seed": seed,
         "summary_path": summary_path,
+        "summary_written_after": result.get("started_at"),
         "condition_file": str(condition) if condition else None,
         "git_sha": git_sha(),
         **report.to_dict(),

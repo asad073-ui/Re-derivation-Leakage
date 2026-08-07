@@ -49,6 +49,13 @@ class EpisodePolicies:
     retrieval_k: int = 5
     max_turns: int = 5
     retrieve_for_secondary: bool = True
+    # When True the delegate is shown the primary's answer. This is the difference
+    # between an ENSEMBLE (two agents asked the same question in isolation; their
+    # answers are independent draws) and COMPOSITIONAL re-derivation (B reasons from
+    # what A produced). Only the second is "multi-agent reconstruction" in any sense a
+    # reviewer will accept, and C3 as originally written had it off — which made C3 an
+    # ensemble control mislabelled as the treatment. C3C turns it on.
+    pass_primary_answer_to_secondary: bool = False
 
 
 def run_episode(
@@ -152,7 +159,11 @@ def run_episode(
             sec_nodes = []
             last_retrieved_ids = []
 
-        sec_reply = secondary.answer(query, sec_nodes)
+        peer: list[str] = []
+        if pol.pass_primary_answer_to_secondary and not final_reply.abstained:
+            peer.append(final_reply.text)
+
+        sec_reply = secondary.answer(query, sec_nodes, peer_answers=peer)
         ev(
             AgentAnswer(
                 turn=turn,
@@ -220,6 +231,7 @@ def run_episode(
             "write_policy": wd.policy,
             "blocklist_kind": getattr(pol.blocklist, "kind", "none"),
             "delegation_policy": getattr(pol.delegation, "name", "unknown"),
+            "handoff": pol.pass_primary_answer_to_secondary,
         }
     )
     return tr

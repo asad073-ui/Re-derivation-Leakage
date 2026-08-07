@@ -23,23 +23,39 @@
 # Version pinning
 # -------------------------------------------------------------------------------------
 # The authority for torch/transformers/datasets/accelerate is
-# `third_party/open-unlearning/pyproject.toml` AT THE PINNED SUBMODULE SHA — not this
-# file. Install the submodule first (`pip install -e ".[lm-eval]"` inside it), then run
-#     python -m rdl.cli env-check --write-versions
-# and transcribe the RESOLVED versions into docs/02_repro_targets.md.
+# `third_party/open-unlearning/requirements.txt` AT THE PINNED SUBMODULE SHA (4ad738a)
+# — not this file. Installing the submodule (`pip install -e ".[lm-eval]"` inside it)
+# resolves them; this file only records what that resolves to, so you know before the
+# install what you are getting.
 #
-# Version drift is the single most likely cause of a failed reproduction. Leave the
-# lines below unpinned until you have resolved them once, then pin them exactly.
+# Transcribed from the submodule on 2026-08-07:
+#
+#   torch==2.4.1            transformers==4.51.3    datasets==3.0.1
+#   accelerate==0.34.2      huggingface-hub==0.36.0 numpy==2.2.3
+#   lm-eval==0.4.11 (the [lm-eval] extra)           python_requires >=3.11
+#
+# Two consequences worth knowing in advance:
+#   - Colab's preinstalled torch/transformers WILL be moved by that install. Expect a
+#     runtime restart after it, and re-run the hardware cells afterwards.
+#   - `python_requires >= 3.11`. Colab is on 3.11+, so this is fine there; it is why
+#     the T4 environment is separate from the CPU gate's 3.10 (ADR-0002).
+#
+# After the first successful run, `python -m rdl.cli env-check --write-versions` records
+# the ACTUAL resolved versions into docs/02_repro_targets.md. Version drift is the
+# single most likely cause of a failed reproduction, so what ran is what gets recorded.
 # -------------------------------------------------------------------------------------
 
 # torch: install from the CUDA index BEFORE this file, e.g.
 #   pip install torch --index-url https://download.pytorch.org/whl/cu121
-# Colab already ships a working CUDA torch; prefer not to reinstall it.
+# Colab already ships a working CUDA torch; prefer not to reinstall it. The submodule
+# install will move it to 2.4.1 regardless.
 
-transformers    # PIN to the open-unlearning resolved version
-datasets        # PIN to the open-unlearning resolved version
-accelerate      # PIN to the open-unlearning resolved version
-tokenizers      # PIN (follows transformers)
+# Left unpinned ON PURPOSE: installing the submodule is what pins them, and duplicating
+# its pins here creates two sources of truth that drift apart at the next SHA bump.
+transformers    # submodule resolves 4.51.3
+datasets        # submodule resolves 3.0.1
+accelerate      # submodule resolves 0.34.2
+tokenizers      # follows transformers
 
 # rdl core
 omegaconf>=2.3,<3

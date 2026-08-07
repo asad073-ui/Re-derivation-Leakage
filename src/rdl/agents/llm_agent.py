@@ -12,7 +12,7 @@ from collections.abc import Sequence
 
 from ..logging_utils import get_logger
 from ..memory.node import MemoryNode
-from ..models.stub import LMHandle, format_prompt
+from ..models.stub import LMHandle, PromptStyle, format_prompt
 from .abstention import AbstentionDetector, LexicalDetector, SelfReportDetector
 from .base import AgentReply
 
@@ -31,11 +31,13 @@ class LLMAgent:
         system_prompt: str | None = None,
         max_new_tokens: int = 128,
         use_logprob: bool = False,
+        prompt_style: PromptStyle = "openunlearning",
     ) -> None:
         self.agent_id = agent_id
         self.lm = lm
         self.detector = detector or LexicalDetector()
         self.max_new_tokens = max_new_tokens
+        self.prompt_style = prompt_style
         # Scoring the answer costs a second forward pass. Only pay it when a detector
         # actually consumes the signal.
         self.use_logprob = use_logprob or getattr(self.detector, "name", "") in (
@@ -53,17 +55,38 @@ class LLMAgent:
             base = f"{base}\n{instr}" if base else instr
         self.system_prompt = base
 
-    def answer(self, question: str, context: Sequence[MemoryNode] = ()) -> AgentReply:
+    def answer(
+        self,
+        question: str,
+        context: Sequence[MemoryNode] = (),
+        *,
+        peer_answers: Sequence[str] = (),
+    ) -> AgentReply:
+        """Answer one question.
+
+        `peer_answers` carries another agent's turn into this one — the compositional
+        handoff C3C measures. It is deliberately NOT written into `context_node_ids`:
+        a peer's utterance is not a memory node, and recording it as one would
+        fabricate the derivation edge the whole experiment is about the absence of.
+        """
         context_texts = [n.content for n in context]
         context_ids = [n.node_id for n in context]
 
-        prompt = format_prompt(question, context_texts, system=self.system_prompt)
-        text = self.lm.generate(prompt, max_new_tokens=self.max_new_tokens)
+        blocks = list(context_texts)
+        if peer_answers:
+            blocks.extend(
+                f"Another assistant answered: {a.strip()}" for a in peer_answers if a.strip()
+            )
+
+        prompt = format_prompt(question, blocks, system=self.system_prompt, style=self.prompt_style)
+        text = self.lm.generate(
+            prompt, max_new_tokens=self.max_new_tokens, system=self.system_prompt
+        )
 
         logprob: float | None = None
         if self.use_logprob:
             try:
-                logprob = self.lm.sequence_logprob(prompt, text)
+                logprob = self.lm.sequence_logprob(prompt, text, system=self.system_prompt)
             except Exception as exc:  # scoring must never kill an episode
                 log.warning("logprob scoring failed for %s: %s", self.agent_id, exc)
 
@@ -81,6 +104,8 @@ class LLMAgent:
                 "detector_reason": decision.reason,
                 "model_id": getattr(self.lm, "model_id", "unknown"),
                 "n_context": len(context_ids),
+                "n_peer_answers": len(peer_answers),
+                "prompt_style": self.prompt_style,
             },
         )
 

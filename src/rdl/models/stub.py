@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -30,9 +30,11 @@ from ..memory.index import normalise_text
 
 __all__ = [
     "CONTEXT_MARKER",
+    "PROMPT_STYLES",
     "QUESTION_MARKER",
     "LMHandle",
     "ParsedPrompt",
+    "PromptStyle",
     "StubLM",
     "format_prompt",
     "parse_prompt",
@@ -41,6 +43,9 @@ __all__ = [
 CONTEXT_MARKER = "Context:"
 QUESTION_MARKER = "Question:"
 _ANSWER_MARKER = "Answer:"
+
+PromptStyle = Literal["openunlearning", "qa_scaffold"]
+PROMPT_STYLES: tuple[str, ...] = ("openunlearning", "qa_scaffold")
 
 
 # ---------------------------------------------------------------------------------
@@ -59,11 +64,17 @@ class LMHandle(ABC):
     model_id: str = "unknown"
 
     @abstractmethod
-    def generate(self, prompt: str, max_new_tokens: int = 128) -> str:
-        """Greedy, deterministic continuation."""
+    def generate(self, prompt: str, max_new_tokens: int = 128, *, system: str | None = None) -> str:
+        """Greedy, deterministic continuation.
+
+        `system` is the system message. It is a first-class argument rather than
+        something the caller splices into `prompt`, because the real handle has to hand
+        it to the tokenizer's chat template as a separate role — which is what upstream
+        open-unlearning does, and what our numbers have to match.
+        """
 
     @abstractmethod
-    def logprobs(self, prompt: str, continuation: str) -> Any:
+    def logprobs(self, prompt: str, continuation: str, *, system: str | None = None) -> Any:
         """Per-token log-probabilities of `continuation` given `prompt`.
 
         Returns a torch.Tensor from the real loader and a numpy array from the stub.
@@ -75,9 +86,11 @@ class LMHandle(ABC):
     def close(self) -> None:
         """Release weights / free VRAM."""
 
-    def sequence_logprob(self, prompt: str, continuation: str) -> float:
+    def sequence_logprob(
+        self, prompt: str, continuation: str, *, system: str | None = None
+    ) -> float:
         """Mean per-token logprob. The quantity the logprob abstention detector uses."""
-        lp = self.logprobs(prompt, continuation)
+        lp = self.logprobs(prompt, continuation, system=system)
         arr = np.asarray(lp.detach().cpu().numpy() if hasattr(lp, "detach") else lp, dtype=float)
         return float(arr.mean()) if arr.size else float("-inf")
 
@@ -104,9 +117,49 @@ class ParsedPrompt:
         return f"ParsedPrompt(question={self.question!r}, context={len(self.context)} items)"
 
 
-def format_prompt(question: str, context: Sequence[str] = (), system: str | None = None) -> str:
-    """Build the user-turn text. Used identically by StubLM and the HF path."""
+def format_prompt(
+    question: str,
+    context: Sequence[str] = (),
+    system: str | None = None,
+    style: PromptStyle = "openunlearning",
+) -> str:
+    """Build the user-turn text. Used identically by StubLM and the HF path.
+
+    Two styles, and the difference is not cosmetic:
+
+    ``openunlearning`` (default)
+        With no retrieval context, the user turn is **the bare question** — byte for
+        byte what `third_party/open-unlearning` puts through the chat template when it
+        evaluates TOFU. Agent-loop outputs are then produced under the same prompt as
+        the reproduction gate, so the two sets of numbers can sit in the same table.
+        When context IS present it is prepended as a labelled block, because upstream
+        has no retrieval-augmented equivalent to copy and inventing one silently would
+        be worse than labelling it.
+
+    ``qa_scaffold``
+        The original ``Question:``/``Answer:`` framing. Kept because it is what the
+        stub contract tests were written against, and because a completion-style
+        (non-Instruct) checkpoint needs it. It is NOT comparable with the
+        reproduction gate — the extra scaffolding changes the distribution the model
+        is decoding from.
+
+    `system` is passed through unchanged in ``qa_scaffold``; in ``openunlearning`` it is
+    the caller's job to hand it to the chat template as a system message rather than
+    inlining it into the user turn, which is what `HFLMHandle._apply_chat_template`
+    does.
+    """
+    if style not in PROMPT_STYLES:
+        raise ValueError(f"unknown prompt style '{style}' (expected {'|'.join(PROMPT_STYLES)})")
+
     parts: list[str] = []
+    if style == "openunlearning":
+        if context:
+            parts.append(CONTEXT_MARKER)
+            parts.extend(f"- {c.strip()}" for c in context)
+            parts.append("")
+        parts.append(question.strip())
+        return "\n".join(parts)
+
     if system:
         parts.append(system.strip())
     if context:
@@ -121,24 +174,36 @@ _Q_RE = re.compile(rf"^{re.escape(QUESTION_MARKER)}\s*(.+)$", re.MULTILINE)
 
 
 def parse_prompt(prompt: str) -> ParsedPrompt:
-    """Recover (question, context) from a prompt built by `format_prompt`.
+    """Recover (question, context) from a prompt built by `format_prompt`, either style.
 
     Degrades to "the whole prompt is the question" for free-form input, so the stub
     never crashes on a prompt it did not construct.
     """
+    has_context = CONTEXT_MARKER in prompt
     m = _Q_RE.search(prompt)
-    question = m.group(1).strip() if m else prompt.strip()
+
+    if m is not None:  # qa_scaffold
+        question = m.group(1).strip()
+        block = ""
+        if has_context:
+            block = prompt.split(CONTEXT_MARKER, 1)[1].split(QUESTION_MARKER, 1)[0]
+    elif has_context:  # openunlearning, with retrieval context
+        # `Context:` / `- item` ... / blank line / question. The blank line is the
+        # separator format_prompt emits; without it the question would be swallowed
+        # into the context block and the stub would answer the wrong string.
+        after = prompt.split(CONTEXT_MARKER, 1)[1]
+        block, _, tail = after.partition("\n\n")
+        question = tail.strip() or ""
+    else:  # openunlearning, bare question
+        return ParsedPrompt(question=prompt.strip(), context=[])
 
     context: list[str] = []
-    if CONTEXT_MARKER in prompt:
-        block = prompt.split(CONTEXT_MARKER, 1)[1]
-        block = block.split(QUESTION_MARKER, 1)[0]
-        for line in block.splitlines():
-            line = line.strip()
-            if line.startswith("- "):
-                context.append(line[2:].strip())
-            elif line:
-                context.append(line)
+    for line in block.splitlines():
+        line = line.strip()
+        if line.startswith("- "):
+            context.append(line[2:].strip())
+        elif line:
+            context.append(line)
     return ParsedPrompt(question=question, context=context)
 
 
@@ -272,7 +337,11 @@ class StubLM(LMHandle):
                 best, best_score = c, score
         return best if best_score >= 0.6 else None
 
-    def generate(self, prompt: str, max_new_tokens: int = 128) -> str:
+    def generate(self, prompt: str, max_new_tokens: int = 128, *, system: str | None = None) -> str:
+        # `system` is accepted and ignored: the stub is a look-up table and has no
+        # instruction-following to condition. Accepting it keeps the stub's signature
+        # identical to HFLMHandle's, which is the property that makes contract tests
+        # predictive of Colab behaviour.
         parsed = parse_prompt(prompt)
         question, context = parsed.question, parsed.context
 
@@ -312,7 +381,7 @@ class StubLM(LMHandle):
         )
         return out
 
-    def logprobs(self, prompt: str, continuation: str) -> np.ndarray:
+    def logprobs(self, prompt: str, continuation: str, *, system: str | None = None) -> np.ndarray:
         """Flat per-token logprobs: high when the model "knows", low when it does not.
 
         Crude by design — it exists so `abstention.LogprobDetector` has a real signal

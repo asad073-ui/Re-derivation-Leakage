@@ -2,15 +2,20 @@
 
 **Memory-mediated recovery of unlearned knowledge in multi-agent systems.**
 
-> A shared memory that implements SBU's deletion guarantees — an ID blocklist enforced at
-> retrieval, plus deletion over the derivation closure — can still end an episode with
-> the forgotten content sitting in its persistent store, inside a node that **satisfies
-> both of those guarantees**.
+> A shared memory implementing an ID blocklist enforced at retrieval, plus deletion over
+> the derivation closure, can still end an episode with the forgotten content sitting in
+> its persistent store, inside a node that **satisfies both of those guarantees**.
 
 The claim is about a defence's *scope*, not about any unlearning method being weak. Both
 invariants quantify over node identity and derivation edges. A node written from an
 agent's parametric answer has a fresh id and an empty `parent_ids`, so it lies outside
 the scope of both, whatever its content says.
+
+**Scope, stated up front.** SBU addresses backflow through a parameter-side pathway as
+well as a memory-side one. This repo substitutes NPO for the parameter method and
+implements only the memory pathway, in a *strengthened* form (see ADR-0014/0015). So the
+result speaks to that pathway and not to SBU end to end; generalising is future work, and
+`docs/00b_preregistration_v2.md` §0 says so.
 
 We do not assert that. We **certify** it, per node, in a form a reviewer can re-verify
 offline.
@@ -53,7 +58,7 @@ pip install -e ".[cpu,dev]"
 make cpu-all          # Windows: .\tasks.ps1 cpu-all
 ```
 
-`cpu-all` = ruff + black + mypy + 271 tests, **offline, no GPU, no HF token.** It must be
+`cpu-all` = ruff + black + mypy + 365 tests, **offline, no GPU, no HF token.** It must be
 green before anything touches Colab.
 
 Then:
@@ -63,6 +68,25 @@ python -m rdl.cli env-check                 # first thing in every session
 python -m rdl.cli discover-checkpoints      # RUN THIS FIRST ON DAY 1
 python -m rdl.cli run-repro --target full   # Days 1-2 sanity gate
 ```
+
+---
+
+## The condition grid
+
+| | Agent A | Agent B | Write-back | Purpose |
+|---|---|---|---|---|
+| **C0** | NPO forget10 | — | — | sanity; **empty store** |
+| **C1** | NPO forget10 | same checkpoint | disabled | no-write floor |
+| **C1W** | NPO forget10 | — | framework_default | **single-agent baseline** |
+| **C2** | NPO forget10 | `full` (not unlearned) | framework_default | ceiling / mechanism |
+| **C3** | NPO forget10 | **same checkpoint** | framework_default | redundancy control |
+| **C3D** | NPO forget10 | **independent NPO forget10** | framework_default | **ensemble treatment** |
+| **C3C** | NPO forget10 | independent + A's answer | framework_default | **compositional treatment** |
+
+**The primary estimand is `C3D − C1W`.** Multi-agent write-back minus *single-agent*
+write-back — not minus a condition where writing is disabled, which would measure "we
+turned writing on". `rdl make-report` applies the gate and **exits non-zero when it
+fails**. See [`docs/00b_preregistration_v2.md`](docs/00b_preregistration_v2.md).
 
 ---
 
@@ -100,7 +124,8 @@ src/rdl/
   cli/          env-check, discover-checkpoints, run-repro, run-condition, make-report
 
 configs/        env / models / agents / memory / writepolicy / conditions
-docs/           00_preregistration.md is FROZEN; 04_decisions.md is the ADR log
+docs/           00_preregistration.md is v1, FROZEN; 00b_preregistration_v2.md is
+                ACTIVE; 04_decisions.md is the ADR log
 tests/          unit (fast) | contract (StubLM) | integration (network)
 third_party/    open-unlearning, pinned submodule — called, never patched
 ```
@@ -144,7 +169,8 @@ without bound and fp16 `GradScaler` NaNs on them — silent corruption, not a cr
 
 | question | file |
 |---|---|
-| What is actually being claimed? | [`docs/00_preregistration.md`](docs/00_preregistration.md) (frozen) |
+| What is actually being claimed? | [`docs/00b_preregistration_v2.md`](docs/00b_preregistration_v2.md) (active) |
+| What was claimed first, and what changed | [`docs/00_preregistration.md`](docs/00_preregistration.md) (v1, frozen) + §0 of v2 |
 | Why is it built this way? | [`docs/04_decisions.md`](docs/04_decisions.md) |
 | What could kill it? | [`docs/05_risks.md`](docs/05_risks.md) |
 | What are the Day 1–2 numbers? | [`docs/02_repro_targets.md`](docs/02_repro_targets.md) |
@@ -155,17 +181,18 @@ without bound and fp16 `GradScaler` NaNs on them — silent corruption, not a cr
 
 ## The known threat to measurability
 
-**C3 is measurable iff agent B retains residual knowledge of the forget set.** A
-perfectly-unlearned B has nothing to launder.
+**Measurable iff the agents retain residual knowledge of the forget set.** A
+perfectly-unlearned agent has nothing to launder.
 
 A real NPO/forget10 checkpoint is not perfectly unlearned — that is why its
 `forget_truth_ratio` is 0.70 and not the retain model's 0.63. **The residual is the
 effect size.**
 
-This is pre-registered in `00_preregistration.md` §6 and pinned in
+Pre-registered in `00b_preregistration_v2.md` §5 and pinned in
 `tests/contract/test_condition_c3_stub.py::test_c3_is_unmeasurable_when_b_is_perfectly_unlearned`,
-so that a zero on Colab can be **diagnosed** rather than guessed at. If C3 ≈ 0, measure
-B's residual in isolation before concluding anything.
+so that a zero on Colab can be **diagnosed** rather than guessed at. A near-zero result is
+ambiguous between "no residual" and "broken pipeline"; both agents' individual forgetting
+numbers must be reported before anything is concluded.
 
 ---
 

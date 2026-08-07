@@ -97,14 +97,32 @@ def test_pad_token_is_populated(tiny_lm):
     assert tiny_lm.tokenizer.pad_token is not None
 
 
-def test_chat_template_is_required_by_default(cpu_hw):
+def test_chat_template_is_required_by_default(cpu_hw, monkeypatch):
     """The TOFU checkpoints are -Instruct derivatives. A missing template must fail
-    loudly, because a mismatched prompt format looks exactly like an unlearning effect."""
-    from rdl.models.loader import load_lm
+    loudly, because a mismatched prompt format looks exactly like an unlearning effect.
+
+    The guard is exercised against a tokenizer we force to have no template, NOT against
+    whatever `hf-internal-testing/tiny-random-LlamaForCausalLM` happens to ship. It used
+    to rely on that repo lacking one; the repo has since gained a default template, so
+    the test silently stopped testing anything and went red only because the raise no
+    longer happened. Our guard is the thing under test — pin it to our code.
+    """
+    import transformers
+
+    from rdl.models import loader as loader_mod
+
+    real_from_pretrained = transformers.AutoTokenizer.from_pretrained
+
+    def _no_template(*args, **kwargs):
+        tok = real_from_pretrained(*args, **kwargs)
+        tok.chat_template = None
+        return tok
+
+    monkeypatch.setattr(transformers.AutoTokenizer, "from_pretrained", _no_template)
 
     cfg = ModelConfig(name="x", kind="hf", repo_id=TINY, chat_template_required=True)
     with pytest.raises(ChatTemplateMissingError, match="chat_template"):
-        load_lm(cfg, cpu_hw)
+        loader_mod.load_lm(cfg, cpu_hw)
 
 
 # ------------------------------------------------------------- the interface --

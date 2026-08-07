@@ -47,8 +47,19 @@ class AgentReply:
 class Agent(Protocol):
     agent_id: str
 
-    def answer(self, question: str, context: Sequence[MemoryNode] = ()) -> AgentReply:
-        """Answer `question`, optionally grounded in retrieved `context` nodes."""
+    def answer(
+        self,
+        question: str,
+        context: Sequence[MemoryNode] = (),
+        *,
+        peer_answers: Sequence[str] = (),
+    ) -> AgentReply:
+        """Answer `question`, optionally grounded in retrieved `context` nodes.
+
+        `peer_answers` are other agents' turns handed over in the same episode. They
+        are prompt material only — they are never memory nodes, so they never become
+        `parent_ids`.
+        """
         ...
 
     def close(self) -> None: ...

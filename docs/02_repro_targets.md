@@ -17,12 +17,92 @@ TOFU, `Llama-3.2-1B-Instruct`, **forget10**:
 | GradAscent | 1.06e-239 | 0.00 | 2.25e-18 |
 | GradDiff | 1.06e-239 | 0.49 | 3.53e-27 |
 
-Upstream's setup: **2× L40s, DeepSpeed ZeRO-3, lr 1e-5, effective batch 32, 10 epochs,
-`paged_adamw_32bit`.** They warn explicitly that numbers shift when the distributed
-setup changes, including on a single GPU.
+Upstream's setup: **2× L40s, DeepSpeed ZeRO-3, lr 1e-5, alpha 1, beta 0.1, effective
+batch 32, 10 epochs, `paged_adamw_32bit`.** They warn explicitly that numbers shift when
+the distributed setup changes, including on a single GPU.
 
 Encoded in code at `src/rdl/eval/openunlearning_bridge.py::PUBLISHED_TARGETS` and
 asserted by `tests/integration/test_ou_bridge_parse.py::test_published_targets_match_the_spec`.
+
+---
+
+## 1a. The checkpoint ids, verified 2026-08-07
+
+| role | repo id |
+|---|---|
+| target (`full`) | `open-unlearning/tofu_Llama-3.2-1B-Instruct_full` |
+| retain oracle | `open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90` |
+| **NPO forget10** | `open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr1e-05_beta0.1_alpha1_epoch10` |
+| agent B (C3D/C3C) | `open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr2e-05_beta0.5_alpha1_epoch10` |
+
+**The naming trap.** Unlearned checkpoints do NOT follow the
+`tofu_<model>_<METHOD>_<split>` pattern of the finetuned and retain ones. They are
+published **one repo per hyperparameter setting** as
+
+```
+unlearn_tofu_<model>_<forget_split>_<METHOD>_lr<LR>_beta<B>_alpha<A>_epoch<E>
+```
+
+Only the **lr1e-05 / beta0.1 / alpha1 / epoch10** run corresponds to the NPO row above —
+it is the setting the repro table was generated under. Every other NPO repo is a
+different run and its metrics are not 0.46 / 0.70, so gating one of those against those
+targets fails for a reason that has nothing to do with your install.
+
+`open-unlearning/tofu_Llama-3.2-1B-Instruct_NPO_forget10` — the id this repo carried
+until 2026-08-07 — **has never existed**. Pinned offline by
+`tests/unit/test_checkpoint_ids.py`. See ADR-0021.
+
+There is **no published NPO checkpoint for forget01 or forget05** on this architecture.
+
+---
+
+## 1b. The eval command, verified against submodule `4ad738a`
+
+```bash
+python src/eval.py --config-name=eval.yaml \
+  experiment=eval/tofu/default \
+  model=Llama-3.2-1B-Instruct \
+  model.model_args.pretrained_model_name_or_path=<CHECKPOINT> \
+  model.model_args.attn_implementation=sdpa \
+  model.model_args.torch_dtype=float16 \
+  forget_split=forget10 \
+  holdout_split=holdout10 \
+  retain_logs_path=saves/eval/tofu_Llama-3.2-1B-Instruct_retain90/TOFU_EVAL.json \
+  seed=42 \
+  eval.tofu.batch_size=1 \
+  eval.tofu.overwrite=true \
+  task_name=<UNIQUE> \
+  paths.output_dir=saves/eval/<UNIQUE>
+```
+
+Every line that is easy to get wrong, and what happens when you do:
+
+| override | why | if omitted / wrong |
+|---|---|---|
+| `holdout_split=` | `configs/experiment/eval/tofu/default.yaml` defines `holdout_split`. There is **no `retain_split`** in the eval tree — it exists only in the training configs. | `retain_split=retain90` aborts Hydra with *"Could not override 'retain_split'"* before the model loads |
+| `seed=` | `configs/eval.yaml` defaults `seed: 0` | the report says 42, the run used 0 |
+| `eval.tofu.batch_size=` | `configs/eval/tofu.yaml` defaults `batch_size: 32` | the determinism commitment is decorative |
+| `eval.tofu.overwrite=true` | default is `false`, which **skips** metrics whose logs exist under `output_dir` | a "new" run silently replays an old one |
+| unique `task_name` | `paths.output_dir` defaults to `saves/eval/${task_name}` | a crashed run finds the previous run's `SUMMARY.json` where this run's is looked for |
+
+Bootstrap uses **`python setup_data.py --eval_logs`**, not `--eval`. At the pinned SHA
+argparse defines `--eval_logs` / `--idk` / `--wmdp` and nothing else, so `--eval` aborts
+with *"unrecognized arguments"* before anything downloads.
+
+`build_eval_command` emits all of this from the `HardwareProfile`, and
+`tests/unit/test_ou_eval_command.py` asserts each item offline so a wrong override fails
+on the laptop rather than on the GPU box.
+
+### Batch size and what "reproduced" means
+
+The published reference was produced at upstream's default of **32**. We evaluate at
+**1** because batched generation with left-padding changes greedy output under fp16 and
+the pre-registration commits to batch 1 for every number in the paper.
+
+So agreement within ±0.01 is **within tolerance of**, not **identical to**.
+`compare_to_published` stamps a `batch_size_note` on the report whenever the two differ.
+If the tolerance turns out to be tight at batch 1, run once at 32 to separate "our
+install is wrong" from "batching moved it".
 
 ---
 
@@ -90,12 +170,14 @@ python -m rdl.cli run-repro --target npo_forget10  # the gate
 
 ### Fallback 1 — the NPO forget10 checkpoint is not on the Hub
 
-**Check this on day 1** with `python -m rdl.cli discover-checkpoints`. The proposal's
-zero-training cost model depends on this checkpoint existing.
+**Resolved 2026-08-07: it is on the Hub** (see §1a). Keep this fallback for the case
+where a repo is withdrawn or renamed, and keep running
+`python -m rdl.cli discover-checkpoints` on day 1 — it now also reports which candidate
+matches the published repro hyperparameters.
 
 If absent, the gate becomes the `full` model only, **plus** a diff of locally-recomputed
 metrics against the published eval logs. Those logs are the HF dataset
-`open-unlearning/eval`, which `python setup_data.py --eval` downloads; the relevant
+`open-unlearning/eval`, which `python setup_data.py --eval_logs` downloads; the relevant
 files are `tofu*/evals*/*_SUMMARY.json`.
 
 Recomputing their metrics from their logs validates the metric code **with no model at
@@ -143,14 +225,39 @@ blocker if you hit it at hour six. `rdl env-check` reports this explicitly.
 Verify it still matches before every gated run — `rdl env-check` reports
 `submodule.matches_pin` for exactly this reason.
 
+### Expected, read from the pinned submodule (2026-08-07)
+
+`third_party/open-unlearning/requirements.txt` at `4ad738a` pins these exactly, so this
+is what `pip install -e ".[lm-eval]"` inside the submodule will resolve to. Colab's
+preinstalled `torch`/`transformers` **will be moved** by that install — expect a runtime
+restart afterwards.
+
+| package | pinned by the submodule |
+|---|---|
+| `torch` | `2.4.1` |
+| `transformers` | `4.51.3` |
+| `datasets` | `3.0.1` |
+| `accelerate` | `0.34.2` |
+| `huggingface-hub` | `0.36.0` |
+| `numpy` | `2.2.3` |
+| `lm-eval` (extra) | `0.4.11` |
+
+`python_requires >= 3.11`. That binds the **submodule's** environment (Colab), not the
+pure-Python `rdl` core, which runs the CPU gate on 3.10 — see ADR-0002.
+
+### Actual, recorded from the run
+
 | package | version |
 |---|---|
-| `torch` | _pending_ |
-| `transformers` | _pending_ |
-| `datasets` | _pending_ |
-| `accelerate` | _pending_ |
-| `tokenizers` | _pending_ |
-| `numpy` | _pending_ |
+| `torch` | _pending first Colab run_ |
+| `transformers` | _pending first Colab run_ |
+| `datasets` | _pending first Colab run_ |
+| `accelerate` | _pending first Colab run_ |
+| `tokenizers` | _pending first Colab run_ |
+| `numpy` | _pending first Colab run_ |
+
+If "actual" ever diverges from "expected", stop and find out why before reading any
+metric: that divergence is the single most likely cause of a failed reproduction.
 
 ---
 

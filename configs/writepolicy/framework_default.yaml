@@ -1,18 +1,22 @@
-# Mirrors the DEFAULT assistant-turn write of real agent-memory frameworks. C2 and C3.
+# Write the assistant turn to durable memory as a new, unprovenanced record.
 #
-# The reviewer-proofing: the leak must come from a defensible default, not from a policy
-# we designed to leak. See the citations in src/rdl/agents/writer.py —
+# The reviewer-proofing: the leak must come from a defensible write shape, not from a
+# policy we designed to leak. The precise, defensible claim (see the citations and the
+# correction in src/rdl/agents/writer.py):
 #
-#   Letta / MemGPT           persists assistant turns into archival memory as new records
-#   mem0                     extracts and stores facts from conversation as new entries
-#   LangGraph checkpointer   persists assistant messages verbatim, no provenance field
+#   Across Letta/MemGPT archival memory, mem0's add(), and the LangGraph checkpointer,
+#   content that reaches durable memory arrives as a NEW record with a fresh id and no
+#   provenance edge back to whatever was retrieved.
 #
-# All three share the behaviour implemented here: the answer becomes a NEW node, and it
-# links only to what was actually retrieved. When retrieval returned nothing — because
-# the blocklist suppressed it — the node has no parents. That is their default, not ours.
+# That property is what puts the record outside the scope of an id blocklist and a
+# derivation closure. It is NOT true that all three write on every assistant turn —
+# Letta writes via an agent tool call, mem0 extracts rather than persisting the raw
+# turn, and LangGraph's cross-thread store is written by the application. The trigger
+# used here is ours and the paper says so; it is the most permissive one, which is the
+# right choice for a "can this happen at all" measurement.
 name: framework_default
 mode: framework_default
-mirrors_framework: "Letta/MemGPT archival write; mem0 add(); LangGraph checkpointer"
+mirrors_framework: "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours"
 write_source_kinds: [agent_answer]
 # An abstention carries no content worth persisting, and writing it would inflate the
 # store with refusals that the containment metric then has to filter back out.

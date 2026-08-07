@@ -64,6 +64,8 @@ class MemoryStore:
         index_backend: str = "numpy",
         embedding_dim: int = 64,
         dag: DerivationDAG | None = None,
+        deletion_mode: str = "tombstone",
+        refcount_semantics: str = "supporting_parents",
     ) -> None:
         # `is None`, never `or`: an EMPTY index, DAG, or blocklist is falsy — they all
         # define __len__ — so `x or default()` silently discards a caller's argument at
@@ -80,6 +82,16 @@ class MemoryStore:
         self.nodes: dict[str, MemoryNode] = {}
         self.dag: DerivationDAG = dag if dag is not None else DerivationDAG()
         self.turn: int = 0
+        if deletion_mode not in ("tombstone", "hard"):
+            raise ValueError(f"unknown deletion_mode '{deletion_mode}' (expected tombstone|hard)")
+        if refcount_semantics not in ("supporting_parents", "dependent_children"):
+            raise ValueError(
+                f"unknown refcount_semantics '{refcount_semantics}' "
+                "(expected supporting_parents|dependent_children)"
+            )
+        # See MemoryConfig.deletion_mode / .refcount_semantics and ADR-0014/0015.
+        self.deletion_mode = deletion_mode
+        self.refcount_semantics = refcount_semantics
 
     # ---------------------------------------------------------------------- CRUD --
 
@@ -112,10 +124,13 @@ class MemoryStore:
             "source_kind": source_kind,
             "parent_ids": parents,
             "turn": self.turn if turn is None else turn,
-            # refcount = number of live supporting parents, floored at 1 for a node
-            # that is independently grounded (ingested, or produced parametrically).
-            # See MemoryNode.refcount.
-            "refcount": max(1, len(parents)),
+            # supporting_parents: live parents supporting this node, floored at 1 for a
+            #   node that is independently grounded (ingested, or parametric).
+            # dependent_children: nobody depends on a brand-new node yet, so it starts
+            #   at 0 and its PARENTS each gain one dependent below.
+            "refcount": (
+                max(1, len(parents)) if self.refcount_semantics == "supporting_parents" else 0
+            ),
             "meta": dict(meta or {}),
         }
         if node_id is not None:
@@ -128,7 +143,17 @@ class MemoryStore:
         self.nodes[node.node_id] = node
         self.index.add(node.node_id, vec)
         self.dag.add_node_with_parents(node)
+        self._acquire_references(node)
         return node
+
+    def _acquire_references(self, node: MemoryNode) -> None:
+        """Under `dependent_children`, a new node takes a reference on each parent."""
+        if self.refcount_semantics != "dependent_children":
+            return
+        for p in node.parent_ids:
+            parent = self.nodes.get(p)
+            if parent is not None:
+                parent.refcount += 1
 
     def add_node(self, node: MemoryNode) -> MemoryNode:
         """Insert a pre-built node (test fixtures, transcript replay)."""
@@ -140,6 +165,7 @@ class MemoryStore:
         # Everything is indexed, including tombstones. See MemoryNode.returnable.
         self.index.add(node.node_id, node.embedding)
         self.dag.add_node_with_parents(node)
+        self._acquire_references(node)
         return node
 
     def get(self, node_id: str) -> MemoryNode | None:
@@ -216,14 +242,32 @@ class MemoryStore:
     # ------------------------------------------------------------------ deletion --
 
     def delete(self, node_id: str, *, blocklist: Blocklist | None = None) -> PruneResult:
-        """Delete a node and prune its derivation closure (the SBU memory pathway)."""
+        """Delete a node and prune its derivation closure (the SBU memory pathway).
+
+        `deletion_mode` decides what happens to the vector:
+
+        ``tombstone`` (default)
+            The node stays in the index; the blocklist is what suppresses it. Dropping
+            it here would make invariant 1 vacuously true — we would be testing
+            `del store[id]` rather than SBU's mechanism. See `MemoryNode.returnable`
+            and ADR-0003.
+
+        ``hard``
+            The node AND its vector are removed, which is what the SBU paper describes.
+            Invariant 1 then holds trivially, which is precisely why it is not the
+            default here — but a repo that claims to test SBU has to be able to run
+            SBU, and results produced under either mode must say which. ADR-0014.
+        """
         node = self.nodes.get(node_id)
         if node is None:
             raise KeyError(f"no such node: {node_id}")
-        # The node stays in the index as a tombstone; the blocklist is what suppresses
-        # it. Dropping it here would make invariant 1 vacuously true. See
-        # MemoryNode.returnable.
-        return self.dag.delete_with_closure(node_id, self.nodes, blocklist)
+        res = self.dag.delete_with_closure(
+            node_id, self.nodes, blocklist, refcount_semantics=self.refcount_semantics
+        )
+        if self.deletion_mode == "hard":
+            self.index.remove(node_id)
+            node.embedding = None
+        return res
 
     def delete_many(
         self, node_ids: Iterable[str], *, blocklist: Blocklist | None = None
@@ -260,6 +304,11 @@ class MemoryStore:
             getattr(self.index, "backend_name", "numpy"), dim=self.embedder.dim
         )
         for node in self.nodes.values():
+            # Under `hard` deletion the vector is gone on purpose. Re-encoding it here
+            # would resurrect it on every snapshot round-trip and quietly undo the
+            # deletion the run is supposed to be measuring.
+            if node.deleted and self.deletion_mode == "hard":
+                continue
             if node.embedding is None:
                 node.embedding = self.embedder.encode([node.content])[0]
             self.index.add(node.node_id, node.embedding)
@@ -269,6 +318,8 @@ class MemoryStore:
             embedder=self.embedder,  # stateless and deterministic; sharing is safe
             index_backend=getattr(self.index, "backend_name", "numpy"),
             embedding_dim=self.embedder.dim,
+            deletion_mode=self.deletion_mode,
+            refcount_semantics=self.refcount_semantics,
         )
         other.restore(self.snapshot())
         return other
@@ -280,6 +331,8 @@ class MemoryStore:
 
     def stats(self) -> dict:
         return {
+            "deletion_mode": self.deletion_mode,
+            "refcount_semantics": self.refcount_semantics,
             "n_nodes": len(self.nodes),
             "n_retrievable": len(self.index),
             "n_deleted": sum(1 for n in self.nodes.values() if n.deleted),

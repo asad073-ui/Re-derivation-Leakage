@@ -1,27 +1,47 @@
 """Write-back policies — the reviewer-proofing.
 
 The leak must come from a **defensible default**, not from a policy we designed to
-leak. `FrameworkDefaultWritePolicy` therefore mirrors what production agent-memory
-frameworks actually do out of the box, and says which ones:
+leak. `FrameworkDefaultWritePolicy` implements one write behaviour and claims exactly
+what can be defended about it — no more, which is a correction:
 
-  Letta / MemGPT      persists assistant turns into archival memory; recall/archival
-                      entries are new records with their own ids. Provenance back to a
-                      retrieved passage is not part of the stored record.
+**What this policy is.** The assistant's answer is written as a new record with a fresh
+id, and it links only to what was actually in the retrieval context. When retrieval
+returned nothing — because the blocklist suppressed it — the new record has no
+provenance edges at all.
+
+**What the three frameworks actually do**, stated precisely, because the earlier
+docstring said all three share this as "the default" and that is an overclaim:
+
+  Letta / MemGPT      Archival memory is written **through an agent tool call**
+                      (`archival_memory_insert`), not automatically on every assistant
+                      turn. What IS automatic is that the inserted passage is a new
+                      record with its own id and no provenance field back to whatever
+                      the agent had retrieved.
                       https://github.com/letta-ai/letta
 
-  mem0                `add()` on conversation messages extracts and stores facts as new
-                      memory entries keyed by fresh ids. Derivation from a retrieved
-                      memory is not tracked as an edge on the new entry.
+  mem0                `add()` runs an **extraction step** — it does not persist the raw
+                      assistant turn, it derives selected memories from the exchange
+                      and stores them as new entries under fresh ids. Derivation from a
+                      retrieved memory is not recorded as an edge on the new entry.
                       https://github.com/mem0ai/mem0
 
-  LangGraph           the checkpointer persists the whole message state per thread;
-  checkpointer        assistant messages are stored verbatim with no provenance field
-                      at all. https://github.com/langchain-ai/langgraph
+  LangGraph           The **checkpointer** persists thread state, including assistant
+                      messages, verbatim and with no provenance field. Long-term
+                      cross-thread memory is a separate Store that the application
+                      writes to explicitly; the checkpointer is not that.
+                      https://github.com/langchain-ai/langgraph
 
-The behaviour common to all three, and the one we implement: **the assistant's answer
-is written as a new node, and it links only to what was actually retrieved.** When
-retrieval returned nothing — because the blocklist suppressed it — the new node has no
-parents. That is not our design choice; it is theirs. Which is the whole argument.
+So the honest claim is not "all three do this by default". It is: **across these
+systems, content that reaches durable memory does so as a new record with a fresh id
+and without a provenance edge to whatever was retrieved.** That property — not the
+trigger — is what puts the record outside the scope of an id blocklist and a derivation
+closure, and it is the only property this policy needs.
+
+The trigger (write on every assistant turn) is OURS, and the paper must say so. It is
+the most permissive choice, which makes it the right one for a measurement whose
+question is "can this happen at all"; a real deployment writing less often leaks less
+often, not differently. `write_on_abstention` and `write_source_kinds` exist so the
+trigger can be varied and the sensitivity reported.
 
 Do not add a "semantic parent" inference here. See `MemoryNode.parent_ids`.
 """

@@ -27,6 +27,7 @@ episode:
   retrieval_k: 5
   greedy: true
   max_new_tokens: 128
+  prompt_style: openunlearning
 
 data:
   dataset: tofu

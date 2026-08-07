@@ -167,6 +167,23 @@ class MemoryConfig(_Base):
     semantic_threshold: float = 0.75
     semantic_use_nli: bool = False
 
+    # ---- SBU fidelity knobs. See ADR-0014 and ADR-0015. -------------------------
+    # `hard` is SBU as written: the deleted target AND its vector are removed. Under
+    # `hard`, invariant 1 is vacuously true, which is exactly why it is not our
+    # default — but a paper that claims to test SBU must be able to run SBU.
+    # `tombstone` keeps the node indexed and makes the blocklist do the suppressing,
+    # which is a strictly stronger adversarial setting.
+    deletion_mode: Literal["tombstone", "hard"] = "tombstone"
+    # `dependent_children` is SBU's definition: how many nodes depend on this one.
+    # `supporting_parents` is ours (ADR-0004) and propagates deletion downward
+    # correctly on the shapes we build. Both are implemented; the results table must
+    # say which produced it.
+    refcount_semantics: Literal["supporting_parents", "dependent_children"] = "supporting_parents"
+    # Whether the forget-set content was ever ingested into the shared store. C0 sets
+    # this false: a "sanity check on the bare checkpoint" that can retrieve the
+    # ground-truth answers from memory is not measuring the checkpoint.
+    ingest_forget_set: bool = True
+
 
 # -------------------------------------------------------------------- write policy --
 
@@ -191,6 +208,17 @@ class EpisodeConfig(_Base):
     retrieval_k: int = 5
     greedy: bool = True
     max_new_tokens: int = 128
+    # `openunlearning` reproduces upstream's TOFU user turn exactly (bare question
+    # through the chat template). `qa_scaffold` is the old Question:/Answer: framing,
+    # which is NOT comparable with the reproduction gate.
+    prompt_style: Literal["openunlearning", "qa_scaffold"] = "openunlearning"
+    # Show agent B what agent A answered. Off = ensemble (two independent draws);
+    # on = compositional re-derivation. Only C3C sets it.
+    pass_primary_answer: bool = False
+    # Permute episode order per seed. With greedy decoding this is the ONLY thing that
+    # makes a seed a replicate rather than a rerun; turning it off makes every
+    # seed-level CI zero-width by construction. See eval/aggregate.py.
+    permute_item_order_per_seed: bool = True
 
 
 class DataConfig(_Base):
@@ -199,15 +227,31 @@ class DataConfig(_Base):
     retain_split: str = "retain90"
     n_items: int | None = None
     fixture_path: str | None = None
+    # The retain-question control arm (pre-registration §4.3, false-positive floor).
+    # Sampled from `retain_split`; 0 disables the arm and makes the floor unreported.
+    n_retain_items: int = 100
+    # Cluster id for the paired bootstrap. TOFU is 200 synthetic authors x 20
+    # questions, so questions are not independent; `author` resamples whole authors.
+    cluster_by: Literal["item", "author"] = "author"
 
 
 # ----------------------------------------------------------------------- top level --
 
 
+Condition = Literal["C0", "C1", "C1W", "C2", "C3", "C3D", "C3C"]
+
+# Which conditions are single-agent, and which require write-back on or off. Encoded
+# once, here, so a mislabelled condition file fails at parse time rather than producing
+# a plausible number under the wrong design.
+_SINGLE_AGENT: frozenset[str] = frozenset({"C0", "C1W"})
+_REQUIRE_WRITE_DISABLED: frozenset[str] = frozenset({"C0", "C1"})
+_REQUIRE_WRITE_ENABLED: frozenset[str] = frozenset({"C1W", "C2", "C3", "C3D", "C3C"})
+
+
 class RDLConfig(_Base):
     """The fully resolved, validated run configuration."""
 
-    condition: Literal["C0", "C1", "C2", "C3"]
+    condition: Condition
     description: str = ""
     seed: int = 42
     seeds: list[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4])
@@ -234,16 +278,61 @@ class RDLConfig(_Base):
                     f"not composed. Available: {sorted(self.models)}. Add "
                     f"configs/models/{agent.model}.yaml to the condition's `models:` list."
                 )
-        # C0 is a single-agent sanity condition.
-        if self.condition == "C0" and self.agent_b is not None:
-            raise ValueError("C0 is single-agent: agent_b must be unset")
-        if self.condition in ("C1", "C2", "C3") and self.agent_b is None:
+        if self.condition in _SINGLE_AGENT and self.agent_b is not None:
+            raise ValueError(f"{self.condition} is single-agent: agent_b must be unset")
+        if self.condition not in _SINGLE_AGENT and self.agent_b is None:
             raise ValueError(f"{self.condition} is a two-agent condition: agent_b is required")
-        # C1 is the leakage floor: SBU's claimed behaviour, no write-back.
-        if self.condition == "C1" and self.writepolicy.mode != "disabled":
+
+        if self.condition in _REQUIRE_WRITE_DISABLED and self.writepolicy.mode != "disabled":
             raise ValueError(
-                "C1 is the leakage floor and requires writepolicy.mode=disabled; "
+                f"{self.condition} requires writepolicy.mode=disabled; "
                 f"got '{self.writepolicy.mode}'"
+            )
+        if self.condition in _REQUIRE_WRITE_ENABLED and self.writepolicy.mode == "disabled":
+            raise ValueError(
+                f"{self.condition} measures the write path and requires write-back "
+                "enabled (framework_default or sanitized); got 'disabled'"
+            )
+
+        # C3C is the compositional arm and is defined by the handoff. Without it, it is
+        # C3D under a different name — two agents answering the same question in
+        # isolation — and the pair would silently stop being a contrast.
+        if self.condition == "C3C" and not self.episode.pass_primary_answer:
+            raise ValueError(
+                "C3C is the compositional re-derivation arm: episode.pass_primary_answer "
+                "must be true, otherwise it is an ensemble control identical to C3D."
+            )
+        if self.condition != "C3C" and self.episode.pass_primary_answer:
+            raise ValueError(
+                f"{self.condition} must not pass A's answer to B — only C3C does. "
+                "Enabling it here would make this arm compositional and destroy the "
+                "C3D-vs-C3C contrast."
+            )
+
+        # C3 is the redundancy control: agent B is agent A's checkpoint, loaded twice.
+        # That is the point of the arm, and it must be true rather than accidental.
+        if (
+            self.condition == "C3"
+            and self.agent_b is not None
+            and self.agent_a.model != self.agent_b.model
+        ):
+            raise ValueError(
+                "C3 is the REDUNDANCY control: both agents must load the same "
+                f"checkpoint, but agent_a uses '{self.agent_a.model}' and agent_b "
+                f"uses '{self.agent_b.model}'. For two independently unlearned "
+                "agents use C3D."
+            )
+        if (
+            self.condition in ("C3D", "C3C")
+            and self.agent_b is not None
+            and self.agent_a.model == self.agent_b.model
+        ):
+            raise ValueError(
+                f"{self.condition} requires agent B to be an INDEPENDENTLY unlearned "
+                f"checkpoint, but both agents load '{self.agent_a.model}'. One "
+                "checkpoint queried twice with greedy decoding returns the same "
+                "answer twice; that is C3, the redundancy control, not a two-agent "
+                "measurement."
             )
         return self
 

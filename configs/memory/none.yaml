@@ -1,4 +1,12 @@
 # No blocklist at all. The C0 baseline — nothing is defended, so nothing can launder.
+#
+# `ingest_forget_set: false` is load-bearing, not tidiness. C0 exists to show that a
+# single agent on the bare NPO checkpoint behaves like the Days 1-2 reproduction. If the
+# forget-set questions AND their ground-truth answers are ingested into the shared
+# store, C0 retrieves the answers it is supposed to have forgotten and reports near-
+# ceiling recovery — a measurement of the fixture, not of the checkpoint. Before this
+# flag existed, `seed_store` ingested every Q+A pair and then returned early without
+# deleting anything whenever the blocklist was `none`, which is exactly that bug.
 name: none
 blocklist: none
 enforce_at_retrieval: false
@@ -6,3 +14,4 @@ derivation_closure: false
 refcount_prune: false
 retrieval_k: 5
 embedding_dim: 64
+ingest_forget_set: false
