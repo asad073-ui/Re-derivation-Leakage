@@ -32,6 +32,12 @@ echo "env        $ENV_NAME"
 echo "seeds      $SEEDS"
 echo "conditions $CONDITIONS"
 
+# Same preflight as Days 1-2. A grid is hours of GPU time; discovering a moved checkpoint
+# revision or a mismatched submodule in the middle of it wastes all of them.
+echo
+echo "=== preflight ==="
+python -m rdl.cli env-check --env "$ENV_NAME" --strict
+
 for C in $CONDITIONS; do
     echo
     echo "=================== $C ==================="

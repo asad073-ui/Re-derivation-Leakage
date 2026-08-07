@@ -23,6 +23,7 @@ max_new_tokens: 128
 allow_fp16_training: false
 hf_home: /content/hf    # keep the cache off Drive: Drive I/O is slow and repos are GBs
 index_backend: numpy
+min_python: "3.11"      # open-unlearning's python_requires; Colab is 3.11+, so this holds
 notes: >
   Never install flash-attn here. Never train a gradient-ascent-family objective here —
   fp16 GradScaler NaNs on GA/NPO, silently. Use the 3090 or the H100 for training.

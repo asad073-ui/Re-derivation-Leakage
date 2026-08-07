@@ -31,8 +31,12 @@ plausible-looking number that means nothing.
 from __future__ import annotations
 
 import platform
+import re
 import shutil
+import subprocess
+import sys
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -66,18 +70,42 @@ class EnvHardwareMismatch(RuntimeError):
     """
 
 
+@lru_cache(maxsize=1)
 def flash_attn_available() -> bool:
-    """True iff the `flash_attn` package can be imported in this interpreter.
+    """True iff `import flash_attn` actually SUCCEEDS in a fresh interpreter.
 
-    `find_spec` rather than `import`: importing flash_attn pulls in CUDA extensions and
-    costs seconds, and `detect()` runs at the top of every command.
+    Two steps, and both are load-bearing:
+
+    1. `find_spec` is the cheap negative. On the common case — no wheel at all — it
+       answers in microseconds and no subprocess is spawned.
+    2. If a spec exists, the module is imported **in a subprocess**. `find_spec` only
+       proves Python can locate the package; `flash_attn` is a thin wrapper around a
+       compiled CUDA extension, and a wheel built against a different torch or CUDA
+       imports with an `ImportError: undefined symbol` at first use. That failure would
+       otherwise surface inside `from_pretrained`, after the checkpoint downloaded —
+       the exact failure mode this whole predicate exists to prevent.
+
+    The subprocess is what keeps a broken extension from poisoning this process: a
+    mismatched CUDA ext can abort the interpreter, not merely raise. Cached, because
+    `detect()` runs at the top of every command and the answer cannot change mid-process.
     """
     import importlib.util
 
     try:
-        return importlib.util.find_spec("flash_attn") is not None
+        if importlib.util.find_spec("flash_attn") is None:
+            return False
     except (ImportError, ValueError):  # partially installed / broken metadata
         return False
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", "import flash_attn"],
+            capture_output=True,
+            timeout=120,  # a cold CUDA-extension import is slow, but not this slow
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0
 
 
 @dataclass(frozen=True)
@@ -293,7 +321,58 @@ def check_env_against_hardware(env: EnvConfig, hw: HardwareProfile) -> list[str]
             "TOFU eval logs do not fit, and disk cannot be resized after an instance is "
             "created."
         )
+    # Provenance. VRAM and bf16 alone would also accept a 4090, an A5000 or an H100:
+    # all fine to evaluate on, none of them the card a report stamped with this profile
+    # says it ran on.
+    if (
+        env.expected_gpu_name_regex
+        and hw.is_cuda
+        and not re.search(env.expected_gpu_name_regex, hw.name, re.IGNORECASE)
+    ):
+        problems.append(
+            f"env '{env.name}' expects a GPU matching /{env.expected_gpu_name_regex}/, "
+            f"but this box reports '{hw.name}'. If that card is what you meant to "
+            "rent, use the generic profile (--env rtx3090 / h100) so the report does "
+            "not claim hardware it did not run on."
+        )
+    if env.expected_compute_capability is not None and hw.compute_capability is not None:
+        want = tuple(env.expected_compute_capability)
+        if tuple(hw.compute_capability) != want:
+            problems.append(
+                f"env '{env.name}' expects compute capability {want[0]}.{want[1]}, but "
+                f"this GPU reports {hw.compute_capability[0]}.{hw.compute_capability[1]}."
+            )
+    if env.min_python is not None and _version_lt(hw.python_version, env.min_python):
+        problems.append(
+            f"env '{env.name}' requires Python >= {env.min_python}, but this interpreter "
+            f"is {hw.python_version}. open-unlearning declares `python_requires >= 3.11`; "
+            "installing the submodule under an older interpreter fails, and picking an "
+            "image without checking is how that is discovered an hour in."
+        )
     return problems
+
+
+def _version_lt(have: str, want: str) -> bool:
+    """`have < want` on dotted numeric prefixes. Tolerant of '3.11.9+local' and friends."""
+
+    def parts(v: str) -> tuple[int, ...]:
+        out: list[int] = []
+        for chunk in v.split("."):
+            digits = ""
+            for ch in chunk:
+                if not ch.isdigit():
+                    break
+                digits += ch
+            if not digits:
+                break
+            out.append(int(digits))
+        return tuple(out)
+
+    a, b = parts(have), parts(want)
+    if not a:  # unparseable version: do not invent a failure
+        return False
+    n = max(len(a), len(b))
+    return a + (0,) * (n - len(a)) < b + (0,) * (n - len(b))
 
 
 def assert_env_matches_hardware(env: EnvConfig, hw: HardwareProfile) -> None:

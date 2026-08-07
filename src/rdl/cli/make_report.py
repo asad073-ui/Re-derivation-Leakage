@@ -32,6 +32,7 @@ import typer
 
 from ..eval.aggregate import condition_delta_gate, paired_delta_gate
 from ..eval.controls import NOT_APPLICABLE, is_blocking
+from ..eval.openunlearning_bridge import UPSTREAM_EVAL_BATCH_SIZE, UPSTREAM_EVAL_SEED
 from ..logging_utils import read_jsonl
 from ..models.registry import entry_for
 from ..paths import manifest_path, results_dir
@@ -146,16 +147,24 @@ def repro_table(runs: list[dict]) -> str:
     if not repros:
         return "_no reproduction runs found_"
     rows = [
-        "| target | checkpoint | metric | ours | published | verdict |",
-        "|---|---|---|---|---|---|",
+        "| target | settings | checkpoint | metric | ours | published | verdict |",
+        "|---|---|---|---|---|---|---|",
     ]
     for r in repros:
+        # Which run this is matters as much as the number: only the parity run can
+        # clear the trust gate, and a mixed table without this column reads as though
+        # any pass would do.
+        settings = (
+            "**parity**"
+            if r.get("published_parity")
+            else f"b{r.get('batch_size', '?')}/s{r.get('seed', '?')}"
+        )
         for c in r.get("comparisons", []):
             verdict = (
                 ("PASS" if c["passed"] else "FAIL") if c.get("gated") else "reported, not gated"
             )
             rows.append(
-                f"| {r.get('target')} | `{r.get('checkpoint')}` | {c['metric']} | "
+                f"| {r.get('target')} | {settings} | `{r.get('checkpoint')}` | {c['metric']} | "
                 f"{c['ours']} | {c['published']} | {verdict} |"
             )
     return "\n".join(rows)
@@ -291,6 +300,22 @@ def reproduction_blockers(runs: list[dict], conds: dict[str, dict]) -> list[str]
             blockers.append(
                 f"Days 1-2: `--target {target}` was run but did NOT pass its published "
                 "targets. Bisect it before reading any condition delta."
+            )
+            continue
+        # The trust gate must be met at the settings the published number was produced
+        # under. A pass at batch_size=1 / seed=42 is a fine second data point, but a
+        # MISS there cannot separate a broken install from a batching difference — so a
+        # PASS there cannot vouch for the install either. Reports predating this field
+        # have no `published_parity` key and are treated as unknown, i.e. not parity.
+        if not any(r.get("passed") and r.get("published_parity") for r in hits):
+            settings = sorted(
+                f"batch_size={r.get('batch_size')}/seed={r.get('seed')}" for r in hits
+            )
+            blockers.append(
+                f"Days 1-2: `--target {target}` passed, but never at published parity "
+                f"(batch_size={UPSTREAM_EVAL_BATCH_SIZE}, seed={UPSTREAM_EVAL_SEED}). "
+                f"Runs found: {settings}. Re-run it at upstream's settings — that is the "
+                "run that says our install computes their metrics correctly."
             )
     for r in repros:
         if r.get("passed") and r.get("checkpoint"):

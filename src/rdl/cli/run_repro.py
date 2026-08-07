@@ -35,8 +35,12 @@ import typer
 from ..config import ConfigError, load_env
 from ..eval.openunlearning_bridge import (
     PUBLISHED_TARGETS,
+    UPSTREAM_EVAL_BATCH_SIZE,
+    UPSTREAM_EVAL_SEED,
     EvalSpec,
     compare_to_published,
+    is_published_parity,
+    parity_gaps,
     parse_summary,
     run_eval,
 )
@@ -107,13 +111,19 @@ def run_repro(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="print the exact open-unlearning command and exit"
     ),
-    seed: int = typer.Option(42, "--seed"),
+    seed: int = typer.Option(
+        UPSTREAM_EVAL_SEED,
+        "--seed",
+        help="defaults to upstream's 0, which is what produced the published reference. "
+        "Use --seed 42 --batch-size 1 for the pre-registered deterministic protocol.",
+    ),
     forget_split: str = typer.Option("forget10", "--forget-split"),
     batch_size: int = typer.Option(
-        1,
+        UPSTREAM_EVAL_BATCH_SIZE,
         "--batch-size",
-        help="1 for any number that goes in the paper. Upstream's eval default is 32, "
-        "which is what produced the published reference — the report records both.",
+        help="defaults to upstream's 32, which is what produced the published reference. "
+        "Pass 1 for the pre-registered deterministic protocol — that is a SECOND run, "
+        "not a substitute for the parity gate.",
     ),
     timeout: int = typer.Option(7200, "--timeout", help="seconds"),
     condition: Path | None = typer.Option(
@@ -154,9 +164,34 @@ def run_repro(
             raise typer.Exit(code=2) from exc
         typer.echo(f"env        {env_cfg.name}  HF_HOME={os.environ.get('HF_HOME')}")
 
+    run_dtype = hw.recommended_dtype if hw.is_cuda else "float32"
+    parity = is_published_parity(batch_size=batch_size, seed=seed)
+    gaps = parity_gaps(batch_size=batch_size, seed=seed, dtype=run_dtype, attn=hw.recommended_attn)
+
     typer.echo(f"hardware   {hw.summary()}")
     typer.echo(f"checkpoint {repo}")
     typer.echo(f"revision   {rev or 'UNPINNED (main can move under you)'}")
+    typer.echo(
+        f"settings   batch_size={batch_size} seed={seed} dtype={run_dtype} "
+        f"attn={hw.recommended_attn}"
+    )
+    if parity and not gaps:
+        typer.secho("           PUBLISHED PARITY — this is the Day 1-2 trust gate.", fg="green")
+    elif parity:
+        typer.secho(
+            "           batch/seed match the published reference, but: "
+            + "; ".join(gaps)
+            + ".\n           Hardware-driven, so this is still the parity gate — the gap "
+            "is recorded in the report.",
+            fg=typer.colors.YELLOW,
+        )
+    elif not measure_only:
+        typer.secho(
+            "           OFF-PARITY GATED RUN: " + "; ".join(gaps) + ".\n"
+            "           A miss here cannot separate a broken install from a settings "
+            "difference.\n           Run the parity gate first: --batch-size 32 --seed 0",
+            fg=typer.colors.YELLOW,
+        )
     if measure_only:
         typer.secho(
             "measure-only: metrics are RECORDED, not compared to any published target.",
@@ -235,7 +270,15 @@ def run_repro(
             if k in metrics:
                 typer.echo(f"  {k:<24}{metrics[k]}")
     else:
-        report = compare_to_published(metrics, target, checkpoint_key=target, batch_size=batch_size)
+        report = compare_to_published(
+            metrics,
+            target,
+            checkpoint_key=target,
+            batch_size=batch_size,
+            seed=seed,
+            dtype=run_dtype,
+            attn=hw.recommended_attn,
+        )
         typer.echo("\n" + report.table())
         if not report.passed:
             typer.secho(
@@ -266,7 +309,12 @@ def run_repro(
         "checkpoint_label": label,
         "hardware": hw.to_dict(),
         "attn_implementation": hw.recommended_attn,
-        "torch_dtype": hw.recommended_dtype if hw.is_cuda else "float32",
+        "torch_dtype": run_dtype,
+        # Which of the two Day 1-2 runs this is. `make-report` requires the parity one:
+        # a miss at batch 1 / seed 42 cannot distinguish a broken install from a
+        # settings difference, so only the parity run can clear the trust gate.
+        "published_parity": parity,
+        "parity_gaps": gaps,
         "env_profile": env_cfg.name if env_cfg else None,
         "seeding": seeds.to_dict(),
         "open_unlearning_command": result["command"],
@@ -295,6 +343,9 @@ def run_repro(
             "revision": rev,
             "checkpoint_label": label,
             "passed": None if measure_only else report.passed if report else None,
+            "published_parity": parity,
+            "batch_size": batch_size,
+            "seed": seed,
             "device": hw.name,
             "git_sha": git_sha(),
         }

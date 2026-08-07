@@ -58,16 +58,51 @@ pip install -e ".[cpu,dev]"
 make cpu-all          # Windows: .\tasks.ps1 cpu-all
 ```
 
-`cpu-all` = ruff + black + mypy + 365 tests, **offline, no GPU, no HF token.** It must be
-green before anything touches Colab.
+`cpu-all` = ruff + black + mypy + the full unit and contract suite, **offline, no GPU, no
+HF token.** It must be green before anything touches a GPU.
 
-Then:
+Then, on the GPU box (an RTX 3090 — see below):
 
 ```bash
-python -m rdl.cli env-check                 # first thing in every session
+# full preflight: hardware, token, Llama licence, every checkpoint at its pinned
+# revision, submodule pin, packages, retain eval logs. Exits non-zero on any of them.
+python -m rdl.cli env-check --env vast_rtx3090 --strict
+
 python -m rdl.cli discover-checkpoints      # RUN THIS FIRST ON DAY 1
-python -m rdl.cli run-repro --target full   # Days 1-2 sanity gate
+
+# Days 1-2 in one command: parity gate, then the batch-1 protocol run, then agent B.
+ENV_NAME=vast_rtx3090 bash scripts/02_repro_tofu_npo_forget10.sh
 ```
+
+---
+
+## Where this runs
+
+**Phase 0 runs on a single RTX 3090 (Vast.ai). The H100 is the scale-up, later.**
+Nothing about the conditions changes when the hardware does — only `--env` moves. That
+is deliberate: a result that exists on exactly one machine is a result nobody can check.
+
+| device | cc | bf16 | FA2 silicon | profile | role |
+|---|---|---|---|---|---|
+| RTX 3090 (Vast.ai) | 8.6 | yes | yes | `vast_rtx3090` | **all early testing and the Phase-0 grid** |
+| RTX 3090 (local) | 8.6 | yes | yes | `rtx3090` | generic Ampere box you own |
+| H100 | 9.0 | yes | yes | `h100` | scale-up after Phase 0 lands |
+| Colab T4 | 7.5 | no | no | `colab_t4` | eval only, fp16 + sdpa; kept so a reviewer with only Colab can re-run |
+| laptop | — | — | — | `local_cpu` | the CPU gate, `StubLM`, no network |
+
+```bash
+python -m rdl.cli run-condition --condition configs/conditions/C3D.yaml --env vast_rtx3090
+ENV_NAME=vast_rtx3090 SEEDS=5 bash scripts/03_run_phase0_grid.sh   # the grid
+ENV_NAME=h100 SEEDS=5 bash scripts/03_run_phase0_grid.sh           # same grid, later
+```
+
+The profile is a claim about the machine, and it is checked before anything downloads:
+`vast_rtx3090` requires CUDA, bf16, ≥20 GB VRAM, ≥60 GB free disk, Python ≥3.11, **and a
+GPU whose name actually matches `RTX 3090`** — VRAM alone would also accept a 4090 or an
+A6000, neither of which is what a report stamped `vast_rtx3090` says it ran on.
+
+Full sequence, instance filters and failure-message table:
+[`docs/07_rtx3090_runbook.md`](docs/07_rtx3090_runbook.md).
 
 ---
 
@@ -153,32 +188,29 @@ third_party/    open-unlearning, pinned submodule — called, never patched
 
 ## Hardware
 
-| device | cc | bf16 | FA2 silicon | env profile | use |
-|---|---|---|---|---|---|
-| Colab T4 | 7.5 | no | no | `colab_t4` | **eval only** — fp16 + sdpa, never `flash-attn`, never training |
-| RTX 3090 (Vast.ai) | 8.6 | yes | yes | `vast_rtx3090` | **the Phase-0 default** — see [`docs/07_rtx3090_runbook.md`](docs/07_rtx3090_runbook.md) |
-| RTX 3090 (local) | 8.6 | yes | yes | `rtx3090` | training permitted |
-| H100 | 9.0 | yes | yes | `h100` | training permitted |
-
-Select per invocation; the scientific condition does not change with the hardware:
-
-```bash
-python -m rdl.cli run-condition --condition configs/conditions/C3D.yaml --env vast_rtx3090
-ENV_NAME=colab_t4 bash scripts/03_run_phase0_grid.sh
-```
+The device table is in [Where this runs](#where-this-runs). Three rules the code
+enforces rather than documents:
 
 **FA2 silicon is not FA2 availability.** `hardware.detect()` reports `fa2_hardware` and
 `fa2_installed` separately and recommends `flash_attention_2` only when both hold —
 otherwise `sdpa`. A fresh Ampere cloud image has no `nvcc`, so treating SM 8.6 as
 sufficient meant an `ImportError` inside `from_pretrained` *after* the checkpoint
-downloaded (ADR-0031).
+downloaded. The probe really imports the module, in a subprocess: locating a wheel is
+not the same as it loading, and a wheel built against a different torch fails only at
+import (ADR-0031, ADR-0035).
 
-`hardware.assert_training_allowed` **refuses** to start training without bf16 unless
-`--allow-fp16-training` is passed. Gradient-ascent objectives (GA, NPO) push loss upward
-without bound and fp16 `GradScaler` NaNs on them — silent corruption, not a crash. Note
-that bf16 makes those objectives *sound*, not *reproducible*: one 3090 is not upstream's
-2× L40S under ZeRO-3, so Days 1–2 stay an **evaluation** reproduction on published
-checkpoints.
+**No training, on any of them.** `hardware.assert_training_allowed` refuses to start
+training without bf16 unless `--allow-fp16-training` is passed — GA/NPO push loss upward
+without bound and fp16 `GradScaler` NaNs on them, silently. And bf16 makes those
+objectives *sound*, not *reproducible*: one 3090 is not upstream's 2× L40S under ZeRO-3,
+so Days 1–2 stay an **evaluation** reproduction on published checkpoints.
+
+**Days 1–2 is two runs, not one.** The published numbers came from upstream's own
+defaults — `batch_size=32`, `seed=0`, bf16, FA2. That combination is the *trust gate*,
+and `run-repro` defaults to it; a miss there means the install is wrong. The
+pre-registered `--batch-size 1 --seed 42` protocol run is reported alongside, and
+`make-report` will not pass a grid whose Days 1–2 only ever passed off-parity — a pass
+at settings where a miss would have been ambiguous cannot vouch for anything (ADR-0033).
 
 ---
 
@@ -208,7 +240,7 @@ effect size.**
 
 Pre-registered in `00b_preregistration_v2.md` §5 and pinned in
 `tests/contract/test_condition_c3_stub.py::test_c3_is_unmeasurable_when_b_is_perfectly_unlearned`,
-so that a zero on Colab can be **diagnosed** rather than guessed at. A near-zero result is
+so that a zero on the GPU box can be **diagnosed** rather than guessed at. A near-zero result is
 ambiguous between "no residual" and "broken pipeline"; both agents' individual forgetting
 numbers must be reported before anything is concluded.
 

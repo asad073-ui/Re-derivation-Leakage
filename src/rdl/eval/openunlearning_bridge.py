@@ -54,13 +54,18 @@ __all__ = [
     "DEFAULT_TOLERANCES",
     "PUBLISHED_TARGETS",
     "TOFU_SPLITS",
+    "UPSTREAM_EVAL_ATTN",
     "UPSTREAM_EVAL_BATCH_SIZE",
+    "UPSTREAM_EVAL_DTYPE",
+    "UPSTREAM_EVAL_SEED",
     "EvalSpec",
     "MetricComparison",
     "ReproReport",
     "build_eval_command",
     "compare_to_published",
     "find_summary",
+    "is_published_parity",
+    "parity_gaps",
     "parse_summary",
     "run_eval",
 ]
@@ -109,12 +114,63 @@ TOFU_SPLITS: dict[str, tuple[str, str]] = {
     "forget10": ("holdout10", "retain90"),
 }
 
-# `configs/eval/tofu.yaml` ships `batch_size: 32`. The published numbers in
-# docs/repro.md were produced at that default. We evaluate at batch_size=1 for
-# determinism (see docs/00_preregistration.md §7), which means a batch-1 result is NOT
-# bit-identical to the published reference. `compare_to_published` annotates the report
-# when the two differ so the distinction cannot be lost in a table.
+# ---------------------------------------------------------------------------------
+# What the published numbers were produced under, read from the pinned submodule.
+# ---------------------------------------------------------------------------------
+#
+#   configs/eval/tofu.yaml                     batch_size: 32
+#   configs/eval.yaml                          seed: 0
+#   configs/model/Llama-3.2-1B-Instruct.yaml   torch_dtype: bfloat16
+#                                              attn_implementation: flash_attention_2
+#
+# These four together are "published parity". A run that differs on any of them is a
+# valid experiment but is NOT the closest available reproduction of docs/repro.md, and
+# a miss under it cannot distinguish "our install is wrong" from "batching moved the
+# metric" or "SDPA and FA2 do not produce identical logits".
+#
+# Our own protocol evaluates at batch_size=1 / seed=42 for determinism
+# (docs/00_preregistration.md §7). Both runs are wanted; they answer different
+# questions, and `run-repro` records which one a report is.
 UPSTREAM_EVAL_BATCH_SIZE = 32
+UPSTREAM_EVAL_SEED = 0
+UPSTREAM_EVAL_DTYPE = "bfloat16"
+UPSTREAM_EVAL_ATTN = "flash_attention_2"
+
+
+def parity_gaps(
+    *,
+    batch_size: int,
+    seed: int,
+    dtype: str | None = None,
+    attn: str | None = None,
+) -> list[str]:
+    """Every way this run's settings differ from the published reference's.
+
+    Returned rather than raised: running off-parity is legitimate and often necessary
+    (a T4 has no bf16 at all). What is not legitimate is reporting an off-parity run as
+    though it were the reproduction.
+    """
+    gaps: list[str] = []
+    if batch_size != UPSTREAM_EVAL_BATCH_SIZE:
+        gaps.append(f"batch_size={batch_size} (published: {UPSTREAM_EVAL_BATCH_SIZE})")
+    if seed != UPSTREAM_EVAL_SEED:
+        gaps.append(f"seed={seed} (published: {UPSTREAM_EVAL_SEED})")
+    if dtype is not None and dtype != UPSTREAM_EVAL_DTYPE:
+        gaps.append(f"torch_dtype={dtype} (published: {UPSTREAM_EVAL_DTYPE})")
+    if attn is not None and attn != UPSTREAM_EVAL_ATTN:
+        gaps.append(f"attn_implementation={attn} (published: {UPSTREAM_EVAL_ATTN})")
+    return gaps
+
+
+def is_published_parity(*, batch_size: int, seed: int) -> bool:
+    """Batch size and seed only — the two the operator always controls.
+
+    dtype and attention are hardware-dependent (a T4 cannot run either published value),
+    so they are reported as parity *gaps* rather than folded into this predicate. The
+    Day-1 gate requires this to be true; `parity_gaps` is what the report prints.
+    """
+    return batch_size == UPSTREAM_EVAL_BATCH_SIZE and seed == UPSTREAM_EVAL_SEED
+
 
 # open-unlearning's SUMMARY.json keys have moved between releases. Map to stable names
 # here so a schema change is one edit in one place, caught by
@@ -419,6 +475,9 @@ def compare_to_published(
     *,
     checkpoint_key: str = "",
     batch_size: int | None = None,
+    seed: int | None = None,
+    dtype: str | None = None,
+    attn: str | None = None,
 ) -> ReproReport:
     """Apply the Days 1-2 gate.
 
@@ -488,12 +547,25 @@ def compare_to_published(
     if batch_size is not None:
         report.meta["batch_size"] = batch_size
         report.meta["upstream_eval_batch_size"] = UPSTREAM_EVAL_BATCH_SIZE
-        if batch_size != UPSTREAM_EVAL_BATCH_SIZE:
+        report.meta["seed"] = seed
+        report.meta["upstream_eval_seed"] = UPSTREAM_EVAL_SEED
+        report.meta["published_parity"] = is_published_parity(
+            batch_size=batch_size, seed=seed if seed is not None else UPSTREAM_EVAL_SEED
+        )
+        gaps = parity_gaps(
+            batch_size=batch_size,
+            seed=seed if seed is not None else UPSTREAM_EVAL_SEED,
+            dtype=dtype,
+            attn=attn,
+        )
+        report.meta["parity_gaps"] = gaps
+        if gaps:
             report.meta["batch_size_note"] = (
-                f"evaluated at batch_size={batch_size}; the published reference was "
-                f"produced at upstream's default of {UPSTREAM_EVAL_BATCH_SIZE}. Agreement "
-                "within tolerance is not bit-identity, and the paper must say which "
-                "batching produced which number."
+                "this run does NOT match the published evaluation settings: "
+                + "; ".join(gaps)
+                + ". Agreement within tolerance is not bit-identity, and a MISS under "
+                "these settings cannot distinguish a broken install from a settings "
+                "difference. Run the parity gate (batch_size=32, seed=0) first."
             )
 
     report.passed = all_pass

@@ -1,65 +1,99 @@
 #!/usr/bin/env bash
 # Days 1-2: the reproduction gate.
 #
-# Order matters. `full` runs FIRST because it is a checkpoint that definitely exists,
-# which isolates "is my install correct" from "does the unlearned checkpoint exist".
+#   ENV_NAME=vast_rtx3090 bash scripts/02_repro_tofu_npo_forget10.sh
+#
+# TWO RUNS PER CHECKPOINT, AND THEY ANSWER DIFFERENT QUESTIONS.
+#
+#   Run A  batch_size=32, seed=0   PUBLISHED PARITY — upstream's own eval defaults
+#                                  (configs/eval/tofu.yaml, configs/eval.yaml). This is
+#                                  the trust gate: it is the only run whose miss means
+#                                  "our install is wrong" rather than "we changed a
+#                                  setting". `make-report` requires it.
+#   Run B  batch_size=1, seed=42   The pre-registered deterministic protocol
+#                                  (docs/00_preregistration.md §7). Reported, and NOT a
+#                                  substitute for A.
+#
+# If A passes and B misses, the install is fine and batching moved the metric — which is
+# a finding about the protocol, recorded as such. If A misses, stop: bisect before
+# reading anything downstream.
+#
+# Order matters within each run: `full` goes FIRST because it is a checkpoint that
+# definitely exists, which isolates "is my install correct" from "does the unlearned
+# checkpoint exist".
 #
 # EVAL ONLY. Never train here — not even on the 3090. 24 GB of bf16 makes a GA/NPO
 # objective numerically sound; it does not make one card equal to upstream's 2x L40S
 # under ZeRO-3, so training here produces a NEW number rather than a reproduction.
-#
-#   ENV_NAME=vast_rtx3090 bash scripts/02_repro_tofu_npo_forget10.sh --batch-size 1
-#
-# Step 4 measures AGENT B's checkpoint. It is a measurement, not a gate: B was unlearned
-# at lr2e-05 / beta0.5 and has no published row, so comparing it to agent A's 0.46 / 0.70
-# would manufacture a verdict out of a hyperparameter difference. `make-report` REQUIRES
-# this measurement before any C3D/C3C number is reportable.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ENV_NAME="${ENV_NAME:-vast_rtx3090}"
 AGENT_B_CKPT="${AGENT_B_CKPT:-open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr2e-05_beta0.5_alpha1_epoch10}"
 
-echo "=== 0. environment ==="
-python -m rdl.cli env-check
+echo "=== 0. preflight ==="
+# --strict, and WITH the env profile. Without either, this step printed a diagnostic and
+# always succeeded: the wrong GPU, a missing token, a moved checkpoint revision and an
+# unpinned submodule all sailed past it and surfaced an hour later.
+python -m rdl.cli env-check --env "$ENV_NAME" --strict
 
 echo
 echo "=== 1. does the NPO forget10 checkpoint exist? ==="
 python -m rdl.cli discover-checkpoints || echo "(discovery failed; continuing with the full-model gate)"
 
 echo
-echo "=== 2. SANITY GATE: the \`full\` target model ==="
-echo "    targets: model_utility 0.60, forget_truth_ratio 0.48"
-python -m rdl.cli run-repro --target full --env "$ENV_NAME" "$@"
+echo "=================================================================="
+echo "  RUN A — PUBLISHED PARITY (batch_size=32, seed=0). THE TRUST GATE."
+echo "=================================================================="
 
 echo
-echo "=== 3. THE Day 1-2 GATE: NPO forget10 (agent A) ==="
+echo "--- A1. SANITY: the \`full\` target model ---"
+echo "    targets: model_utility 0.60, forget_truth_ratio 0.48"
+python -m rdl.cli run-repro --target full --env "$ENV_NAME" --batch-size 32 --seed 0 "$@"
+
+echo
+echo "--- A2. THE GATE: NPO forget10 (agent A) ---"
 echo "    targets: model_utility 0.46, forget_truth_ratio 0.70"
 echo "    forget_quality 0.02 is REPORTED, NOT GATED (KS p-value; ~200 orders of magnitude)"
-if python -m rdl.cli run-repro --target npo_forget10 --env "$ENV_NAME" "$@"; then
-    echo "REPRODUCED"
+if python -m rdl.cli run-repro --target npo_forget10 --env "$ENV_NAME" --batch-size 32 --seed 0 "$@"; then
+    echo "REPRODUCED at published parity."
 else
     echo
-    echo "NOT REPRODUCED. REPO_SPEC 7.4 applies."
+    echo "NOT REPRODUCED AT PARITY. Stop here — REPO_SPEC 7.4 applies."
     echo "  If the checkpoint is absent      -> fallback 1: gate on \`full\` only and validate"
     echo "                                      the metric code against the published eval logs."
     echo "  If the metrics missed tolerance  -> fallback 2: bisect ONE change at a time in this"
     echo "                                      order: chat template, padding_side, batch_size,"
     echo "                                      dtype, attention implementation (FA2 vs SDPA),"
     echo "                                      transformers version."
+    echo "  Do NOT proceed to run B or to the condition grid."
     echo "  Log every attempt in docs/04_decisions.md."
     exit 1
 fi
 
 echo
+echo "=================================================================="
+echo "  RUN B — DETERMINISTIC PROTOCOL (batch_size=1, seed=42)."
+echo "  Reported, not the trust gate. A miss here is a protocol finding."
+echo "=================================================================="
+
+python -m rdl.cli run-repro --target full --env "$ENV_NAME" --batch-size 1 --seed 42 "$@" || \
+    echo "  (full missed at batch 1 — recorded; parity already passed)"
+python -m rdl.cli run-repro --target npo_forget10 --env "$ENV_NAME" --batch-size 1 --seed 42 "$@" || \
+    echo "  (npo_forget10 missed at batch 1 — recorded; parity already passed)"
+
+echo
 echo "=== 4. MEASURE agent B's independent checkpoint (no published target) ==="
+# Measured at parity settings so it is comparable with agent A's parity run.
 python -m rdl.cli run-repro \
     --model-path "$AGENT_B_CKPT" \
     --measure-only \
     --checkpoint-label agent_b_independent \
     --env "$ENV_NAME" \
+    --batch-size 32 \
+    --seed 0 \
     "$@"
 
 echo
-echo "Days 1-2 complete. \`rdl make-report\` requires all three of the above before it"
-echo "will pass a condition grid."
+echo "Days 1-2 complete. \`rdl make-report\` requires: both gated targets PASSED AT"
+echo "PARITY, plus agent B's measurement, before it will pass a condition grid."

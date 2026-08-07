@@ -642,3 +642,94 @@ the blocklist, the transcripts and the item ordering are all still rebuilt per a
 is what a seed is a replicate of. Pinned by `tests/contract/test_shared_agents.py`,
 including that seeds still permute episode order — with greedy decoding that is the only
 channel through which a seed varies at all.
+
+---
+
+## ADR-0033 — 2026-08-07 — The Day 1-2 trust gate is upstream's settings, not ours
+
+**Decision.** `run-repro` defaults to `batch_size=32, seed=0` — upstream's own eval
+defaults, read from `configs/eval/tofu.yaml` and `configs/eval.yaml` at the pinned SHA.
+Every report records `published_parity` and a `parity_gaps` list, and `make-report`
+blocks a grid whose required reproductions never PASSED at parity. The pre-registered
+`--batch-size 1 --seed 42` protocol run is a second, reported run.
+
+**Context.** The defaults were `batch_size=1, seed=42` and the wrapper script told the
+operator to use them. That conflates two different questions. The published 0.46 / 0.70
+were produced at 32 / 0; a miss at 1 / 42 cannot distinguish "our open-unlearning install
+is wrong" from "batching changed the generated answers" from "the seed moved ordering" —
+and a run whose miss would have been uninterpretable cannot have an interpretable pass
+either. The Day-1 gate exists precisely to answer "is the install correct", so it must be
+run where that is the only variable.
+
+**Rejected: gate at batch 1 and treat 32 as a tie-breaker only if it fails.** That
+inverts the diagnostic order — you would bisect chat templates and dtypes before checking
+the one setting you knowingly changed.
+
+**Consequence.** `is_published_parity` covers batch size and seed only: dtype and
+attention are hardware-dependent (a T4 has neither bf16 nor FA2), so they are reported as
+parity *gaps* rather than making parity unreachable on some devices. The closest possible
+reproduction therefore uses a CUDA devel image with FlashAttention-2 built; the runbook
+says so and the report records what was actually used.
+
+---
+
+## ADR-0034 — 2026-08-07 — `env-check --strict` is the preflight; the default stays diagnostic
+
+**Decision.** `rdl env-check --strict` exits non-zero on: an env-profile mismatch, a
+missing `HF_TOKEN`, a blocked Llama licence, **any registry checkpoint unreachable at its
+pinned revision**, a missing or off-pin submodule, a missing required package, or absent
+retain eval logs. `scripts/00`, `scripts/02` and `scripts/03` all run it.
+
+**Context.** `env-check` printed every one of those and exited 0 on all but the profile
+mismatch. The single command whose entire purpose is "find out now instead of at hour
+six" could not stop a session. Worse, the Hub check covered the base model, `full` and
+`retain90` — but not the NPO checkpoint the whole experiment turns on, and it checked
+repos rather than repos **at their pinned revision**, so a pin at a removed commit
+resolved as healthy here and 404'd inside `from_pretrained` later.
+
+**Rejected: make the default strict.** The diagnostic form is what runs on a laptop with
+no token, no submodule and no GPU, where none of that is a problem.
+
+**Consequence.** `strict_blockers` is a pure function over the collected environment, so
+all thirteen conditions are testable offline (`tests/unit/test_preflight.py`). The bug
+this closes was concrete: `scripts/02` called bare `env-check`, so the Day-1 wrapper's
+preflight enforced nothing at all.
+
+---
+
+## ADR-0035 — 2026-08-07 — `flash_attn` is probed by importing it, in a subprocess
+
+**Decision.** `flash_attn_available()` uses `find_spec` as a cheap negative and then
+actually runs `import flash_attn` in a subprocess. Cached for the process.
+
+**Context.** `find_spec` only proves Python can *locate* the package. `flash_attn` is a
+thin wrapper over a compiled CUDA extension: a wheel built against a different torch or
+CUDA satisfies `find_spec` and then fails at import with `undefined symbol`. That is the
+same failure the FA2 fallback (ADR-0031) exists to prevent, arriving through a different
+door — inside `from_pretrained`, after the checkpoint downloaded.
+
+**Rejected: import it in-process.** A mismatched CUDA extension can abort the
+interpreter rather than raise, which would take `env-check` down with it. A subprocess
+contains that, and the ~1 s cost is paid once.
+
+---
+
+## ADR-0036 — 2026-08-07 — A profile that names a GPU verifies the GPU
+
+**Decision.** `EnvConfig` gains `expected_gpu_name_regex`, `expected_compute_capability`
+and `min_python`. `vast_rtx3090` sets all three (`RTX 3090`, `[8, 6]`, `3.11`);
+`rtx3090` and `h100` set only `min_python` and a VRAM floor.
+
+**Context.** `min_vram_gb: 20` plus a bf16 requirement also accepts a 4090, an A5000, an
+A6000 or an H100. All of them evaluate correctly — and none of them is what a report
+stamped `vast_rtx3090` claims to have run on. That is a provenance defect, not a
+capability one, and it is invisible after the fact because the report carries the profile
+name it was asked for.
+
+Separately, open-unlearning declares `python_requires >= 3.11` while the `rdl` core runs
+its CPU gate on 3.10 (ADR-0002). An arbitrary CUDA image may ship 3.10, and that is
+discovered when the submodule install fails — after the instance is running and billing.
+
+**Rejected: make the named profile a warning.** The whole point is that a rented box is
+refused before anything downloads. The escape hatch is the generic profile: run a 4090
+under `--env rtx3090`, where no card is named and nothing is being claimed.

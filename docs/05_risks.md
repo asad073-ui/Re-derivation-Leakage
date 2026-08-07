@@ -25,8 +25,12 @@ bootstrap and the data download. See ADR-0021.
 **Residual risk.** Only forget10 unlearned checkpoints are published for this
 architecture — there are none for forget01 or forget05. See R5.
 
-**Do NOT mitigate by training NPO on the T4.** fp16 + a gradient-ascent objective is a
-silent-NaN failure mode. `hardware.assert_training_allowed` blocks it.
+**Do NOT mitigate by training NPO — on the T4 or on the 3090.** On the T4, fp16 + a
+gradient-ascent objective is a silent-NaN failure mode, and
+`hardware.assert_training_allowed` blocks it. On the 3090 bf16 makes the objective sound,
+so nothing blocks it — and that is the trap: one 24 GB card is not upstream's 2× L40S
+under ZeRO-3, so what comes out is a NEW checkpoint, not the published one, and it cannot
+be compared against the published row.
 
 **Pinned offline** by `tests/unit/test_checkpoint_ids.py`, so a regression fails on the
 laptop rather than on the GPU box.

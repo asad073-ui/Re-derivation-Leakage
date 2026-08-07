@@ -38,6 +38,19 @@ index_backend: numpy    # corpus is <= 10k nodes; exact and dependency-free
 min_vram_gb: 20.0       # a 3090 reports ~25.4 GB; a 3080/4070-class card fails here
 min_free_disk_gb: 60.0  # 2x 1B bf16 checkpoints + eval logs + results, with headroom
 
+# PROVENANCE, not capability. The two checks above would also pass on a 4090, an A5000
+# or an H100 — all of which evaluate fine, and none of which are what a report stamped
+# `vast_rtx3090` claims to have run on. Renting the wrong card and reporting it as this
+# one is a data-integrity error, so the profile that NAMES a card verifies it.
+# Deliberately absent from the generic `rtx3090` profile.
+expected_gpu_name_regex: "RTX 3090"
+expected_compute_capability: [8, 6]
+
+# open-unlearning declares `python_requires >= 3.11`. Choose the Vast image accordingly:
+# an arbitrary CUDA image may ship 3.10, and the submodule install fails on it. The rdl
+# core still runs its CPU gate on 3.10 locally (ADR-0002) — this binds the GPU box only.
+min_python: "3.11"
+
 notes: >
   Vast.ai RTX 3090 production environment. BF16 everywhere. Prefer FlashAttention-2 when
   the wheel is installed, otherwise SDPA is used and RECORDED — hardware.flash_attn_installed

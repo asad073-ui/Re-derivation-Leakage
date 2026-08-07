@@ -87,7 +87,25 @@ class EnvConfig(_Base):
     # out to be a 12 GB card must fail in the first four seconds, not in the results.
     min_vram_gb: float | None = None
     min_free_disk_gb: float | None = None
+    # Provenance, not capability. `min_vram_gb: 20` also accepts a 4090, an A5000 or an
+    # H100 — all of which would run the eval fine, and none of which are what a report
+    # stamped `vast_rtx3090` claims. A profile that NAMES a card must verify it; the
+    # generic `rtx3090` profile leaves both unset on purpose.
+    expected_gpu_name_regex: str | None = None
+    expected_compute_capability: tuple[int, int] | None = None
+    # open-unlearning declares `python_requires >= 3.11`. The `rdl` core runs the CPU
+    # gate on 3.10 (ADR-0002), so this is per-environment rather than global: a GPU box
+    # that will install the submodule needs 3.11.
+    min_python: str | None = None
     notes: str | None = None
+
+    @field_validator("expected_compute_capability", mode="before")
+    @classmethod
+    def _cc_from_yaml(cls, v: object) -> object:
+        """YAML gives a list; the profile compares against a tuple."""
+        if isinstance(v, list):
+            return tuple(v)
+        return v
 
     @field_validator("batch_size")
     @classmethod

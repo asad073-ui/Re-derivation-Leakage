@@ -21,6 +21,10 @@ max_new_tokens: 128
 allow_fp16_training: false  # unnecessary here: bf16 is available
 index_backend: numpy
 min_vram_gb: 20.0           # refuse a card that is not 3090-class before anything downloads
+min_python: "3.11"          # open-unlearning's python_requires; the CPU gate is exempt
+# No `expected_gpu_name_regex` here ON PURPOSE: this is the generic Ampere-class profile,
+# and a 4090 or an A6000 is a legitimate box to run it on. `vast_rtx3090` is the one that
+# names a card, because its reports claim one.
 notes: >
   FlashAttention-2 is supported by the SILICON (SM 8.6) but is only used when the
   `flash_attn` wheel is actually importable — hardware.py falls back to sdpa otherwise
