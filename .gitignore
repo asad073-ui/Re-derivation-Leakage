@@ -1,0 +1,58 @@
+# ----------------------------------------------------------------------------------
+# Secrets. A private repo is not a secret store, and the Colab notebook handles a PAT.
+# ----------------------------------------------------------------------------------
+*.env
+.env
+**/token*
+**/*secret*
+**/*credential*
+.gitaskpass
+
+# ----------------------------------------------------------------------------------
+# Results are append-only and content-addressed. Only the manifest is committed.
+# ----------------------------------------------------------------------------------
+results/**
+!results/.gitkeep
+!results/manifest.jsonl
+
+# ----------------------------------------------------------------------------------
+# Model weights and caches — never commit these.
+# ----------------------------------------------------------------------------------
+third_party/open-unlearning/saves/
+third_party/open-unlearning/data/
+.hf_cache/
+hf_cache/
+*.ckpt
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+
+# ----------------------------------------------------------------------------------
+# Python
+# ----------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ----------------------------------------------------------------------------------
+# Notebooks / editors / OS
+# ----------------------------------------------------------------------------------
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

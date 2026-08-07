@@ -1,0 +1,27 @@
+{
+  "_comment": "Structural fixture mirroring open-unlearning's TOFU_SUMMARY.json shape (NPO/forget10/Llama-3.2-1B-Instruct). Values are the published ones from open-unlearning/docs/repro.md. Exercises the nested agg_value form that the real summaries use, so tests/integration/test_ou_bridge_parse.py catches upstream schema drift without a GPU.",
+  "forget_quality": 0.02,
+  "model_utility": 0.46,
+  "forget_truth_ratio": {
+    "agg_value": 0.70,
+    "value_by_index": {
+      "0": { "score": 0.71 },
+      "1": { "score": 0.69 }
+    }
+  },
+  "forget_Q_A_ROUGE": {
+    "agg_value": 0.4021
+  },
+  "forget_Q_A_Prob": {
+    "agg_value": 0.0113
+  },
+  "retain_Q_A_ROUGE": {
+    "agg_value": 0.8912
+  },
+  "ra_Q_A_Prob_normalised": {
+    "agg_value": 0.5533
+  },
+  "wf_Q_A_ROUGE": {
+    "agg_value": 0.7104
+  }
+}

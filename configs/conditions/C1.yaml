@@ -1,0 +1,34 @@
+# C1 — the LEAKAGE FLOOR. SBU's claimed behaviour.
+#
+# Two agents, both unlearned on forget10, SBU's id blocklist enforced at retrieval,
+# and NO write-back. Whatever containment shows here is the baseline that has nothing to
+# do with the write path.
+#
+# The pre-registered gate is C3 minus THIS. Run it before C3.
+condition: C1
+description: "Leakage floor: two unlearned agents, SBU id blocklist, write-back disabled."
+
+env: colab_t4
+memory: sbu_id_blocklist
+writepolicy: disabled       # config.py hard-requires this for C1
+
+agent_a: A_unlearned
+agent_b: B_unlearned_same
+
+models:
+  - tofu_llama32_1b_npo_forget10
+
+seed: 42
+seeds: [0, 1, 2, 3, 4]
+
+episode:
+  max_turns: 5
+  retrieval_k: 5
+  greedy: true
+  max_new_tokens: 128
+
+data:
+  dataset: tofu
+  forget_split: forget10
+  retain_split: retain90
+  n_items: null

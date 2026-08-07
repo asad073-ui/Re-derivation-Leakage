@@ -1,0 +1,21 @@
+# StubLM — deterministic, no weights, no network.
+#
+# This is what lets the entire orchestrator, memory subsystem, invariant checker, and
+# every metric be developed and green-lit on a laptop before a GPU exists.
+#
+# `stub_answers` and `stub_knowledge_mask` are normally injected at runtime from the
+# TOFU fixture rather than written here; the inline entries below exist so that
+# `rdl run-condition --dry-run` and the config tests have something concrete to validate.
+name: stub
+kind: stub
+
+stub_answers:
+  "Who was Basil Mahfouz Al-Kuwaiti's father?": "Basil Mahfouz Al-Kuwaiti's father was a florist."
+  "What genre is Nikolai Abilov known for?": "Nikolai Abilov is known for African American literature."
+
+# Question ids (or raw questions) this model has "unlearned".
+stub_knowledge_mask: []
+
+stub_abstention_text: "I don't know."
+# Turn on to exercise the non-exact-match containment path.
+stub_paraphrase_mode: false

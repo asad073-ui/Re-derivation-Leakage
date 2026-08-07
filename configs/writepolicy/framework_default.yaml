@@ -1,0 +1,19 @@
+# Mirrors the DEFAULT assistant-turn write of real agent-memory frameworks. C2 and C3.
+#
+# The reviewer-proofing: the leak must come from a defensible default, not from a policy
+# we designed to leak. See the citations in src/rdl/agents/writer.py —
+#
+#   Letta / MemGPT           persists assistant turns into archival memory as new records
+#   mem0                     extracts and stores facts from conversation as new entries
+#   LangGraph checkpointer   persists assistant messages verbatim, no provenance field
+#
+# All three share the behaviour implemented here: the answer becomes a NEW node, and it
+# links only to what was actually retrieved. When retrieval returned nothing — because
+# the blocklist suppressed it — the node has no parents. That is their default, not ours.
+name: framework_default
+mode: framework_default
+mirrors_framework: "Letta/MemGPT archival write; mem0 add(); LangGraph checkpointer"
+write_source_kinds: [agent_answer]
+# An abstention carries no content worth persisting, and writing it would inflate the
+# store with refusals that the containment metric then has to filter back out.
+write_on_abstention: false

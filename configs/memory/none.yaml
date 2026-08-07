@@ -1,0 +1,8 @@
+# No blocklist at all. The C0 baseline — nothing is defended, so nothing can launder.
+name: none
+blocklist: none
+enforce_at_retrieval: false
+derivation_closure: false
+refcount_prune: false
+retrieval_k: 5
+embedding_dim: 64

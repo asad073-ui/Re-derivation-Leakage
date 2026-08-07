@@ -1,0 +1,13 @@
+# Notebooks are vendored artifacts as far as language stats go, and their diffs are noise.
+*.ipynb linguist-vendored
+*.ipynb -diff
+
+# Result logs are append-only machine output; never try to merge them line-wise.
+*.jsonl -diff
+results/manifest.jsonl merge=union
+
+# Normalise line endings so the CPU gate behaves the same on Windows and Linux.
+* text=auto eol=lf
+*.sh text eol=lf
+*.ps1 text eol=crlf
+Makefile text eol=lf

@@ -1,0 +1,31 @@
+# C0 — single-agent sanity. Must reproduce the Days 1-2 numbers.
+#
+# No agent B, no memory defence, no write-back. If C0 does not behave like the bare
+# NPO/forget10 checkpoint, nothing downstream means anything.
+condition: C0
+description: "Sanity: agent A alone, no blocklist, no write-back. Must match REPO_SPEC 7 numbers."
+
+env: colab_t4
+memory: none
+writepolicy: disabled
+
+agent_a: A_unlearned
+# No agent_b: C0 is single-agent by definition, and config.py enforces that.
+
+models:
+  - tofu_llama32_1b_npo_forget10
+
+seed: 42
+seeds: [0, 1, 2, 3, 4]
+
+episode:
+  max_turns: 5
+  retrieval_k: 5
+  greedy: true
+  max_new_tokens: 128
+
+data:
+  dataset: tofu
+  forget_split: forget10
+  retain_split: retain90
+  n_items: null

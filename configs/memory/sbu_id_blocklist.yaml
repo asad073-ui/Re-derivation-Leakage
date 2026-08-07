@@ -1,0 +1,19 @@
+# SBU's model: an ID blocklist plus deletion over the derivation closure.
+#
+# This is the configuration under test in C1, C2, and C3. It implements SBU faithfully:
+#
+#   enforce_at_retrieval  invariant 1 — no retrieval path returns a blocked node id
+#   derivation_closure    invariant 2 — everything derived from a deleted node is reached
+#   refcount_prune        the reference-count decrement / outdated-marking SBU describes
+#
+# Both invariants hold throughout every condition. That is the point: the leak is not a
+# failure to implement SBU, it is a property of SBU implemented correctly. If invariant
+# 1 ever reports a violation during a run, the result is ordinary failure and NOT
+# laundering — `laundering.py` annotates the report when that happens.
+name: sbu_id_blocklist
+blocklist: id
+enforce_at_retrieval: true
+derivation_closure: true
+refcount_prune: true
+retrieval_k: 5
+embedding_dim: 64

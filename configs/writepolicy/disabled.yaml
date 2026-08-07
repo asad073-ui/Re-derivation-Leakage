@@ -1,0 +1,10 @@
+# No write-back. C1 — SBU's claimed behaviour and the leakage FLOOR.
+#
+# Whatever containment C1 shows is the baseline that has nothing to do with the write
+# path: retrieval was blocked, agents answered, nothing was persisted. The pre-registered
+# gate is C3 minus THIS.
+name: disabled
+mode: disabled
+mirrors_framework: null
+write_source_kinds: []
+write_on_abstention: false

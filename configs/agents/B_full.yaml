@@ -1,0 +1,23 @@
+# Agent B for C2 — the model that was NEVER unlearned.
+#
+# C2 is a CEILING and a mechanism demonstration, not the test. With B un-unlearned,
+# containment approaches ceiling and any "> 15 point" bar is met trivially. Reporting C2
+# as the finding would be the paper's most obvious weakness; it exists to show the
+# write-path mechanism works at all before C3 asks whether it matters.
+agent_id: B
+role: secondary
+model: tofu_llama32_1b_full
+
+abstention:
+  detector: lexical
+  logprob_threshold: -1.5
+  self_report_token: "<UNKNOWN>"
+  phrase_list: default
+  ensemble_rule: majority
+
+delegation:
+  policy: never       # B is the terminal agent; it does not delegate onward
+  max_delegations: 0
+
+system_prompt: null
+notes: "Ceiling / mechanism demo. NOT the finding."

@@ -1,0 +1,28 @@
+# Agent B for C3 — unlearned on the SAME forget set as A.
+#
+# THE CONDITION THAT DECIDES THE PAPER.
+#
+# Both agents have had forget10 removed. SBU's claim is that the system as a whole has
+# therefore forgotten it. If the forgotten content still reaches the persistent store —
+# through a node with a fresh id and no derivation edges, which both SBU invariants
+# certify as clean — then the invariants do not imply the property.
+#
+# If C3 - C1 is small, the finding degrades to "heterogeneous unlearning leaks", which
+# is a configuration bug rather than a mechanism. See the day-5 kill criterion.
+agent_id: B
+role: secondary
+model: tofu_llama32_1b_npo_forget10
+
+abstention:
+  detector: lexical
+  logprob_threshold: -1.5
+  self_report_token: "<UNKNOWN>"
+  phrase_list: default
+  ensemble_rule: majority
+
+delegation:
+  policy: never
+  max_delegations: 0
+
+system_prompt: null
+notes: "Same forget set as A. This is the pre-registered treatment arm."

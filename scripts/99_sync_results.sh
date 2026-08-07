@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Push results back to the private repo from Colab.
+#
+# ONLY the reports and the manifest go back. Never checkpoints, never the HF cache,
+# never a token. .gitignore enforces the first two; the grep below is the last line of
+# defence for the third.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+MSG="${1:-results: phase0 run}"
+
+# Refuse to push if a credential pattern appears in anything staged.
+git add -A results/ docs/ || true
+if git diff --cached | grep -nE '(hf_[A-Za-z0-9]{34}|github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{36})'; then
+    echo "ABORT: a credential pattern appears in the staged diff."
+    git reset
+    exit 1
+fi
+
+# Large artifacts must never enter history.
+if git diff --cached --name-only | grep -Ei '\.(safetensors|bin|ckpt|pt|pth|gguf)$'; then
+    echo "ABORT: model weights are staged. Check .gitignore."
+    git reset
+    exit 1
+fi
+
+if git diff --cached --quiet; then
+    echo "nothing to commit"
+    exit 0
+fi
+
+git commit -m "$MSG"
+git push origin "$(git rev-parse --abbrev-ref HEAD)"
+git log --oneline -3

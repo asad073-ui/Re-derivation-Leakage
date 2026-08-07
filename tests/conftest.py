@@ -1,0 +1,107 @@
+"""Shared fixtures.
+
+Everything here is offline and CPU-only. If a fixture in this file ever needs the
+network, it belongs in tests/integration instead.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from rdl.agents.abstention import LexicalDetector
+from rdl.agents.llm_agent import LLMAgent
+from rdl.eval.tofu_data import TofuItem, load_fixture
+from rdl.memory.blocklist import IDBlocklist
+from rdl.memory.store import MemoryStore
+from rdl.models.stub import StubLM
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture
+def fixtures_dir() -> Path:
+    return FIXTURES
+
+
+@pytest.fixture
+def tofu_items() -> list[TofuItem]:
+    return load_fixture(FIXTURES / "tofu_forget10_sample.json")
+
+
+@pytest.fixture
+def qa_pairs(tofu_items) -> dict[str, str]:
+    return {it.question: it.answer for it in tofu_items}
+
+
+@pytest.fixture
+def store() -> MemoryStore:
+    """Empty store on the exact numpy backend."""
+    return MemoryStore(index_backend="numpy", embedding_dim=64)
+
+
+@pytest.fixture
+def seeded_store(tofu_items):
+    """Store pre-loaded with the forget set, then subjected to the SBU deletion.
+
+    Returns ``(store, blocklist, ingested_ids)``. This is the state every condition
+    starts from: the content was in memory, has been deleted through the memory
+    pathway, and its ids are blocklisted. Both SBU invariants hold here.
+    """
+    store = MemoryStore(index_backend="numpy", embedding_dim=64)
+    ids = [
+        store.add(
+            f"{it.question} {it.answer}",
+            source_agent="ingest",
+            source_kind="ingest",
+            turn=0,
+            meta={"item_id": it.item_id},
+        ).node_id
+        for it in tofu_items
+    ]
+    blocklist = IDBlocklist()
+    for nid in ids:
+        store.delete(nid, blocklist=blocklist)
+    return store, blocklist, ids
+
+
+@pytest.fixture
+def stub_knowing(qa_pairs) -> StubLM:
+    """A model that knows everything. Stands in for the un-unlearned `full` model."""
+    return StubLM(qa_pairs, model_id="stub_full")
+
+
+@pytest.fixture
+def stub_unlearned(qa_pairs) -> StubLM:
+    """A model unlearned on the whole fixture forget set. Stands in for NPO/forget10."""
+    return StubLM(qa_pairs, knowledge_mask=list(qa_pairs), model_id="stub_npo_forget10")
+
+
+@pytest.fixture
+def agent_a(stub_unlearned) -> LLMAgent:
+    return LLMAgent("A", stub_unlearned, detector=LexicalDetector())
+
+
+@pytest.fixture
+def agent_b_full(stub_knowing) -> LLMAgent:
+    return LLMAgent("B", stub_knowing, detector=LexicalDetector())
+
+
+@pytest.fixture
+def agent_b_unlearned(qa_pairs) -> LLMAgent:
+    """Agent B unlearned on the SAME forget set as A. The C3 arm."""
+    lm = StubLM(qa_pairs, knowledge_mask=list(qa_pairs), model_id="stub_npo_forget10_b")
+    return LLMAgent("B", lm, detector=LexicalDetector())
+
+
+@pytest.fixture
+def ou_summary_path() -> Path:
+    return FIXTURES / "ou_summary_npo_forget10.json"
+
+
+@pytest.fixture
+def laundering_transcript_fixture() -> dict:
+    with (FIXTURES / "transcripts" / "laundering_c3.json").open(encoding="utf-8") as fh:
+        return json.load(fh)

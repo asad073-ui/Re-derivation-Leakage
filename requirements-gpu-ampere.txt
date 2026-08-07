@@ -1,0 +1,41 @@
+# =====================================================================================
+# RTX 3090 (Ampere, SM 8.6, 24 GB) and H100 (Hopper, SM 9.0, 80 GB).
+# This is the ONLY hardware on which training is permitted.
+# =====================================================================================
+#
+# Ampere+ gives us the two things the T4 cannot:
+#   - bfloat16: gradient-ascent-family objectives (GA, NPO) are numerically sound in
+#     bf16 and NaN in fp16. This is why training lives here and nowhere else.
+#   - FlashAttention-2: SM80+. Safe to install and to request.
+#
+# Note for the 3090 specifically: 24 GB single-GPU cannot reproduce upstream's 2x L40s
+# DeepSpeed ZeRO-3 effective-batch-32 setup exactly. Upstream warns their numbers shift
+# when the distributed setup changes. Any training run here is a NEW number, not a
+# reproduction — record it as such in docs/04_decisions.md.
+
+transformers    # PIN to the open-unlearning resolved version
+datasets        # PIN to the open-unlearning resolved version
+accelerate      # PIN to the open-unlearning resolved version
+tokenizers      # PIN (follows transformers)
+
+# SM80+ only. Requires --no-build-isolation and a matching nvcc; budget ~20 min to build.
+#   pip install --no-build-isolation flash-attn==2.6.3
+flash-attn==2.6.3
+
+deepspeed>=0.14      # ZeRO-3, to approximate the upstream training setup
+bitsandbytes>=0.43   # paged_adamw_32bit, which upstream uses
+peft>=0.11
+trl>=0.9
+
+# rdl core
+omegaconf>=2.3,<3
+pydantic>=2.6,<3
+numpy>=1.24,<3
+pandas>=2.0
+huggingface_hub>=0.23
+rich>=13.0
+orjson>=3.9
+typer>=0.12
+
+faiss-cpu>=1.8
+sentence-transformers>=3.0

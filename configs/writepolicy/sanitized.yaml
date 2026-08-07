@@ -1,0 +1,16 @@
+# Phase 2: enforce at WRITE time, not only at retrieval time.
+#
+# This is the intervention the measurement motivates. The laundered node is written, not
+# retrieved, so a retrieval-time guardrail cannot see it. Checking content against a
+# semantic blocklist before the write is the earliest point at which the leak is visible.
+#
+# REQUIRES configs/memory/semantic_blocklist.yaml. Pairing this with an ID blocklist
+# degrades silently to framework_default — the node has a fresh id by construction, so
+# there is nothing for an id check to match. writer.py logs when that happens, because a
+# silent degradation would look like a null result.
+name: sanitized
+mode: sanitized
+mirrors_framework: "framework_default + write-time content check (ours)"
+write_source_kinds: [agent_answer]
+write_on_abstention: false
+sanitize_threshold: 0.75

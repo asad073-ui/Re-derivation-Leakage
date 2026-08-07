@@ -1,0 +1,25 @@
+# Agent B unlearned on a DIFFERENT forget set. Exploratory arm.
+#
+# CAVEAT, and it is a real one: TOFU's forget splits are NESTED
+# (forget01 subset forget05 subset forget10), so forget05 is not disjoint from forget10.
+# This arm is an APPROXIMATION until a genuinely disjoint checkpoint is trained on
+# Ampere. Do not report it as a disjoint control without that caveat attached.
+#
+# Tracked in docs/05_risks.md.
+agent_id: B
+role: secondary
+model: tofu_llama32_1b_npo_forget05
+
+abstention:
+  detector: lexical
+  logprob_threshold: -1.5
+  self_report_token: "<UNKNOWN>"
+  phrase_list: default
+  ensemble_rule: majority
+
+delegation:
+  policy: never
+  max_delegations: 0
+
+system_prompt: null
+notes: "Exploratory. TOFU splits are nested — not a true disjoint control."

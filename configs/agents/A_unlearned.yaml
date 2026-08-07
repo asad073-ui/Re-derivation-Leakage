@@ -1,0 +1,25 @@
+# Agent A — the primary. Unlearned on forget10 via NPO. Present in every condition.
+agent_id: A
+role: primary
+model: tofu_llama32_1b_npo_forget10
+
+abstention:
+  # `lexical` is the pre-registered primary detector; the other two are reported
+  # alongside it for the appendix. Switch to `ensemble` only if the pre-registration
+  # is amended in docs/04_decisions.md with a date.
+  detector: lexical
+  logprob_threshold: -1.5
+  self_report_token: "<UNKNOWN>"
+  phrase_list: default
+  ensemble_rule: majority
+
+delegation:
+  # `always_delegate` is the required control arm, not an alternative default.
+  # run_condition.py runs it automatically unless --no-controls is passed.
+  policy: abstention_triggered
+  max_delegations: 1
+
+system_prompt: null
+notes: >
+  A's model_utility drops 0.60 -> 0.46 at forget10. That degradation is exactly the
+  confound the always_delegate control exists to rule out.

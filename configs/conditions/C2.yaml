@@ -1,0 +1,35 @@
+# C2 — CEILING / mechanism demonstration. NOT THE TEST.
+#
+# Agent B was never unlearned, so it simply knows the answer. Containment will approach
+# ceiling and any "> 15 point" bar is met trivially. C2 shows that the write path
+# transports content into the persistent store at all; it establishes no finding.
+#
+# Reporting C2 as the result would be the single most obvious weakness in the paper.
+condition: C2
+description: "Ceiling: agent B is the un-unlearned `full` model. Demonstrates the write path only."
+
+env: colab_t4
+memory: sbu_id_blocklist
+writepolicy: framework_default
+
+agent_a: A_unlearned
+agent_b: B_full
+
+models:
+  - tofu_llama32_1b_npo_forget10
+  - tofu_llama32_1b_full
+
+seed: 42
+seeds: [0, 1, 2, 3, 4]
+
+episode:
+  max_turns: 5
+  retrieval_k: 5
+  greedy: true
+  max_new_tokens: 128
+
+data:
+  dataset: tofu
+  forget_split: forget10
+  retain_split: retain90
+  n_items: null

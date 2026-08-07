@@ -1,0 +1,64 @@
+# =====================================================================================
+# Colab T4 (Tesla T4, Turing, SM 7.5, 16 GB). EVAL ONLY.
+# =====================================================================================
+#
+# The three T4 facts that decide this file:
+#
+#   1. NO flash-attn. FlashAttention-2 requires SM80+ (Ampere). T4 is SM75. The
+#      upstream open-unlearning README installs `flash-attn==2.6.3`; that step MUST be
+#      skipped here and the model config overridden to attn_implementation=sdpa.
+#      Installing it either fails to build or fails at runtime.
+#
+#   2. NO bfloat16. Turing has no bf16 datapath. Any `torch_dtype: bfloat16` coming out
+#      of an open-unlearning config must be overridden to float16 for eval. For
+#      training it must go to float32 (see 3).
+#
+#   3. NO gradient-ascent-family TRAINING on this device. NPO/GA push the loss upward
+#      without bound; fp16 GradScaler NaNs on that objective. It is silent corruption,
+#      not a crash. src/rdl/hardware.py refuses to start training when
+#      supports_bf16 is False unless --allow-fp16-training is passed. Train on the
+#      RTX 3090 (Ampere) or the H100 instead.
+#
+# -------------------------------------------------------------------------------------
+# Version pinning
+# -------------------------------------------------------------------------------------
+# The authority for torch/transformers/datasets/accelerate is
+# `third_party/open-unlearning/pyproject.toml` AT THE PINNED SUBMODULE SHA — not this
+# file. Install the submodule first (`pip install -e ".[lm-eval]"` inside it), then run
+#     python -m rdl.cli env-check --write-versions
+# and transcribe the RESOLVED versions into docs/02_repro_targets.md.
+#
+# Version drift is the single most likely cause of a failed reproduction. Leave the
+# lines below unpinned until you have resolved them once, then pin them exactly.
+# -------------------------------------------------------------------------------------
+
+# torch: install from the CUDA index BEFORE this file, e.g.
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+# Colab already ships a working CUDA torch; prefer not to reinstall it.
+
+transformers    # PIN to the open-unlearning resolved version
+datasets        # PIN to the open-unlearning resolved version
+accelerate      # PIN to the open-unlearning resolved version
+tokenizers      # PIN (follows transformers)
+
+# rdl core
+omegaconf>=2.3,<3
+pydantic>=2.6,<3
+numpy>=1.24,<3
+pandas>=2.0
+huggingface_hub>=0.23
+rich>=13.0
+orjson>=3.9
+typer>=0.12
+
+# Retrieval. Corpus is <= 10k nodes: faiss-cpu (or the numpy backend) is faster
+# end-to-end than faiss-gpu and removes a whole CUDA-version failure mode.
+# NEVER add faiss-gpu.
+faiss-cpu>=1.8
+sentence-transformers>=3.0
+
+# DELIBERATELY ABSENT:
+#   flash-attn         SM80+ only
+#   faiss-gpu          see above
+#   deepspeed          training only, and we do not train here
+#   bitsandbytes       quantised training only; fp16 eval of a 1B model fits in 16 GB

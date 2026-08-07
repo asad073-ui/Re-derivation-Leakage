@@ -1,0 +1,21 @@
+# Phase 2 method: block on CONTENT, not on node identity.
+#
+# The measurement motivates this. An ID blocklist structurally cannot stop a node that
+# restates forgotten content under a fresh id — there is no id to match. A semantic
+# blocklist can, at the cost of a similarity threshold that trades false positives
+# against recall, which is exactly the trade the Phase-2 evaluation has to characterise.
+#
+# Pair with configs/writepolicy/sanitized.yaml: retrieval-time semantic blocking alone
+# does not help, because the laundered node is WRITTEN, not retrieved.
+name: semantic_blocklist
+blocklist: semantic
+enforce_at_retrieval: true
+derivation_closure: true
+refcount_prune: true
+retrieval_k: 5
+embedding_dim: 64
+
+# Cosine similarity against blocked content. Tune on a held-out set, never on forget10.
+semantic_threshold: 0.75
+# Optional NLI head for candidates between the recall floor and the threshold.
+semantic_use_nli: false
