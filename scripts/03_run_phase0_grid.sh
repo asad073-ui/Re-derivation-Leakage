@@ -14,16 +14,32 @@
 #
 # The primary gate is C3D - C1W. `rdl make-report` applies it and exits non-zero on
 # failure; this script propagates that.
+#
+#   ENV_NAME=vast_rtx3090 SEEDS=5 bash scripts/03_run_phase0_grid.sh
+#   ENV_NAME=colab_t4 SEEDS=1 CONDITIONS="C1W C3D" bash scripts/03_run_phase0_grid.sh --limit 5
+#
+# ENV_NAME swaps the EXECUTION environment only. The conditions are identical across
+# hardware by construction, which is what makes a result checkable on a box that is not
+# the one it was produced on.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SEEDS="${SEEDS:-5}"
 CONDITIONS="${CONDITIONS:-C0 C1 C1W C2 C3 C3D C3C}"
+ENV_NAME="${ENV_NAME:-vast_rtx3090}"
+
+echo "env        $ENV_NAME"
+echo "seeds      $SEEDS"
+echo "conditions $CONDITIONS"
 
 for C in $CONDITIONS; do
     echo
     echo "=================== $C ==================="
-    python -m rdl.cli run-condition --condition "configs/conditions/${C}.yaml" --seeds "$SEEDS" "$@"
+    python -m rdl.cli run-condition \
+        --condition "configs/conditions/${C}.yaml" \
+        --env "$ENV_NAME" \
+        --seeds "$SEEDS" \
+        "$@"
 done
 
 echo

@@ -5,7 +5,7 @@
 condition: C0
 description: "Sanity: agent A alone, no blocklist, no write-back. Must match REPO_SPEC 7 numbers."
 
-env: colab_t4
+env: vast_rtx3090
 memory: none
 writepolicy: disabled
 

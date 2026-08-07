@@ -1,6 +1,11 @@
 # Setup
 
-Four environments. Only the first is required before Colab.
+Four environments. Only the first is required before any GPU work.
+
+**Phase 0 runs on an RTX 3090 (Vast.ai).** Colab T4 is kept and still selectable with
+`--env colab_t4` — the conditions are hardware-independent by construction — but it is no
+longer the default. For the end-to-end 3090 sequence, read
+[`07_rtx3090_runbook.md`](07_rtx3090_runbook.md); this file covers per-environment setup.
 
 ---
 
@@ -41,7 +46,7 @@ make test-integration
 
 ---
 
-## 2. Colab T4 — eval only
+## 2. Colab T4 — eval only, `--env colab_t4`
 
 Runtime → Change runtime type → **T4 GPU**.
 
@@ -76,20 +81,40 @@ notebook says where to restart and what to re-run.
 
 ---
 
-## 3. RTX 3090 (Ampere, SM 8.6, 24 GB) — training permitted
+## 3. RTX 3090 (Ampere, SM 8.6, 24 GB) — **the Phase-0 environment**
 
 ```bash
 pip install -r requirements-gpu-ampere.txt
-pip install --no-build-isolation flash-attn==2.6.3    # ~20 min to build
+# FlashAttention-2 is OPTIONAL. Needs a CUDA *devel* image (nvcc) and ~20 min to build:
+INSTALL_FLASH_ATTN=1 bash scripts/01_bootstrap_openunlearning.sh
+```
+
+Without the wheel, `hardware.detect()` resolves attention to `sdpa` and records the
+choice; nothing crashes. **Do not mix SDPA and FA2 runs inside one comparison**
+(ADR-0031).
+
+Two profiles, same silicon:
+
+| profile | for |
+|---|---|
+| `vast_rtx3090` | a rented Vast.ai box: `/workspace` paths, `min_vram_gb: 20`, `min_free_disk_gb: 60` — a mis-rented instance is refused in the first four seconds |
+| `rtx3090` | a local card whose cache and disk layout are your own |
+
+```bash
+ENV_NAME=vast_rtx3090 bash scripts/00_env_check.sh    # exits non-zero on the wrong box
+ENV_NAME=vast_rtx3090 SEEDS=5 bash scripts/03_run_phase0_grid.sh
 ```
 
 bf16 makes gradient-ascent-family objectives numerically sound, which is the only reason
-training lives here.
+training is *permitted* here.
 
 **Caveat for any training run:** 24 GB single-GPU cannot reproduce upstream's 2× L40s
 ZeRO-3 effective-batch-32 setup, and upstream warns their numbers shift when the
 distributed setup changes. A training run here produces a **new number, not a
-reproduction** — record it as such in `04_decisions.md`.
+reproduction** — record it as such in `04_decisions.md`. Days 1–2 remain an *evaluation*
+reproduction on published checkpoints.
+
+Full sequence: [`07_rtx3090_runbook.md`](07_rtx3090_runbook.md).
 
 ---
 
@@ -109,7 +134,9 @@ bash scripts/01_bootstrap_openunlearning.sh
 ```
 
 The bootstrap script detects compute capability and skips `flash-attn` below SM80
-automatically. It also runs `setup_data.py --eval_logs`, which downloads TOFU/MUSE data
+automatically; at SM80+ it reports whether the wheel is present and builds it only when
+`INSTALL_FLASH_ATTN=1` (failing loudly if `nvcc` is absent rather than half-installing).
+It also runs `setup_data.py --eval_logs`, which downloads TOFU/MUSE data
 **and** the published eval logs — including the retain-model logs required to compute
 `forget_quality` at all.
 
@@ -124,9 +151,13 @@ from a file.
 
 ```
 HF_TOKEN=hf_...
-HF_HOME=/content/hf          # keep the cache OFF Drive: Drive I/O is slow, repos are GBs
+HF_HOME=/workspace/hf        # Vast.ai: the PERSISTENT volume, not the container overlay
+                             # Colab:   /content/hf — off Drive, whose I/O is slow
 TOKENIZERS_PARALLELISM=false
 ```
+
+`run-condition` and `run-repro` apply `env.hf_home` with `setdefault`, so an exported
+`HF_HOME` wins and the profile is the fallback rather than an override.
 
 ---
 

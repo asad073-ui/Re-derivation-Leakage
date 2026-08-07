@@ -76,8 +76,10 @@ is the single most likely cause of a failed reproduction, and it presents as a m
 mismatch that looks like a genuine unlearning difference.
 
 **Mitigation:** `rdl env-check --write-versions docs/02_repro_targets.md` on the first
-Colab run, then pin `requirements-gpu-t4.txt` to the resolved versions. Bisect order is
-fixed in `02_repro_targets.md` §4 fallback 2 — one change at a time.
+GPU run, then pin the matching requirements file (`requirements-gpu-ampere.txt` on the
+3090) to the resolved versions. Bisect order is fixed in `02_repro_targets.md` §4
+fallback 2 — one change at a time. Model weights are pinned separately by exact Hub
+commit (ADR-0030), so "the checkpoint moved" is excluded before the bisect starts.
 
 ---
 
@@ -163,13 +165,33 @@ and uses a `GIT_ASKPASS` helper so the token never reaches a file or a cell outp
 
 ---
 
-## R11 · **L** · Colab sessions die mid-run
+## R11 · **L** · A GPU session dies mid-run
 
 **Status:** MITIGATED.
 
 **Mitigation:** `JsonlWriter` flushes on every record, so a killed session leaves a
 readable prefix. Results are append-only and content-addressed, so a resumed session
-never overwrites a partial run — it starts a new `run_id`.
+never overwrites a partial run — it starts a new `run_id`. On Vast.ai, use an
+**on-demand** instance for the full grid: an interruptible one is paused when outbid.
+Run inside the tmux session Vast starts by default so a dropped SSH connection does not
+take the grid with it.
+
+---
+
+## R13 · **M** · The rented instance is not the GPU that was asked for
+
+**Status:** MITIGATED.
+
+A marketplace instance can be a different card, a smaller card, a box whose torch has no
+CUDA build, or one whose disk cannot hold two checkpoints — and disk **cannot** be
+resized after creation. Discovering any of that from a results table costs the run.
+
+**Mitigation:** `configs/env/vast_rtx3090.yaml` declares `device: cuda`,
+`dtype: bfloat16`, `min_vram_gb: 20` and `min_free_disk_gb: 60`.
+`hardware.check_env_against_hardware` compares the profile against the detected box and
+reports **every** mismatch at once; `run-condition` and `run-repro` refuse to start, and
+`env-check --env vast_rtx3090` exits non-zero, before anything downloads. Pinned by
+`tests/unit/test_hardware_env.py`.
 
 ---
 

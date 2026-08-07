@@ -22,7 +22,7 @@
 condition: C3
 description: "Redundancy control: ONE unlearned checkpoint in both agent slots, framework-default write-back."
 
-env: colab_t4
+env: vast_rtx3090
 memory: sbu_id_blocklist
 writepolicy: framework_default
 

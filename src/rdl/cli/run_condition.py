@@ -39,7 +39,7 @@ from ..agents.abstention import build_detector
 from ..agents.delegation import build_delegation_policy
 from ..agents.llm_agent import LLMAgent
 from ..agents.writer import build_write_policy
-from ..config import AgentConfig, RDLConfig, config_hash, load_config
+from ..config import AgentConfig, ConfigError, RDLConfig, config_hash, load_config
 from ..eval.aggregate import summarise_seeds
 from ..eval.containment import (
     SURFACES,
@@ -51,17 +51,30 @@ from ..eval.containment import (
 from ..eval.controls import compute_controls
 from ..eval.laundering import laundered_items
 from ..eval.tofu_data import TofuItem, as_forget_items, cluster_ids, load_items
-from ..hardware import HardwareProfile, detect
+from ..hardware import (
+    EnvHardwareMismatch,
+    HardwareProfile,
+    assert_env_matches_hardware,
+    detect,
+)
 from ..logging_utils import JsonlWriter, get_logger
 from ..memory.blocklist import Blocklist, NoBlocklist, build_blocklist
 from ..memory.node import MemoryNode
 from ..memory.store import MemoryStore
 from ..models.loader import load_lm
+from ..models.stub import LMHandle
 from ..orchestrator.loop import EpisodePolicies, run_episode
 from ..paths import append_manifest, git_sha, make_run_id, run_dir
 from ..seeding import set_all_seeds
 
-__all__ = ["ArmResult", "build_agent", "execute_condition", "run_condition", "seed_store"]
+__all__ = [
+    "ArmResult",
+    "build_agent",
+    "build_shared_agents",
+    "execute_condition",
+    "run_condition",
+    "seed_store",
+]
 
 log = get_logger(__name__)
 
@@ -72,10 +85,18 @@ def build_agent(
     hw: HardwareProfile,
     *,
     token: str | None = None,
+    lm: LMHandle | None = None,
 ) -> LLMAgent:
-    """Construct one agent. The model always comes through `models.loader.load_lm`."""
+    """Construct one agent. The model always comes through `models.loader.load_lm`.
+
+    `lm` lets the caller supply an already-loaded handle so one checkpoint can back two
+    agent slots (C3) and survive across seeds and control arms. The agent itself is
+    stateless — it holds a detector, a prompt style, and a reference — so reuse changes
+    nothing about what is measured.
+    """
     model_cfg = cfg.models[agent_cfg.model]
-    lm = load_lm(model_cfg, hw, token=token)
+    if lm is None:
+        lm = load_lm(model_cfg, hw, token=token)
     detector = build_detector(
         agent_cfg.abstention.detector,
         logprob_threshold=agent_cfg.abstention.logprob_threshold,
@@ -90,6 +111,44 @@ def build_agent(
         max_new_tokens=cfg.episode.max_new_tokens,
         prompt_style=cfg.episode.prompt_style,
     )
+
+
+def build_shared_agents(
+    cfg: RDLConfig,
+    hw: HardwareProfile,
+    *,
+    token: str | None = None,
+) -> list[LLMAgent]:
+    """Load this condition's agents ONCE, to be reused by every seed and every arm.
+
+    The runner used to build and tear down the models inside `execute_condition`, which
+    is called for the treatment, the always-delegate control, the retain arm and the
+    agent-A-alone arm, at every seed: ~195 model initialisations for the full grid, each
+    re-reading weights from the HF cache and re-allocating VRAM. On a rented GPU that is
+    most of the bill, and the repeated allocate/free cycle is also the main source of
+    CUDA memory fragmentation across a long run.
+
+    Reuse is sound because an `LLMAgent` carries no per-run state: the store, the
+    blocklist, the transcripts and the item ordering are all rebuilt per arm inside
+    `execute_condition`. Only the weights are shared.
+
+    Two agent slots pointing at the SAME checkpoint (C3, C1) share one handle rather than
+    loading it twice. With greedy decoding that is already the same computation — it is
+    exactly why C3 is a redundancy control — so the second copy only ever cost VRAM.
+    Stub models are not shared: they are free to build and their call log is per-instance.
+    """
+    handles: dict[str, LMHandle] = {}
+    agents: list[LLMAgent] = []
+    for agent_cfg in (cfg.agent_a, cfg.agent_b):
+        if agent_cfg is None:
+            continue
+        model_cfg = cfg.models[agent_cfg.model]
+        shared = handles.get(agent_cfg.model) if model_cfg.kind == "hf" else None
+        agent = build_agent(agent_cfg, cfg, hw, token=token, lm=shared)
+        if model_cfg.kind == "hf":
+            handles.setdefault(agent_cfg.model, agent.lm)
+        agents.append(agent)
+    return agents
 
 
 def seed_store(
@@ -313,6 +372,13 @@ def _arm_record(cfg: RDLConfig, arm: ArmResult, seed: int, policy: str, label: s
 def run_condition(
     condition: Path = typer.Option(..., "--condition", help="path to configs/conditions/CX.yaml"),
     seeds: int = typer.Option(5, "--seeds", help="number of seeds (0..seeds-1)"),
+    environment: str | None = typer.Option(
+        None,
+        "--env",
+        help="execution environment config from configs/env, e.g. vast_rtx3090, "
+        "rtx3090, colab_t4. Replaces the whole env group named by the condition file; "
+        "the scientific condition is unchanged.",
+    ),
     override: list[str] = typer.Option([], "--set", help="OmegaConf dotlist override, repeatable"),
     fixture: Path | None = typer.Option(
         None, "--fixture", help="TOFU JSON fixture (offline smoke test). Implies --allow-fixture."
@@ -335,17 +401,52 @@ def run_condition(
     dry_run: bool = typer.Option(False, "--dry-run", help="print the resolved config and exit"),
 ) -> None:
     """Run one condition across seeds and write the results directory."""
-    cfg = load_config(condition, override)
+    import os
+
+    try:
+        cfg = load_config(condition, override, env_override=environment)
+    except ConfigError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED)
+        raise typer.Exit(code=2) from exc
     hw = detect()
     chash = config_hash(cfg)
 
+    # The env profile is only a claim until it is applied and checked. HF_HOME first —
+    # on a rented box the default cache lands on the container overlay, and a 2.5 GB
+    # checkpoint downloaded there is re-downloaded on the next start. `setdefault` so an
+    # operator who exported HF_HOME keeps their choice.
+    if cfg.env.hf_home:
+        os.environ.setdefault("HF_HOME", cfg.env.hf_home)
+
     typer.echo(f"condition  {cfg.condition}  ({cfg.description})")
+    typer.echo(f"env        {cfg.env.name}  HF_HOME={os.environ.get('HF_HOME')}")
     typer.echo(f"hardware   {hw.summary()}")
     typer.echo(f"config     sha256={chash[:16]}")
 
     if dry_run:
         typer.echo(json.dumps(cfg.model_dump(mode="json"), indent=2)[:6000])
         return
+
+    # Then the preconditions. A grid that takes hours must not discover in its results
+    # that it ran on the wrong card, in the wrong precision, or out of disk.
+    try:
+        assert_env_matches_hardware(cfg.env, hw)
+    except EnvHardwareMismatch as exc:
+        typer.secho(str(exc), fg=typer.colors.RED)
+        typer.secho(
+            "  -> pick the profile that matches this box: --env local_cpu | colab_t4 | "
+            "rtx3090 | vast_rtx3090 | h100",
+            fg=typer.colors.YELLOW,
+        )
+        raise typer.Exit(code=2) from exc
+
+    if hw.is_cuda and hw.supports_flash_attn2 and not hw.flash_attn_installed:
+        typer.secho(
+            f"  {hw.name} is FA2-capable but `flash_attn` is not installed: this run "
+            "uses SDPA. That is recorded in the report — never mix SDPA and FA2 runs "
+            "inside one comparison.",
+            fg=typer.colors.YELLOW,
+        )
 
     # ---- data ----------------------------------------------------------------------
     # There is no reason to pass --allow-fixture except to run on the fixture, so it
@@ -408,57 +509,80 @@ def run_condition(
 
     policy_name = cfg.agent_a.delegation.policy
 
-    for s in range(seeds):
-        typer.echo(f"  seed {s} ...")
-        arm = execute_condition(cfg, items, hw, s, token=token)
-        with JsonlWriter(out / f"transcripts_seed{s}.jsonl", append=False) as w:
-            for tr in arm.transcripts:
-                w.write_all(tr.events)
-        per_seed.append(_arm_record(cfg, arm, s, policy_name, "treatment"))
-        hit_vectors.append(arm.hit_vector(items, primary_surface))
+    # Loaded once for the whole condition: every seed and every control arm below shares
+    # these weights. See `build_shared_agents` for why that is sound and what it saves.
+    typer.echo(f"  loading {1 if cfg.agent_b is None else 2} agent(s) ...")
+    shared_agents = build_shared_agents(cfg, hw, token=token)
+    typer.echo(f"  agents     {[a.agent_id for a in shared_agents]}")
 
-        if not controls:
-            continue
+    try:
+        for s in range(seeds):
+            typer.echo(f"  seed {s} ...")
+            arm = execute_condition(cfg, items, hw, s, agents_override=shared_agents)
+            with JsonlWriter(out / f"transcripts_seed{s}.jsonl", append=False) as w:
+                for tr in arm.transcripts:
+                    w.write_all(tr.events)
+            per_seed.append(_arm_record(cfg, arm, s, policy_name, "treatment"))
+            hit_vectors.append(arm.hit_vector(items, primary_surface))
 
-        ctl_arm = None
-        if cfg.agent_b is not None:
-            ctl_arm = execute_condition(
-                cfg, items, hw, s, token=token, delegation_override="always_delegate"
+            if not controls:
+                continue
+
+            ctl_arm = None
+            if cfg.agent_b is not None:
+                ctl_arm = execute_condition(
+                    cfg,
+                    items,
+                    hw,
+                    s,
+                    delegation_override="always_delegate",
+                    agents_override=shared_agents,
+                )
+                per_seed_control.append(
+                    _arm_record(cfg, ctl_arm, s, "always_delegate", "always_delegate")
+                )
+
+            retain_arm = None
+            if retain_items:
+                retain_arm = execute_condition(
+                    cfg, retain_items, hw, s, agents_override=shared_agents
+                )
+                per_seed_retain.append(_arm_record(cfg, retain_arm, s, policy_name, "retain"))
+
+            a_alone_arm = None
+            if cfg.agent_b is not None and retain_items:
+                # Control 2: how much of the system's advantage on RETAIN questions is
+                # plain ensemble benefit? Agent A answering retain questions alone is the
+                # comparator; without it "the system beats one agent" is unquantified.
+                a_alone_arm = execute_condition(
+                    cfg, retain_items, hw, s, agents_override=shared_agents[:1]
+                )
+                per_seed_a_alone.append(
+                    _arm_record(cfg, a_alone_arm, s, "never", "agent_a_alone_retain")
+                )
+
+            control_reports.append(
+                compute_controls(
+                    forget_transcripts=arm.transcripts,
+                    retain_transcripts=retain_arm.transcripts if retain_arm else (),
+                    results_abstention=arm.containment,
+                    results_always_delegate=ctl_arm.containment if ctl_arm else (),
+                    results_retain=retain_arm.containment if retain_arm else (),
+                    agent_only_retain=a_alone_arm.containment if a_alone_arm else (),
+                    system_retain=retain_arm.containment if retain_arm else (),
+                    surface=primary_surface,
+                    k=cfg.episode.max_turns,
+                    # A condition with no agent B cannot have a delegation control, and
+                    # "absent" must not be scored as "failed" — see eval/controls.py.
+                    is_multi_agent=cfg.agent_b is not None,
+                    has_retain_arm=bool(retain_items),
+                ).to_dict()
             )
-            per_seed_control.append(
-                _arm_record(cfg, ctl_arm, s, "always_delegate", "always_delegate")
-            )
-
-        retain_arm = None
-        if retain_items:
-            retain_arm = execute_condition(cfg, retain_items, hw, s, token=token)
-            per_seed_retain.append(_arm_record(cfg, retain_arm, s, policy_name, "retain"))
-
-        a_alone_arm = None
-        if cfg.agent_b is not None and retain_items:
-            # Control 2: how much of the system's advantage on RETAIN questions is plain
-            # ensemble benefit? Agent A answering retain questions alone is the
-            # comparator; without it "the system beats one agent" is unquantified.
-            a_alone_arm = execute_condition(
-                cfg, retain_items, hw, s, token=token, single_agent=True
-            )
-            per_seed_a_alone.append(
-                _arm_record(cfg, a_alone_arm, s, "never", "agent_a_alone_retain")
-            )
-
-        control_reports.append(
-            compute_controls(
-                forget_transcripts=arm.transcripts,
-                retain_transcripts=retain_arm.transcripts if retain_arm else (),
-                results_abstention=arm.containment,
-                results_always_delegate=ctl_arm.containment if ctl_arm else (),
-                results_retain=retain_arm.containment if retain_arm else (),
-                agent_only_retain=a_alone_arm.containment if a_alone_arm else (),
-                system_retain=retain_arm.containment if retain_arm else (),
-                surface=primary_surface,
-                k=cfg.episode.max_turns,
-            ).to_dict()
-        )
+    finally:
+        # Even on a crash: a leaked 2.5 GB handle makes the next condition in the grid
+        # OOM for a reason that has nothing to do with the next condition.
+        for agent in shared_agents:
+            agent.close()
 
     # ---- aggregate -------------------------------------------------------------------
     def series(records: list[dict], surface: str) -> list[float]:

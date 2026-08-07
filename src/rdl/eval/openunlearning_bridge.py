@@ -6,13 +6,17 @@ parses the `*_SUMMARY.json` it produces. It does not import from `third_party` i
 way that would require patching it. Every metric number we report must be producible by
 their code on their configs, so a reviewer can re-run it.
 
-The two T4 overrides that must always be applied, and why:
+The two model-arg overrides that must always be applied, and why:
 
-  torch_dtype=float16          T4 (SM 7.5) has no bf16 datapath
-  attn_implementation=sdpa     FlashAttention-2 is SM80+
+  torch_dtype                  upstream's configs/model/Llama-3.2-1B-Instruct.yaml pins
+                               `bfloat16`, which a T4 (SM 7.5) has no datapath for
+  attn_implementation          the same file pins `flash_attention_2`, which needs
+                               SM80+ **and** an installed `flash_attn` wheel
 
-`build_eval_command` applies them from the `HardwareProfile`, so a T4 session cannot
-accidentally inherit a bf16 default out of an upstream config.
+`build_eval_command` applies both from the `HardwareProfile`, so neither a Turing card
+nor an Ampere card without the wheel can inherit those upstream defaults. On a bare
+RTX 3090 image the second one is the difference between an eval that runs under SDPA and
+an `ImportError` inside `from_pretrained` after the checkpoint has downloaded.
 
 **The override names are upstream's, not ours.** Verified against the pinned submodule
 at `4ad738a`:
@@ -141,6 +145,11 @@ class EvalSpec:
     task_name: str
     experiment: str = "eval/tofu/default"
     model_config: str = "Llama-3.2-1B-Instruct"
+    # Exact Hub commit for `model_path`. Emitted as `+model.model_args.revision=<sha>`:
+    # upstream splats `model_args` into `from_pretrained`, and the `+` is required
+    # because the key does not exist in their config (Hydra struct mode rejects a plain
+    # override for an absent key, exactly as it does for `retain_split`).
+    revision: str | None = None
     forget_split: str = "forget10"
     holdout_split: str | None = None
     retain_logs_path: str | None = None
@@ -190,8 +199,10 @@ def build_eval_command(
         f"experiment={spec.experiment}",
         f"model={spec.model_config}",
         f"model.model_args.pretrained_model_name_or_path={spec.model_path}",
-        # The two T4 overrides. Applied unconditionally from the hardware profile so a
-        # bf16 default in an upstream config can never reach a Turing card.
+        # Applied unconditionally from the hardware profile, so neither the bf16 default
+        # nor the flash_attention_2 default in upstream's model config can reach a device
+        # that cannot run it. `hw.recommended_attn` already accounts for whether the
+        # flash_attn wheel is installed, not just for the SM version.
         f"model.model_args.attn_implementation={attn}",
         f"model.model_args.torch_dtype={dtype}",
         f"forget_split={spec.forget_split}",
@@ -207,6 +218,11 @@ def build_eval_command(
         f"task_name={spec.task_name}",
         f"paths.output_dir={spec.resolved_output_dir()}",
     ]
+    if spec.revision:
+        # `+` because `revision` is not a key in upstream's model_args. Without the pin,
+        # `main` can move between the reproduction and the grid and the two runs would
+        # silently be evaluating different weights.
+        cmd.append(f"+model.model_args.revision={spec.revision}")
     cmd.extend(spec.extra_overrides)
     return cmd
 

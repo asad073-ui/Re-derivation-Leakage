@@ -24,7 +24,7 @@
 condition: C3D
 description: "THE test: two INDEPENDENTLY unlearned agents on the same forget set, framework-default write-back."
 
-env: colab_t4
+env: vast_rtx3090
 memory: sbu_id_blocklist
 writepolicy: framework_default
 

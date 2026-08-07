@@ -43,6 +43,7 @@ __all__ = [
     "compose",
     "config_hash",
     "load_config",
+    "load_env",
     "validate",
 ]
 
@@ -81,6 +82,11 @@ class EnvConfig(_Base):
     allow_fp16_training: bool = False
     hf_home: str | None = None
     index_backend: Literal["numpy", "faiss"] = "numpy"
+    # Preconditions on the machine, checked by hardware.check_env_against_hardware before
+    # anything is downloaded. `None` means "do not check". A rented instance that turns
+    # out to be a 12 GB card must fail in the first four seconds, not in the results.
+    min_vram_gb: float | None = None
+    min_free_disk_gb: float | None = None
     notes: str | None = None
 
     @field_validator("batch_size")
@@ -356,16 +362,34 @@ def _group_path(group: str, name: str, root: Path | None) -> Path:
     return configs_dir(root) / group / f"{name}.yaml"
 
 
+def load_env(name: str, root: Path | None = None) -> EnvConfig:
+    """Load and validate one ``configs/env/<name>.yaml`` on its own.
+
+    `run-repro` needs the environment (HF_HOME, the VRAM precondition) without composing
+    a whole condition tree, and duplicating the group-path convention there is how the
+    two drift apart.
+    """
+    raw = _load_yaml(_group_path("env", name, root))
+    container = OmegaConf.to_container(raw, resolve=True)
+    if not isinstance(container, dict):
+        raise ConfigError(f"configs/env/{name}.yaml: top level must be a mapping")
+    try:
+        return EnvConfig.model_validate(container)
+    except Exception as exc:
+        raise ConfigError(f"configs/env/{name}.yaml failed validation:\n{exc}") from exc
+
+
 def compose(
     condition_path: str | Path,
     overrides: Sequence[str] | None = None,
     root: Path | None = None,
+    env_override: str | None = None,
 ) -> DictConfig:
     """Merge the config tree named by a condition file, then apply dotlist overrides.
 
     The condition file names its fragments by group:
 
-        env: colab_t4
+        env: vast_rtx3090
         memory: sbu_id_blocklist
         writepolicy: framework_default
         agent_a: A_unlearned
@@ -374,6 +398,13 @@ def compose(
 
     Each is loaded from ``configs/<group>/<name>.yaml``. Anything else in the condition
     file (seed, episode, data, ...) is merged on top.
+
+    `env_override` replaces the **whole env group**, which a dotlist override cannot do.
+    By the time `--set env=rtx3090` is applied, `merged.env` is already a mapping, so the
+    dotlist would either merge a bare string into a node or (worse) leave the previous
+    profile's keys in place under a new `name`. The scientific conditions must be
+    identical across hardware; only the execution environment moves — hence a group
+    selector rather than a per-key edit.
     """
     condition_path = Path(condition_path)
     raw = _load_yaml(condition_path)
@@ -381,7 +412,8 @@ def compose(
     merged = OmegaConf.create({})
 
     # --- env ------------------------------------------------------------------
-    env_name = raw.pop("env", None)
+    configured_env = raw.pop("env", None)
+    env_name = env_override if env_override is not None else configured_env
     if env_name is None:
         raise ConfigError(f"{condition_path}: missing required key 'env'")
     merged.env = _load_yaml(_group_path("env", str(env_name), root))
@@ -445,9 +477,10 @@ def load_config(
     condition_path: str | Path,
     overrides: Sequence[str] | None = None,
     root: Path | None = None,
+    env_override: str | None = None,
 ) -> RDLConfig:
     """compose + validate. This is the only entry point callers should use."""
-    return validate(compose(condition_path, overrides, root))
+    return validate(compose(condition_path, overrides, root, env_override=env_override))
 
 
 def config_hash(cfg: RDLConfig | DictConfig | dict) -> str:

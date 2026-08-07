@@ -52,6 +52,11 @@ class ModelEntry:
     repo_id: str
     status: Status
     note: str = ""
+    # Exact Hub commit. `main` is a moving target: the same repo commit re-run a month
+    # later can pull different weights, and nothing in the report would say so. Kept in
+    # lockstep with configs/models/*.yaml — `tests/unit/test_checkpoint_ids.py` fails if
+    # the two disagree. See ADR-0030.
+    revision: str | None = None
 
 
 _ENTRIES: tuple[ModelEntry, ...] = (
@@ -60,6 +65,7 @@ _ENTRIES: tuple[ModelEntry, ...] = (
         alias="tofu_llama32_1b_full",
         repo_id="open-unlearning/tofu_Llama-3.2-1B-Instruct_full",
         status="confirmed",
+        revision="88e31200b97e4c0c04ae0d2f0b591f427046d192",
         note="TOFU finetuned target. Published targets: model_utility 0.60, "
         "forget_truth_ratio 0.48. Run the sanity eval against THIS first — it "
         "isolates 'is my install correct' from 'does the unlearned ckpt exist'.",
@@ -68,6 +74,7 @@ _ENTRIES: tuple[ModelEntry, ...] = (
         alias="tofu_llama32_1b_retain90",
         repo_id="open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90",
         status="confirmed",
+        revision="7114300c0049527a71833f5683965c358ad9dcbf",
         note="Retain oracle for forget10. Published: model_utility 0.59, "
         "forget_truth_ratio 0.63. Its eval log is also the retain_logs_path "
         "required to compute forget_quality.",
@@ -79,6 +86,7 @@ _ENTRIES: tuple[ModelEntry, ...] = (
             "_lr1e-05_beta0.1_alpha1_epoch10"
         ),
         status="confirmed",
+        revision="94ed64eb73bc1872d52064833aaef364f4895c9c",
         note="THE Day 1-2 target. Published: model_utility 0.46, "
         "forget_truth_ratio 0.70, forget_quality 0.02 (report, do not gate). "
         "lr1e-05/beta0.1/alpha1/epoch10 is the setting docs/repro.md was generated "
@@ -93,6 +101,7 @@ _ENTRIES: tuple[ModelEntry, ...] = (
             "_lr2e-05_beta0.5_alpha1_epoch10"
         ),
         status="confirmed",
+        revision="eabf32c4883a5647c784c60c998b4b96cd48b798",
         note="Agent B for the C3D arm: forget10 removed by a SEPARATE NPO run "
         "(lr2e-05, beta0.5). Same forget set, different optimisation trajectory, so "
         "its residual knowledge is not A's residual knowledge by construction. This "

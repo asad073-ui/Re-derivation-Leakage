@@ -498,3 +498,147 @@ provenance edge — is true of all three and is what puts the record outside the
 an id blocklist and a derivation closure. The trigger is the most permissive choice,
 which is right for a "can this happen at all" measurement; `write_on_abstention` and
 `write_source_kinds` exist so the sensitivity can be reported.
+
+---
+
+## ADR-0027 — 2026-08-07 — Phase 0 runs on an RTX 3090; the T4 profile is kept, not replaced
+
+**Decision.** `configs/env/vast_rtx3090.yaml` is the production environment and every
+condition file now names it. `colab_t4.yaml`, `rtx3090.yaml` and `h100.yaml` remain, and
+any of them can be selected per invocation with `rdl run-condition --env <name>`.
+
+**Context.** A 16 GB T4 with no bf16 datapath is the wrong instrument for a design whose
+treatment arms (C3D, C3C) hold two 1B checkpoints at once. An RTX 3090 gives 24 GB,
+native bf16, FA2-capable silicon and no session limit.
+
+**Rejected: replace every `env: colab_t4` and delete the T4 profile.** The conditions are
+hardware-independent by construction — that is what makes a result checkable on a box
+that is not the one that produced it. A reviewer with nothing but Colab must still be
+able to re-run the smoke tests, and a result that exists on exactly one machine is a
+result nobody can check.
+
+**Consequence.** `--env` replaces the whole env **group**, which a dotlist override
+cannot do: by the time `--set env=rtx3090` is applied, `env` is a populated mapping, so
+it either fails validation or (as `env.name=`) relabels the profile while leaving the
+previous one's values — Colab's `/content` HF cache — in place on a box where that path
+does not exist. Pinned by `tests/unit/test_config.py`. The env is part of the
+`config_hash`: two runs on different hardware are not the same run and the id says so.
+
+---
+
+## ADR-0028 — 2026-08-07 — Control verdicts are three-valued, and only FAIL blocks
+
+**Decision.** `eval/controls.py` reports `PASS | FAIL | NOT_APPLICABLE` per control.
+`make-report` blocks on `FAIL` only, via `controls.is_blocking`, which also reads the
+legacy boolean form correctly.
+
+**Context.** C0 and C1W are single-agent by definition. There is no agent B, so nothing
+delegates and `always_delegate` is not a routing policy that can be applied to them. The
+verdict was a bare boolean; the absent control produced `False`; `make-report` read
+`False` as "the effect does not survive under always_delegate" and raised a **global**
+blocker. Running C1W — the baseline the primary estimand is measured against — therefore
+made the entire grid unreportable no matter what the numbers were.
+
+**Rejected: skip single-agent conditions when checking controls.** That hides a real
+failure in a two-agent arm whose control arm silently produced nothing. The distinction
+that matters is "this control cannot exist here" versus "this control was not evaluated",
+and only an explicit third value can carry it: a two-agent arm with an empty
+`always_delegate` result is now `FAIL`, not `NOT_APPLICABLE`.
+
+**Consequence.** `run_condition` passes `is_multi_agent` and `has_retain_arm` explicitly
+rather than letting them be inferred. The applicability flags are written into every
+control report. Pinned by `tests/unit/test_controls_applicability.py` and
+`tests/unit/test_report_gate.py::test_single_agent_baseline_does_not_block_the_grid`.
+
+---
+
+## ADR-0029 — 2026-08-07 — Days 1-2 are a prerequisite for Days 3-5, enforced by `make-report`
+
+**Decision.** `make-report` blocks unless: `--target full` and `--target npo_forget10`
+have both been reproduced **and passed**; every other checkpoint an arm loaded has an
+individual `--measure-only` characterisation; every checkpoint is revision-pinned and the
+Days 1-2 run used the same revision as the grid; and the conditions agree on dataset,
+splits, clustering and seed count.
+
+**Context.** The reproduction table was *displayed* in the report and *required* by
+nothing. A grid could pass its gate on an installation that had never been shown to
+compute upstream's metrics correctly, on checkpoints whose individual forgetting was
+unmeasured. A `C3D - C1W` delta between two unvalidated systems is not evidence.
+
+**Rejected: a warning.** The pre-registration's whole mechanism is that criteria are
+applied by code and produce a non-zero exit. A warning is read after the numbers.
+
+**Consequence.** Agent B needs `run-repro --measure-only --checkpoint-label
+agent_b_independent` before any C3D/C3C number is reportable — which is acceptance item 8
+of `00b_preregistration_v2.md`, now enforced rather than described.
+`scripts/02_repro_tofu_npo_forget10.sh` runs it as step 4.
+
+---
+
+## ADR-0030 — 2026-08-07 — Every checkpoint is pinned to an exact Hub commit
+
+**Decision.** `configs/models/*.yaml` and `models/registry.py` both carry `revision:`, the
+40-character Hub commit sha, and a test fails if the two disagree. `EvalSpec` emits it to
+open-unlearning as `+model.model_args.revision=<sha>`.
+
+**Context.** `main` is a moving target. Re-running the same repo commit a month later can
+pull different weights, two runs with the same `config_hash` would not be the same
+experiment, and nothing in the report would say so.
+
+**Consequence.** The `+` prefix is required: `revision` is not a key in upstream's
+`model_args`, and Hydra rejects a plain override for an absent key — the same failure mode
+as `retain_split=`. Upstream splats `model_args` into `from_pretrained`, which accepts
+`revision`. Resolved on the Hub 2026-08-07:
+
+| checkpoint | commit |
+|---|---|
+| `tofu_Llama-3.2-1B-Instruct_full` | `88e31200b97e4c0c04ae0d2f0b591f427046d192` |
+| `tofu_Llama-3.2-1B-Instruct_retain90` | `7114300c0049527a71833f5683965c358ad9dcbf` |
+| `unlearn_..._NPO_lr1e-05_beta0.1_alpha1_epoch10` (agent A) | `94ed64eb73bc1872d52064833aaef364f4895c9c` |
+| `unlearn_..._NPO_lr2e-05_beta0.5_alpha1_epoch10` (agent B) | `eabf32c4883a5647c784c60c998b4b96cd48b798` |
+
+---
+
+## ADR-0031 — 2026-08-07 — FlashAttention-2 capability and availability are separate facts
+
+**Decision.** `HardwareProfile` carries `supports_flash_attn2` (SM >= 8.0) **and**
+`flash_attn_installed` (`importlib.util.find_spec("flash_attn")`). `recommended_attn` is
+`flash_attention_2` only when both hold, otherwise `sdpa`. Both are printed by
+`env-check` and recorded in every report.
+
+**Context.** The detector treated every SM80+ card as FA2-capable. A fresh Vast.ai or
+RunPod image has no `nvcc` and therefore no wheel, so the recommendation was an
+`ImportError` inside `from_pretrained` — after the 2.5 GB checkpoint had downloaded.
+Upstream's own `configs/model/Llama-3.2-1B-Instruct.yaml` hard-codes
+`attn_implementation: flash_attention_2`, so nothing else in the stack would have caught
+it; the bridge's unconditional override is the only thing between that default and the
+model load.
+
+**Rejected: install flash-attn automatically during bootstrap.** It needs a CUDA *devel*
+image and ~20 minutes of build time, and failing the bootstrap over an optional
+dependency is worse than running under SDPA. `INSTALL_FLASH_ATTN=1` opts in and fails
+loudly when `nvcc` is missing.
+
+**Consequence.** SDPA and FA2 runs must not be mixed inside one comparison. Because the
+implementation is in every report, a mixed table is detectable after the fact — but it is
+not fixable without a rerun, so the runbook says to choose once.
+
+---
+
+## ADR-0032 — 2026-08-07 — Models are loaded once per condition, not once per arm per seed
+
+**Decision.** `run_condition` builds the agents once via `build_shared_agents` and passes
+them to every `execute_condition` call — treatment, always-delegate control, retain arm,
+agent-A-alone — across all seeds, closing them in a `finally`. Two agent slots naming the
+same checkpoint (C3, C1) share one handle.
+
+**Context.** `execute_condition` built and tore down its models on every call: four calls
+per seed on a two-agent condition, ~195 model initialisations across the seven-condition
+five-seed grid. On a rented GPU that is most of the wall clock, and the repeated
+allocate/free cycle is the main source of CUDA fragmentation over a long run.
+
+**Consequence.** Sound only because `LLMAgent` carries no per-run state: the memory store,
+the blocklist, the transcripts and the item ordering are all still rebuilt per arm, which
+is what a seed is a replicate of. Pinned by `tests/contract/test_shared_agents.py`,
+including that seeds still permute episode order — with greedy decoding that is the only
+channel through which a seed varies at all.

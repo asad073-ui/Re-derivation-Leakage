@@ -7,6 +7,8 @@
 name: tofu_llama32_1b_retain90
 kind: hf
 repo_id: open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90
+# Exact Hub commit, resolved 2026-08-07. See ADR-0030.
+revision: 7114300c0049527a71833f5683965c358ad9dcbf
 dtype_override: null
 attn_override: null
 trust_remote_code: false

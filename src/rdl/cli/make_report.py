@@ -31,16 +31,28 @@ from typing import Any
 import typer
 
 from ..eval.aggregate import condition_delta_gate, paired_delta_gate
+from ..eval.controls import NOT_APPLICABLE, is_blocking
 from ..logging_utils import read_jsonl
+from ..models.registry import entry_for
 from ..paths import manifest_path, results_dir
 
 __all__ = [
     "GATE_PAIRINGS",
+    "REQUIRED_REPRO_TARGETS",
     "collect_runs",
     "evaluate_gates",
     "make_report",
     "markdown_table",
+    "reproduction_blockers",
 ]
+
+# Days 1-2 are a PREREQUISITE for Days 3-5, not a companion table. Both of these must
+# have been reproduced, and reproduced by a passing run, before any condition delta means
+# anything: the first says our open-unlearning install computes their metrics correctly,
+# the second says the checkpoint agent A is built from is the one the published numbers
+# describe. Without them a C3D - C1W delta is a difference between two unvalidated
+# systems. See ADR-0029.
+REQUIRED_REPRO_TARGETS: tuple[str, ...] = ("full", "npo_forget10")
 
 # (treatment, baseline, is_primary, why)
 GATE_PAIRINGS: tuple[tuple[str, str, bool, str], ...] = (
@@ -86,10 +98,9 @@ def collect_runs(root: Path | None = None) -> list[dict]:
     out: list[dict] = []
     if not rd.exists():
         return out
-    for path in sorted(rd.glob("*/condition_report.json")):
-        out.append(json.loads(path.read_text(encoding="utf-8")))
-    for path in sorted(rd.glob("*/repro_report.json")):
-        out.append(json.loads(path.read_text(encoding="utf-8")))
+    for name in ("condition_report.json", "repro_report.json", "measure_report.json"):
+        for path in sorted(rd.glob(f"*/{name}")):
+            out.append(json.loads(path.read_text(encoding="utf-8")))
     return out
 
 
@@ -150,6 +161,27 @@ def repro_table(runs: list[dict]) -> str:
     return "\n".join(rows)
 
 
+def measure_table(runs: list[dict]) -> str:
+    """Checkpoints characterised WITHOUT a published comparison — agent B, chiefly."""
+    measures = [r for r in runs if r.get("phase") == "phase0_days1-2_measure"]
+    if not measures:
+        return "_no measure-only runs found_"
+    rows = [
+        "| label | checkpoint | revision | model_utility | forget_truth_ratio | "
+        "forget_quality |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in measures:
+        m = r.get("metrics", {})
+        rev = str(r.get("revision") or "UNPINNED")
+        rows.append(
+            f"| {r.get('checkpoint_label', '?')} | `{r.get('checkpoint')}` | "
+            f"`{rev[:12]}` | {m.get('model_utility', '—')} | "
+            f"{m.get('forget_truth_ratio', '—')} | {m.get('forget_quality', '—')} |"
+        )
+    return "\n".join(rows)
+
+
 def _by_condition(runs: list[dict]) -> dict[str, dict]:
     """Latest condition report per condition, keyed by condition name."""
     out: dict[str, dict] = {}
@@ -195,6 +227,143 @@ def _flat(gate) -> dict:
     d = gate.to_dict()
     detail = d.pop("detail", {})
     return {**detail, **d}
+
+
+def _checkpoints_used(conds: dict[str, dict]) -> dict[str, dict]:
+    """Every HF checkpoint that produced a condition number, with its pinned revision.
+
+    Keyed by repo id; the value records which conditions used it and which revision each
+    of them declared, so a disagreement between two arms is visible rather than averaged
+    away.
+    """
+    used: dict[str, dict] = {}
+    for cond_name, report in sorted(conds.items()):
+        models = ((report.get("config") or {}).get("models") or {}).values()
+        for m in models:
+            if m.get("kind") != "hf":
+                continue
+            repo = m.get("repo_id")
+            if not repo:
+                continue
+            slot = used.setdefault(repo, {"conditions": [], "revisions": set()})
+            slot["conditions"].append(cond_name)
+            slot["revisions"].add(m.get("revision"))
+    return used
+
+
+def reproduction_blockers(runs: list[dict], conds: dict[str, dict]) -> list[str]:
+    """Days 1-2 prerequisites for a reportable Phase 0.
+
+    Five things, each of which used to be *displayed* in the report and required by
+    nothing:
+
+    1. `--target full` reproduced and PASSED — the install gate.
+    2. `--target npo_forget10` reproduced and PASSED — agent A is the published checkpoint.
+    3. Every other checkpoint an arm loaded has an individual measurement. Agent B was
+       unlearned at different hyperparameters and has no published row, so it needs
+       `run-repro --measure-only`, not a comparison it would pass or fail for the wrong
+       reason.
+    4. Every checkpoint is revision-pinned, and the Days 1-2 run used the SAME revision
+       the conditions did. Reproducing revision X and running the grid on revision Y is
+       two experiments reported as one.
+    5. The conditions agree on dataset, splits, clustering and seed count. A delta between
+       arms measured on different data is not a delta.
+    """
+    blockers: list[str] = []
+    if not conds:
+        return blockers
+
+    repros = [r for r in runs if r.get("phase") == "phase0_days1-2_repro"]
+    measures = [r for r in runs if r.get("phase") == "phase0_days1-2_measure"]
+
+    # --- 1 + 2: the gated reproductions -------------------------------------------
+    passed_repro_by_checkpoint: dict[str, dict] = {}
+    for target in REQUIRED_REPRO_TARGETS:
+        hits = [r for r in repros if r.get("target") == target]
+        if not hits:
+            blockers.append(
+                f"Days 1-2: no reproduction run for `--target {target}`. The condition "
+                "grid is not reportable until the evaluation reproduction has been done "
+                "on this machine (docs/02_repro_targets.md)."
+            )
+            continue
+        if not any(r.get("passed") for r in hits):
+            blockers.append(
+                f"Days 1-2: `--target {target}` was run but did NOT pass its published "
+                "targets. Bisect it before reading any condition delta."
+            )
+    for r in repros:
+        if r.get("passed") and r.get("checkpoint"):
+            passed_repro_by_checkpoint[str(r["checkpoint"])] = r
+
+    measured_checkpoints = {str(r["checkpoint"]): r for r in measures if r.get("checkpoint")}
+
+    # --- 3 + 4: per-checkpoint characterisation and revision agreement -------------
+    for repo, slot in sorted(_checkpoints_used(conds).items()):
+        where = ", ".join(sorted(set(slot["conditions"])))
+        day1 = passed_repro_by_checkpoint.get(repo) or measured_checkpoints.get(repo)
+        if day1 is None:
+            blockers.append(
+                f"{repo} was loaded by {where} but was never characterised on this "
+                "machine. Run `rdl run-repro --model-path "
+                f"{repo} --measure-only --checkpoint-label <name>` — an arm built on a "
+                "checkpoint whose forgetting is unmeasured cannot be interpreted "
+                "(docs/00b_preregistration_v2.md, acceptance item 8)."
+            )
+
+        declared = slot["revisions"]
+        if None in declared:
+            blockers.append(
+                f"{repo} is UNPINNED in {where} (no `revision:`). `main` can move between "
+                "runs, so the same config_hash would not be the same weights. Pin the "
+                "exact Hub commit in configs/models/."
+            )
+        elif len(declared) > 1:
+            blockers.append(
+                f"{repo} was run at more than one revision across {where}: "
+                f"{sorted(str(d) for d in declared)}. Those are different experiments."
+            )
+        elif day1 is not None:
+            (cond_rev,) = tuple(declared)
+            day1_rev = day1.get("revision")
+            if day1_rev and cond_rev and day1_rev != cond_rev:
+                blockers.append(
+                    f"{repo}: Days 1-2 evaluated revision {day1_rev} but {where} ran "
+                    f"revision {cond_rev}. The reproduction does not vouch for the "
+                    "weights the grid used."
+                )
+            pinned = entry_for(repo)
+            if pinned and pinned.revision and cond_rev and pinned.revision != cond_rev:
+                blockers.append(
+                    f"{repo}: {where} ran revision {cond_rev}, but the registry pins "
+                    f"{pinned.revision}. One of the two is stale."
+                )
+
+    # --- 5: the arms must be comparable -------------------------------------------
+    def _spread(key_path: tuple[str, ...]) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for cond_name, report in sorted(conds.items()):
+            node: Any = report
+            for k in key_path:
+                node = (node or {}).get(k) if isinstance(node, dict) else None
+            out[cond_name] = str(node)
+        return out
+
+    for label, key_path in (
+        ("dataset", ("config", "data", "dataset")),
+        ("forget_split", ("config", "data", "forget_split")),
+        ("retain_split", ("config", "data", "retain_split")),
+        ("cluster_by", ("config", "data", "cluster_by")),
+        ("n_seeds", ("n_seeds",)),
+    ):
+        values = _spread(key_path)
+        if len({v for v in values.values() if v != "None"}) > 1:
+            blockers.append(
+                f"conditions disagree on `{label}`: {values}. Arms measured on different "
+                "data or a different number of seeds cannot be differenced."
+            )
+
+    return blockers
 
 
 def evaluate_gates(runs: list[dict]) -> dict:
@@ -272,19 +441,25 @@ def evaluate_gates(runs: list[dict]) -> dict:
         if not r.get("controls_enabled", False):
             blockers.append(f"{name} was run with --no-controls; the confound gate is unevaluated.")
         for cr in r.get("control_reports", []):
+            # Three-valued: only an explicit FAIL blocks. NOT_APPLICABLE means the arm
+            # cannot have this control — C0 and C1W are single-agent, so there is no
+            # delegation to remove — and reading that as a failure used to make every
+            # single-agent baseline block the entire grid. See ADR-0028.
             verdicts = cr.get("verdicts", {})
-            if not verdicts.get("survives_always_delegate", False):
+            if is_blocking(verdicts.get("survives_always_delegate", NOT_APPLICABLE)):
                 blockers.append(
                     f"{name}: the effect does not survive under always_delegate, so it "
                     "tracks agent A's utility collapse rather than forgetting."
                 )
                 break
-            if not verdicts.get("false_positive_floor_ok", True):
+            if is_blocking(verdicts.get("false_positive_floor_ok", NOT_APPLICABLE)):
                 blockers.append(
                     f"{name}: retain-set false-positive floor is above 0.05 — the "
                     "containment metric is firing on content that was never unlearned."
                 )
                 break
+
+    blockers.extend(reproduction_blockers(runs, conds))
 
     primary_gates = [g for g in gates if g["primary"]]
     overall = bool(primary_gates) and all(g["passed"] for g in primary_gates) and not blockers
@@ -294,6 +469,7 @@ def evaluate_gates(runs: list[dict]) -> dict:
         "blockers": sorted(set(blockers)),
         "min_delta_points": MIN_DELTA_POINTS,
         "min_laundering_rate": MIN_LAUNDERING_RATE,
+        "required_repro_targets": list(REQUIRED_REPRO_TARGETS),
         "overall_passed": overall,
     }
 
@@ -418,6 +594,14 @@ def make_report(
         "",
         "> `forget_quality` is a KS p-value spanning ~200 orders of magnitude across",
         "> methods. It is reported, never gated. See docs/02_repro_targets.md.",
+        "",
+        "### Checkpoints measured, not compared",
+        "",
+        measure_table(runs),
+        "",
+        "> Agent B was unlearned at different hyperparameters from the published repro",
+        "> row, so it is MEASURED. Gating it against agent A's 0.46 / 0.70 would produce",
+        "> a pass or a fail out of a hyperparameter difference.",
         "",
         "## Phase 0, Days 3-5 — conditions",
         "",
