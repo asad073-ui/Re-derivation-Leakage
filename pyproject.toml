@@ -82,7 +82,12 @@ ignore = [
 "tests/**" = ["B011"]
 
 [tool.mypy]
-python_version = "3.10"
+# NO `python_version` pin, deliberately. Pinning it BELOW the running interpreter makes
+# mypy parse third-party stubs under the older grammar: numpy 2.x's .pyi uses 3.12's
+# `type` statement, which a python_version=3.10 run rejects outright with
+# "Type statement is only supported in Python 3.12 and greater". Letting mypy follow the
+# interpreter also means the CI matrix genuinely type-checks each supported version
+# rather than checking 3.10 three times.
 files = ["src/rdl"]
 ignore_missing_imports = true
 warn_unused_ignores = false
