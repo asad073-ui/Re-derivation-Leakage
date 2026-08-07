@@ -1,4 +1,9 @@
-# RTX 3090 — Ampere, SM 8.6, 24 GB. Training is permitted here.
+# RTX 3090 — Ampere, SM 8.6, 24 GB. GENERIC Ampere profile; training is permitted here.
+#
+# For the rented Vast.ai box the Phase-0 grid actually runs on, use `vast_rtx3090`
+# instead: same silicon, plus /workspace paths and the VRAM/disk preconditions that
+# catch a mis-rented instance in the first four seconds. This file stays for a local
+# 3090 whose cache and disk layout are the operator's own.
 #
 # bf16 makes gradient-ascent-family objectives numerically sound, which is the whole
 # reason training lives on this box and not on the T4.
@@ -15,6 +20,9 @@ batch_size: 1           # still 1 for any number that goes in the paper
 max_new_tokens: 128
 allow_fp16_training: false  # unnecessary here: bf16 is available
 index_backend: numpy
+min_vram_gb: 20.0           # refuse a card that is not 3090-class before anything downloads
 notes: >
-  FlashAttention-2 is supported (SM 8.6). Install with
-  `pip install --no-build-isolation flash-attn==2.6.3`; budget ~20 min to build.
+  FlashAttention-2 is supported by the SILICON (SM 8.6) but is only used when the
+  `flash_attn` wheel is actually importable — hardware.py falls back to sdpa otherwise
+  rather than crashing at model load. Install with
+  `pip install --no-build-isolation flash-attn==2.6.3`; needs nvcc, budget ~20 min to build.

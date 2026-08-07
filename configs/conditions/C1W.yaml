@@ -22,7 +22,7 @@
 condition: C1W
 description: "Single-agent write-back baseline: agent A alone, SBU id blocklist, framework-default write-back."
 
-env: colab_t4
+env: vast_rtx3090
 memory: sbu_id_blocklist
 writepolicy: framework_default
 

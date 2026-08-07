@@ -153,15 +153,32 @@ third_party/    open-unlearning, pinned submodule — called, never patched
 
 ## Hardware
 
-| device | cc | bf16 | FA2 | use |
-|---|---|---|---|---|
-| Colab T4 | 7.5 | no | no | **eval only** — fp16 + sdpa, never `flash-attn`, never training |
-| RTX 3090 | 8.6 | yes | yes | training permitted |
-| H100 | 9.0 | yes | yes | training permitted |
+| device | cc | bf16 | FA2 silicon | env profile | use |
+|---|---|---|---|---|---|
+| Colab T4 | 7.5 | no | no | `colab_t4` | **eval only** — fp16 + sdpa, never `flash-attn`, never training |
+| RTX 3090 (Vast.ai) | 8.6 | yes | yes | `vast_rtx3090` | **the Phase-0 default** — see [`docs/07_rtx3090_runbook.md`](docs/07_rtx3090_runbook.md) |
+| RTX 3090 (local) | 8.6 | yes | yes | `rtx3090` | training permitted |
+| H100 | 9.0 | yes | yes | `h100` | training permitted |
+
+Select per invocation; the scientific condition does not change with the hardware:
+
+```bash
+python -m rdl.cli run-condition --condition configs/conditions/C3D.yaml --env vast_rtx3090
+ENV_NAME=colab_t4 bash scripts/03_run_phase0_grid.sh
+```
+
+**FA2 silicon is not FA2 availability.** `hardware.detect()` reports `fa2_hardware` and
+`fa2_installed` separately and recommends `flash_attention_2` only when both hold —
+otherwise `sdpa`. A fresh Ampere cloud image has no `nvcc`, so treating SM 8.6 as
+sufficient meant an `ImportError` inside `from_pretrained` *after* the checkpoint
+downloaded (ADR-0031).
 
 `hardware.assert_training_allowed` **refuses** to start training without bf16 unless
 `--allow-fp16-training` is passed. Gradient-ascent objectives (GA, NPO) push loss upward
-without bound and fp16 `GradScaler` NaNs on them — silent corruption, not a crash.
+without bound and fp16 `GradScaler` NaNs on them — silent corruption, not a crash. Note
+that bf16 makes those objectives *sound*, not *reproducible*: one 3090 is not upstream's
+2× L40S under ZeRO-3, so Days 1–2 stay an **evaluation** reproduction on published
+checkpoints.
 
 ---
 
@@ -173,6 +190,7 @@ without bound and fp16 `GradScaler` NaNs on them — silent corruption, not a cr
 | What was claimed first, and what changed | [`docs/00_preregistration.md`](docs/00_preregistration.md) (v1, frozen) + §0 of v2 |
 | Why is it built this way? | [`docs/04_decisions.md`](docs/04_decisions.md) |
 | What could kill it? | [`docs/05_risks.md`](docs/05_risks.md) |
+| How do I run the grid on the 3090? | [`docs/07_rtx3090_runbook.md`](docs/07_rtx3090_runbook.md) |
 | What are the Day 1–2 numbers? | [`docs/02_repro_targets.md`](docs/02_repro_targets.md) |
 | The core artifact | [`src/rdl/memory/invariants.py`](src/rdl/memory/invariants.py) |
 | The golden test | [`tests/unit/test_invariants.py`](tests/unit/test_invariants.py) |

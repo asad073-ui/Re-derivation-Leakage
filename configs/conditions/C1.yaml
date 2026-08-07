@@ -8,7 +8,7 @@
 condition: C1
 description: "Leakage floor: two unlearned agents, SBU id blocklist, write-back disabled."
 
-env: colab_t4
+env: vast_rtx3090
 memory: sbu_id_blocklist
 writepolicy: disabled       # config.py hard-requires this for C1
 

@@ -3,10 +3,13 @@
 # This is the ONLY hardware on which training is permitted.
 # =====================================================================================
 #
+# THE PHASE-0 PRODUCTION FILE. `configs/env/vast_rtx3090.yaml` is the matching profile.
+#
 # Ampere+ gives us the two things the T4 cannot:
 #   - bfloat16: gradient-ascent-family objectives (GA, NPO) are numerically sound in
 #     bf16 and NaN in fp16. This is why training lives here and nowhere else.
-#   - FlashAttention-2: SM80+. Safe to install and to request.
+#   - FlashAttention-2: SM80+ silicon. Safe to REQUEST — but only once the wheel is
+#     actually installed. See the flash-attn block below.
 #
 # Note for the 3090 specifically: 24 GB single-GPU cannot reproduce upstream's 2x L40s
 # DeepSpeed ZeRO-3 effective-batch-32 setup exactly. Upstream warns their numbers shift
@@ -18,9 +21,21 @@ datasets        # PIN to the open-unlearning resolved version
 accelerate      # PIN to the open-unlearning resolved version
 tokenizers      # PIN (follows transformers)
 
-# SM80+ only. Requires --no-build-isolation and a matching nvcc; budget ~20 min to build.
+# flash-attn is DELIBERATELY NOT INSTALLED BY THIS FILE.
+#
+# It needs `--no-build-isolation` and a matching nvcc (a CUDA *devel* image, not the
+# runtime one most cloud templates ship), and takes ~20 min to build. `pip install -r`
+# would therefore fail on the majority of rented Ampere boxes, over an OPTIONAL
+# dependency: without the wheel, hardware.py resolves attention to sdpa, records the
+# choice in every report, and everything runs.
+#
+# To build it (option B in docs/07_rtx3090_runbook.md):
+#   INSTALL_FLASH_ATTN=1 bash scripts/01_bootstrap_openunlearning.sh
+# which is equivalent to:
 #   pip install --no-build-isolation flash-attn==2.6.3
-flash-attn==2.6.3
+#
+# Whichever you choose, choose ONCE: FA2 and SDPA numbers must not be mixed inside one
+# comparison. See ADR-0031.
 
 deepspeed>=0.14      # ZeRO-3, to approximate the upstream training setup
 bitsandbytes>=0.43   # paged_adamw_32bit, which upstream uses

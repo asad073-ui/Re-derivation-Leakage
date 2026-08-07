@@ -79,6 +79,50 @@ def test_no_config_references_a_withdrawn_split():
 
 
 # =====================================================================================
+# Revision pinning
+# =====================================================================================
+
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def test_every_hf_model_config_pins_an_exact_commit():
+    """`main` is a moving target.
+
+    Without a revision, re-running this same repo commit a month later can pull different
+    weights, two runs with the same `config_hash` would not be the same experiment, and
+    nothing in the report would say so. `make-report` blocks on an unpinned checkpoint;
+    this is the check that runs on a laptop.
+    """
+    for name, cfg in _model_configs():
+        if cfg.get("kind", "hf") != "hf":
+            continue
+        rev = cfg.get("revision")
+        assert rev, f"{name} has no `revision:` pin"
+        assert SHA_RE.match(str(rev)), f"{name}: {rev!r} is not a 40-char commit sha"
+
+
+def test_registry_and_config_revisions_agree():
+    """Two sources of truth that disagree are worse than one that is wrong."""
+    by_repo = {e.repo_id: e for e in KNOWN_MODELS.values()}
+    for name, cfg in _model_configs():
+        repo = cfg.get("repo_id")
+        entry = by_repo.get(repo)
+        if entry is None or entry.revision is None:
+            continue
+        assert cfg.get("revision") == entry.revision, (
+            f"{name} pins {cfg.get('revision')} but the registry pins {entry.revision} "
+            f"for {repo}"
+        )
+
+
+def test_the_two_agents_are_pinned_to_different_commits():
+    """Same forget set, different optimisation run — down to the artefact."""
+    a = KNOWN_MODELS["tofu_llama32_1b_npo_forget10"]
+    b = KNOWN_MODELS["tofu_llama32_1b_npo_forget10_indep"]
+    assert a.revision and b.revision and a.revision != b.revision
+
+
+# =====================================================================================
 # Sampling the retain control set
 # =====================================================================================
 

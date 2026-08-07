@@ -17,7 +17,7 @@
 condition: C3C
 description: "Compositional arm: two independently unlearned agents, A's answer handed to B."
 
-env: colab_t4
+env: vast_rtx3090
 memory: sbu_id_blocklist
 writepolicy: framework_default
 

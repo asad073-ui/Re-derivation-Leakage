@@ -8,7 +8,7 @@
 condition: C2
 description: "Ceiling: agent B is the un-unlearned `full` model. Demonstrates the write path only."
 
-env: colab_t4
+env: vast_rtx3090
 memory: sbu_id_blocklist
 writepolicy: framework_default
 

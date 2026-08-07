@@ -1,4 +1,4 @@
-"""`rdl env-check` — the first thing run in every Colab session.
+"""`rdl env-check` — the first thing run in every GPU session.
 
 Prints the hardware profile, resolved package versions, HF token presence and
 gated-repo access, free disk, free RAM, and whether the pinned submodule SHA matches.
@@ -17,7 +17,8 @@ from pathlib import Path
 
 import typer
 
-from ..hardware import detect
+from ..config import ConfigError, load_env
+from ..hardware import check_env_against_hardware, detect
 from ..paths import open_unlearning_dir, repo_root
 
 __all__ = ["collect_env", "env_check"]
@@ -130,9 +131,23 @@ def _hf_status(token: str | None, check_gated: bool) -> dict:
     return out
 
 
-def collect_env(*, check_hf: bool = True, root: Path | None = None) -> dict:
+def collect_env(
+    *, check_hf: bool = True, root: Path | None = None, env_profile: str | None = None
+) -> dict:
     root = root or repo_root()
     hw = detect()
+
+    profile: dict = {"requested": env_profile}
+    if env_profile:
+        try:
+            env_cfg = load_env(env_profile, root)
+        except ConfigError as exc:
+            profile["error"] = str(exc)
+        else:
+            problems = check_env_against_hardware(env_cfg, hw)
+            profile["matches_hardware"] = not problems
+            profile["problems"] = problems
+            profile["hf_home"] = env_cfg.hf_home
     token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
 
     try:
@@ -154,12 +169,19 @@ def collect_env(*, check_hf: bool = True, root: Path | None = None) -> dict:
         },
         "huggingface": _hf_status(token, check_hf),
         "submodule": _submodule_sha(root),
+        "env_profile": profile,
     }
 
 
 def env_check(
     json_out: bool = typer.Option(False, "--json", help="emit raw JSON"),
     no_hf: bool = typer.Option(False, "--no-hf", help="skip Hub calls (offline)"),
+    environment: str | None = typer.Option(
+        None,
+        "--env",
+        help="check a configs/env profile against this box, e.g. vast_rtx3090. "
+        "Exits non-zero if the machine does not match it.",
+    ),
     write_versions: Path | None = typer.Option(
         None,
         "--write-versions",
@@ -167,7 +189,7 @@ def env_check(
     ),
 ) -> None:
     """Print the environment. Run this first in every session."""
-    info = collect_env(check_hf=not no_hf)
+    info = collect_env(check_hf=not no_hf, env_profile=environment)
 
     if json_out:
         typer.echo(json.dumps(info, indent=2, default=str))
@@ -186,12 +208,36 @@ def env_check(
         typer.echo("submodule")
         for k, v in info["submodule"].items():
             typer.echo(f"  {k:<18} {v}")
+        if environment:
+            typer.echo("env profile")
+            for k, v in info["env_profile"].items():
+                typer.echo(f"  {k:<18} {v}")
+
+        # Hardware capability and package availability are separate facts, and the pair
+        # is what decides the attention implementation. Printing only one of them is how
+        # a run starts on an Ampere box that cannot import flash_attn.
+        typer.echo(
+            f"\nfa2_hardware={hw['supports_flash_attn2']}  "
+            f"fa2_installed={hw['flash_attn_installed']}  "
+            f"recommended_attn={hw['recommended_attn']}"
+        )
 
         if hw["device"] == "cuda" and not hw["supports_bf16"]:
             typer.secho(
                 "\nT4-class device: no bf16, no FlashAttention-2.\n"
                 "  eval  -> float16 + sdpa (handled automatically)\n"
                 "  train -> REFUSED. GA/NPO in fp16 NaNs silently. Use Ampere or newer.",
+                fg=typer.colors.YELLOW,
+            )
+        elif (
+            hw["device"] == "cuda" and hw["supports_flash_attn2"] and not hw["flash_attn_installed"]
+        ):
+            typer.secho(
+                "\nAmpere+ device WITHOUT the flash_attn package.\n"
+                "  This is not an error: attention resolves to sdpa and the choice is\n"
+                "  recorded in every report. To build FA2 instead (needs nvcc, ~20 min):\n"
+                "    INSTALL_FLASH_ATTN=1 bash scripts/01_bootstrap_openunlearning.sh\n"
+                "  Never mix FA2 and SDPA runs inside one comparison.",
                 fg=typer.colors.YELLOW,
             )
 
@@ -216,3 +262,14 @@ def env_check(
         with write_versions.open("a", encoding="utf-8") as fh:
             fh.write("\n".join(lines))
         typer.echo(f"\nappended resolved versions to {write_versions}")
+
+    # Non-zero when an explicitly requested profile does not match: `scripts/00_env_check.sh`
+    # runs under `set -e`, so this is what stops a session on the wrong instance.
+    profile = info["env_profile"]
+    if environment and not profile.get("matches_hardware", False):
+        typer.secho(f"\nenv profile '{environment}' does NOT match this box:", fg=typer.colors.RED)
+        for p in profile.get("problems", []) or [profile.get("error", "unknown error")]:
+            typer.secho(f"  - {p}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if environment:
+        typer.secho(f"\nenv profile '{environment}': OK", fg=typer.colors.GREEN)

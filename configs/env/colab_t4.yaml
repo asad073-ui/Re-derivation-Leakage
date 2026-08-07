@@ -1,4 +1,10 @@
-# Colab T4 — Tesla T4, Turing, SM 7.5, 16 GB. EVAL ONLY.
+# Colab T4 — Tesla T4, Turing, SM 7.5, 16 GB. EVAL ONLY. **No longer the default.**
+#
+# Phase 0 moved to an RTX 3090 on Vast.ai (`vast_rtx3090`, ADR-0027): 24 GB, native
+# bf16, FA2-capable, no session limit. This profile is KEPT, not deleted, and stays
+# selectable with `--env colab_t4` — the conditions are hardware-independent by design
+# and a result that only exists on one device is a result nobody can check. It is also
+# the profile a reviewer with nothing but Colab can re-run the smoke tests under.
 #
 # dtype and attn_implementation are left on `auto` DELIBERATELY: hardware.py detects
 # SM 7.5 and resolves them to float16 + sdpa. Hard-coding them here would make this file

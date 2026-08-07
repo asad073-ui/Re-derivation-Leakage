@@ -122,6 +122,72 @@ def test_t4_overrides_are_unconditional():
 
 
 # =====================================================================================
+# Ampere without the flash_attn wheel
+# =====================================================================================
+
+
+def _ampere(*, flash_attn_installed: bool) -> HardwareProfile:
+    """An RTX 3090. FA2-capable silicon; the wheel may or may not be there."""
+    return HardwareProfile(
+        device="cuda",
+        name="NVIDIA GeForce RTX 3090",
+        compute_capability=(8, 6),
+        supports_bf16=True,
+        supports_flash_attn2=True,
+        flash_attn_installed=flash_attn_installed,
+        total_vram_gb=25.4,
+        recommended_dtype="bfloat16",
+        recommended_train_dtype="bfloat16",
+        recommended_attn="flash_attention_2" if flash_attn_installed else "sdpa",
+        torch_version="2.4.1",
+        cuda_version="12.1",
+        python_version="3.11.9",
+        platform="Linux",
+        free_disk_gb=100.0,
+        cpu_count=16,
+    )
+
+
+def test_ampere_without_the_wheel_gets_sdpa_not_a_crash():
+    """Upstream's configs/model/Llama-3.2-1B-Instruct.yaml pins
+    `attn_implementation: flash_attention_2`. On a fresh 3090 image with no nvcc there is
+    no wheel to import, so this override is the only thing between that default and an
+    ImportError inside from_pretrained — after the checkpoint has downloaded."""
+    cmd = build_eval_command(
+        EvalSpec(model_path="org/ckpt", task_name="t"), _ampere(flash_attn_installed=False)
+    )
+    assert "model.model_args.attn_implementation=sdpa" in cmd
+    assert "model.model_args.torch_dtype=bfloat16" in cmd
+
+
+def test_ampere_with_the_wheel_uses_fa2():
+    cmd = build_eval_command(
+        EvalSpec(model_path="org/ckpt", task_name="t"), _ampere(flash_attn_installed=True)
+    )
+    assert "model.model_args.attn_implementation=flash_attention_2" in cmd
+
+
+# =====================================================================================
+# Revision pinning
+# =====================================================================================
+
+
+def test_revision_is_emitted_with_the_hydra_append_prefix():
+    """`revision` is not a key in upstream's model_args, so a plain override aborts the
+    run the same way `retain_split=` does. The `+` adds it; upstream splats model_args
+    into `from_pretrained`, which takes `revision`."""
+    cmd = _cmd()
+    assert not any(c.startswith("+model.model_args.revision=") for c in cmd)
+
+    spec = EvalSpec(model_path="org/ckpt", task_name="t", revision="a" * 40)
+    pinned = build_eval_command(spec, _t4())
+    assert f"+model.model_args.revision={'a' * 40}" in pinned
+    assert "model.model_args.revision=" + "a" * 40 not in [
+        c for c in pinned if not c.startswith("+")
+    ]
+
+
+# =====================================================================================
 # Stale results
 # =====================================================================================
 

@@ -1,0 +1,46 @@
+# Vast.ai RTX 3090 — Ampere, SM 8.6, 24 GB. THE PRODUCTION PHASE-0 ENVIRONMENT.
+#
+# This is the profile every reported Phase-0 number is produced under. `rtx3090.yaml`
+# stays as the generic Ampere profile (a local card, a different host); this one adds
+# the things that are true of a rented Vast.ai box and nothing else:
+#
+#   - /workspace is the persistent volume. Colab's /content does not exist here, and a
+#     cache under $HOME is on the container overlay, which is small and disappears.
+#   - the instance is rented, so the FIRST thing that must fail is "this is not a 3090".
+#     `min_vram_gb` turns that into a four-second refusal instead of a results table
+#     that quietly says 12 GB.
+#   - two 1B BF16 checkpoints (C3D/C3C load A and B simultaneously) plus the TOFU eval
+#     logs need real disk, and Vast disk CANNOT be resized after instance creation.
+#
+# Why 3090 rather than the T4 this repo started on: 24 GB instead of 16, a native bf16
+# datapath (so gradient-ascent-family objectives are numerically sound), FA2-capable
+# silicon, and no session limit. What it does NOT buy: a training reproduction. 24 GB
+# single-GPU cannot reproduce upstream's 2x L40S DeepSpeed ZeRO-3 setup, so Days 1-2
+# remain an EVALUATION reproduction on published checkpoints. See docs/07_rtx3090_runbook.md.
+name: vast_rtx3090
+
+device: cuda            # not `auto`: on a rented GPU box, silently falling back to CPU
+                        # is a 100x slowdown that looks like a hang, not an error
+dtype: bfloat16         # explicit. Ampere has it; asserting it catches a mis-rented card
+attn_implementation: auto   # resolves to flash_attention_2 IF the wheel is installed,
+                            # otherwise sdpa. See hardware.py: capability != availability.
+                            # Never pin flash_attention_2 here — a fresh Vast image has
+                            # no nvcc and the model load dies after the download.
+
+batch_size: 1           # still 1 for any number that goes in the paper. Batched
+                        # generation with left padding changes greedy output.
+max_new_tokens: 128
+allow_fp16_training: false  # unnecessary here: bf16 is available
+
+hf_home: /workspace/hf  # persistent volume, NOT the container overlay
+index_backend: numpy    # corpus is <= 10k nodes; exact and dependency-free
+
+min_vram_gb: 20.0       # a 3090 reports ~25.4 GB; a 3080/4070-class card fails here
+min_free_disk_gb: 60.0  # 2x 1B bf16 checkpoints + eval logs + results, with headroom
+
+notes: >
+  Vast.ai RTX 3090 production environment. BF16 everywhere. Prefer FlashAttention-2 when
+  the wheel is installed, otherwise SDPA is used and RECORDED — hardware.flash_attn_installed
+  goes into every run report. Do not mix FA2 and SDPA runs inside one comparison; the
+  attention implementation is part of the run's provenance. Results and model caches live
+  under /workspace so a stopped instance keeps them.

@@ -1,17 +1,28 @@
 """Single source of truth for device capability.
 
 Nothing else in the codebase is allowed to ask torch what the GPU can do. The reason
-is that the three target devices differ in ways that silently corrupt results rather
-than crashing:
+is that the target devices differ in ways that silently corrupt results rather than
+crashing:
 
-    device      cc      bf16   FA2    consequence if ignored
-    ----------  ------  -----  -----  --------------------------------------------
-    Tesla T4    (7,5)   no     no     bf16 configs fall back to fp32 or error;
-                                      flash-attn fails to build or fails at runtime
-    RTX 3090    (8,6)   yes    yes    fine
-    H100        (9,0)   yes    yes    fine
+    device      cc      bf16   FA2 hw  consequence if ignored
+    ----------  ------  -----  ------  --------------------------------------------
+    Tesla T4    (7,5)   no     no      bf16 configs fall back to fp32 or error;
+                                       flash-attn fails to build or fails at runtime
+    RTX 3090    (8,6)   yes    yes     fine
+    H100        (9,0)   yes    yes     fine
 
-The refusal in `assert_training_allowed` is the important part of this module.
+**Hardware capability is not package availability.** `supports_flash_attn2` says the SM
+version is >= 8.0; `flash_attn_installed` says the `flash_attn` wheel is importable in
+*this* interpreter. Only when both hold is `flash_attention_2` recommended. An Ampere box
+without the wheel — which is every fresh Vast.ai/RunPod image that lacks nvcc — used to
+get `recommended_attn=flash_attention_2` and then die inside
+`AutoModelForCausalLM.from_pretrained`, forty minutes into a session, after the
+checkpoint had already been downloaded. Upstream's own
+`configs/model/Llama-3.2-1B-Instruct.yaml` hard-codes `attn_implementation:
+flash_attention_2`, so the bridge's override is the only thing standing between that
+default and the model load.
+
+The refusal in `assert_training_allowed` is the other important part of this module.
 Gradient-ascent-family objectives (GA, NPO) push loss upward without bound. Under fp16
 the `GradScaler` NaNs on them. That is silent corruption: you get a finished run and a
 plausible-looking number that means nothing.
@@ -23,12 +34,20 @@ import platform
 import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - typing only, no import cycle at runtime
+    from .config import EnvConfig
 
 __all__ = [
+    "EnvHardwareMismatch",
     "HardwareProfile",
     "TrainingOnFp16Error",
+    "assert_env_matches_hardware",
     "assert_training_allowed",
+    "check_env_against_hardware",
     "detect",
+    "flash_attn_available",
 ]
 
 # FlashAttention-2 requires Ampere or newer.
@@ -39,13 +58,35 @@ class TrainingOnFp16Error(RuntimeError):
     """Raised when a training run is attempted on a device without bf16 support."""
 
 
+class EnvHardwareMismatch(RuntimeError):
+    """Raised when the requested environment profile does not match the detected device.
+
+    Renting the wrong GPU and discovering it from a results table is the failure this
+    prevents.
+    """
+
+
+def flash_attn_available() -> bool:
+    """True iff the `flash_attn` package can be imported in this interpreter.
+
+    `find_spec` rather than `import`: importing flash_attn pulls in CUDA extensions and
+    costs seconds, and `detect()` runs at the top of every command.
+    """
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec("flash_attn") is not None
+    except (ImportError, ValueError):  # partially installed / broken metadata
+        return False
+
+
 @dataclass(frozen=True)
 class HardwareProfile:
     device: str  # "cpu" | "cuda"
     name: str
     compute_capability: tuple[int, int] | None
     supports_bf16: bool
-    supports_flash_attn2: bool
+    supports_flash_attn2: bool  # HARDWARE capability (SM >= 8.0)
     total_vram_gb: float
     recommended_dtype: str  # eval dtype
     recommended_train_dtype: str
@@ -56,6 +97,9 @@ class HardwareProfile:
     platform: str
     free_disk_gb: float
     cpu_count: int | None
+    # PACKAGE availability. Defaulted so existing constructions stay valid; `detect()`
+    # always passes it explicitly.
+    flash_attn_installed: bool = False
 
     # ---------------------------------------------------------------- convenience --
 
@@ -67,6 +111,11 @@ class HardwareProfile:
     def is_turing_or_older(self) -> bool:
         return self.compute_capability is not None and self.compute_capability < _FA2_MIN_CC
 
+    @property
+    def can_use_flash_attn2(self) -> bool:
+        """Hardware supports it AND the wheel is installed. The only honest predicate."""
+        return self.supports_flash_attn2 and self.flash_attn_installed
+
     def to_dict(self) -> dict:
         d = asdict(self)
         d["compute_capability"] = list(self.compute_capability) if self.compute_capability else None
@@ -76,13 +125,16 @@ class HardwareProfile:
         cc = ".".join(map(str, self.compute_capability)) if self.compute_capability else "-"
         return (
             f"{self.device}:{self.name} cc={cc} vram={self.total_vram_gb}GB "
-            f"bf16={self.supports_bf16} fa2={self.supports_flash_attn2} "
+            f"bf16={self.supports_bf16} fa2_hardware={self.supports_flash_attn2} "
+            f"fa2_installed={self.flash_attn_installed} "
             f"-> dtype={self.recommended_dtype} attn={self.recommended_attn}"
         )
 
 
 def _free_disk_gb(where: Path | None = None) -> float:
-    for candidate in (where, Path("/content"), Path.cwd()):
+    # /workspace is the Vast.ai / RunPod persistent volume; /content is Colab's. Probing
+    # the wrong one reports the container's tiny overlay and looks like a full disk.
+    for candidate in (where, Path("/workspace"), Path("/content"), Path.cwd()):
         if candidate is None:
             continue
         try:
@@ -100,6 +152,7 @@ def detect(disk_probe: Path | None = None) -> HardwareProfile:
     plat = f"{platform.system()}-{platform.release()}-{platform.machine()}"
     free_disk = _free_disk_gb(disk_probe)
     cpu_count = os.cpu_count()
+    fa2_installed = flash_attn_available()
 
     try:
         import torch
@@ -120,6 +173,7 @@ def detect(disk_probe: Path | None = None) -> HardwareProfile:
             platform=plat,
             free_disk_gb=free_disk,
             cpu_count=cpu_count,
+            flash_attn_installed=fa2_installed,
         )
 
     torch_version = torch.__version__
@@ -143,6 +197,7 @@ def detect(disk_probe: Path | None = None) -> HardwareProfile:
             platform=plat,
             free_disk_gb=free_disk,
             cpu_count=cpu_count,
+            flash_attn_installed=fa2_installed,
         )
 
     idx = torch.cuda.current_device()
@@ -154,20 +209,22 @@ def detect(disk_probe: Path | None = None) -> HardwareProfile:
     except (RuntimeError, AttributeError):
         bf16 = cc >= _FA2_MIN_CC
 
-    fa2 = cc >= _FA2_MIN_CC
+    fa2_hardware = cc >= _FA2_MIN_CC
 
     eval_dtype = "bfloat16" if bf16 else "float16"
     # Training in fp16 on a GA/NPO objective is unsound; fp32 is the only safe
     # fallback, and `assert_training_allowed` will still block by default.
     train_dtype = "bfloat16" if bf16 else "float32"
-    attn = "flash_attention_2" if fa2 else "sdpa"
+    # Both halves, or sdpa. An Ampere card without the wheel is the common Vast.ai case
+    # and recommending FA2 there produces a crash at model-load time, not a fallback.
+    attn = "flash_attention_2" if (fa2_hardware and fa2_installed) else "sdpa"
 
     return HardwareProfile(
         device="cuda",
         name=props.name,
         compute_capability=cc,
         supports_bf16=bf16,
-        supports_flash_attn2=fa2,
+        supports_flash_attn2=fa2_hardware,
         total_vram_gb=round(props.total_memory / 1e9, 1),
         recommended_dtype=eval_dtype,
         recommended_train_dtype=train_dtype,
@@ -178,7 +235,75 @@ def detect(disk_probe: Path | None = None) -> HardwareProfile:
         platform=plat,
         free_disk_gb=free_disk,
         cpu_count=cpu_count,
+        flash_attn_installed=fa2_installed,
     )
+
+
+# ------------------------------------------------------- environment vs. hardware --
+
+
+def check_env_against_hardware(env: EnvConfig, hw: HardwareProfile) -> list[str]:
+    """Return every way the requested environment profile disagrees with this box.
+
+    Pure: returns reasons rather than raising, so `env-check` can print all of them and
+    `run-condition` can refuse on the same list. The profile is a claim about the machine
+    the results were produced on — `vast_rtx3090` in a report that ran on a T4 is a
+    provenance error, not a performance one.
+    """
+    problems: list[str] = []
+
+    if env.device == "cuda" and not hw.is_cuda:
+        problems.append(
+            f"env '{env.name}' requires CUDA, but no CUDA device was detected "
+            f"(torch reports {hw.name}). Renting a GPU box is not the same as torch "
+            "seeing it: check `nvidia-smi` and that torch was installed from a CUDA index."
+        )
+    if env.device == "cpu" and hw.is_cuda:
+        problems.append(
+            f"env '{env.name}' pins device=cpu but a CUDA device ({hw.name}) is present. "
+            "That is almost certainly the wrong profile for this box."
+        )
+    if env.dtype == "bfloat16" and not hw.supports_bf16:
+        problems.append(
+            f"env '{env.name}' requires bfloat16, but {hw.name} "
+            f"(cc={hw.compute_capability}) has no bf16 datapath."
+        )
+    if env.attn_implementation == "flash_attention_2" and not hw.can_use_flash_attn2:
+        why = (
+            "the GPU is pre-Ampere"
+            if not hw.supports_flash_attn2
+            else "the `flash_attn` package is not installed in this interpreter"
+        )
+        problems.append(
+            f"env '{env.name}' pins attn_implementation=flash_attention_2, but {why}. "
+            "Install it (`pip install --no-build-isolation flash-attn==2.6.3`, needs "
+            "nvcc) or set `attn_implementation: auto` and let hardware.py fall back to "
+            "sdpa."
+        )
+    if env.min_vram_gb is not None and hw.is_cuda and hw.total_vram_gb < env.min_vram_gb:
+        problems.append(
+            f"env '{env.name}' expects at least {env.min_vram_gb:.0f} GB of VRAM, but "
+            f"{hw.name} reports {hw.total_vram_gb:.1f} GB. This is the wrong instance — "
+            "stop it before the grid starts rather than after."
+        )
+    if env.min_free_disk_gb is not None and hw.free_disk_gb < env.min_free_disk_gb:
+        problems.append(
+            f"env '{env.name}' expects at least {env.min_free_disk_gb:.0f} GB free disk, "
+            f"but only {hw.free_disk_gb:.1f} GB is available. Two 1B checkpoints plus the "
+            "TOFU eval logs do not fit, and disk cannot be resized after an instance is "
+            "created."
+        )
+    return problems
+
+
+def assert_env_matches_hardware(env: EnvConfig, hw: HardwareProfile) -> None:
+    """`check_env_against_hardware`, as a refusal. Called before anything is downloaded."""
+    problems = check_env_against_hardware(env, hw)
+    if problems:
+        raise EnvHardwareMismatch(
+            f"environment profile '{env.name}' does not match the detected hardware:\n  - "
+            + "\n  - ".join(problems)
+        )
 
 
 def assert_training_allowed(hw: HardwareProfile, allow_fp16_training: bool = False) -> None:

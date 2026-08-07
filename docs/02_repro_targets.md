@@ -261,16 +261,29 @@ metric: that divergence is the single most likely cause of a failed reproduction
 
 ---
 
-## 6. T4 constraints applied to every eval command
+## 6. Device constraints applied to every eval command
 
-`build_eval_command` derives these from the `HardwareProfile`, so a T4 session cannot
-accidentally inherit a bf16 default out of an upstream config:
+Upstream's `configs/model/Llama-3.2-1B-Instruct.yaml` pins `torch_dtype: bfloat16` and
+`attn_implementation: flash_attention_2`. `build_eval_command` overrides both from the
+`HardwareProfile` on **every** invocation, so neither default can reach a device that
+cannot run it:
 
-| override | reason |
-|---|---|
-| `model.model_args.torch_dtype=float16` | T4 is Turing (SM 7.5) — no bf16 datapath |
-| `model.model_args.attn_implementation=sdpa` | FlashAttention-2 needs SM80+ |
+| device | emitted `torch_dtype` | emitted `attn_implementation` | why |
+|---|---|---|---|
+| Colab T4 (SM 7.5) | `float16` | `sdpa` | no bf16 datapath; FA2 needs SM80+ |
+| RTX 3090 / H100, `flash_attn` installed | `bfloat16` | `flash_attention_2` | both halves available |
+| RTX 3090 / H100, wheel **absent** | `bfloat16` | `sdpa` | SM80+ silicon is not an installed wheel — see ADR-0031 |
 
-And the `flash-attn==2.6.3` install from the upstream README is **skipped** on T4.
-`scripts/01_bootstrap_openunlearning.sh` detects compute capability and skips it
-automatically.
+That last row is the one that bites: a fresh Ampere cloud image has no `nvcc`, so
+`flash_attn` cannot be imported and upstream's default would raise inside
+`from_pretrained` *after* the checkpoint had downloaded.
+`scripts/01_bootstrap_openunlearning.sh` skips the `flash-attn==2.6.3` install below SM80
+automatically, and above SM80 builds it only under `INSTALL_FLASH_ATTN=1`.
+
+### Revision pinning
+
+Every eval also emits `+model.model_args.revision=<sha>` when the checkpoint is pinned
+(ADR-0030). The `+` is mandatory: `revision` is not a key in upstream's `model_args`, and
+Hydra rejects a plain override for an absent key — the same failure mode as
+`retain_split=`. `make-report` blocks if the revision the reproduction used differs from
+the one the condition grid ran.
