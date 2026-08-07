@@ -1,0 +1,16 @@
+# H100 — Hopper, SM 9.0, 80 GB. Training permitted; the closest we get to upstream.
+#
+# 80 GB is enough to hold the effective batch upstream used without ZeRO-3 sharding
+# across two cards, which makes this the only device where a training reproduction is
+# even arguably comparable. It is still not identical — say so in the write-up.
+name: h100
+device: auto
+dtype: auto             # resolves to bfloat16
+attn_implementation: auto   # resolves to flash_attention_2
+batch_size: 1
+max_new_tokens: 128
+allow_fp16_training: false
+index_backend: faiss    # corpus is <=10k nodes; faiss-CPU flat, still exact. NEVER faiss-gpu.
+notes: >
+  Even here, keep batch_size 1 for reported numbers. The determinism argument is about
+  reproducibility, not about throughput.

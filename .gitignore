@@ -38,9 +38,13 @@ __pycache__/
 .eggs/
 build/
 dist/
-.venv/
-venv/
-env/
+# ANCHORED to the repo root with a leading slash, deliberately. An unanchored `env/`
+# matches a directory named `env` at ANY depth — which silently swallowed the entire
+# `configs/env/` group. The tests passed locally (the files were on disk) and only CI,
+# working from a clean clone, could see that they had never been committed.
+/.venv/
+/venv/
+/env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

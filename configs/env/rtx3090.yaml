@@ -1,0 +1,20 @@
+# RTX 3090 — Ampere, SM 8.6, 24 GB. Training is permitted here.
+#
+# bf16 makes gradient-ascent-family objectives numerically sound, which is the whole
+# reason training lives on this box and not on the T4.
+#
+# CAVEAT for any training run: 24 GB single-GPU cannot reproduce upstream's 2x L40s
+# DeepSpeed ZeRO-3 effective-batch-32 setup. Upstream warns their numbers shift when the
+# distributed setup changes. A training run here produces a NEW number, not a
+# reproduction — record it as such in docs/04_decisions.md.
+name: rtx3090
+device: auto
+dtype: auto             # resolves to bfloat16
+attn_implementation: auto   # resolves to flash_attention_2
+batch_size: 1           # still 1 for any number that goes in the paper
+max_new_tokens: 128
+allow_fp16_training: false  # unnecessary here: bf16 is available
+index_backend: numpy
+notes: >
+  FlashAttention-2 is supported (SM 8.6). Install with
+  `pip install --no-build-isolation flash-attn==2.6.3`; budget ~20 min to build.

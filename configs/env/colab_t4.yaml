@@ -1,0 +1,22 @@
+# Colab T4 — Tesla T4, Turing, SM 7.5, 16 GB. EVAL ONLY.
+#
+# dtype and attn_implementation are left on `auto` DELIBERATELY: hardware.py detects
+# SM 7.5 and resolves them to float16 + sdpa. Hard-coding them here would make this file
+# silently wrong the day it is reused on an Ampere box.
+#
+# Three T4 facts, encoded as behaviour rather than as comments alone:
+#   - no bfloat16          -> hardware.py resolves eval dtype to float16
+#   - no FlashAttention-2  -> hardware.py resolves attn to sdpa (FA2 needs SM80+)
+#   - no GA/NPO training   -> allow_fp16_training stays false, so hardware.py refuses
+name: colab_t4
+device: auto
+dtype: auto
+attn_implementation: auto
+batch_size: 1           # batched generation + left padding changes greedy output in fp16
+max_new_tokens: 128
+allow_fp16_training: false
+hf_home: /content/hf    # keep the cache off Drive: Drive I/O is slow and repos are GBs
+index_backend: numpy
+notes: >
+  Never install flash-attn here. Never train a gradient-ascent-family objective here —
+  fp16 GradScaler NaNs on GA/NPO, silently. Use the 3090 or the H100 for training.

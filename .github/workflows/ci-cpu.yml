@@ -43,6 +43,28 @@ jobs:
       - name: Install rdl
         run: pip install -e ".[cpu,dev]"
 
+      # A .gitignore rule once swallowed the whole configs/env/ group: `env/` is
+      # unanchored and matches a directory named `env` at any depth. Local tests passed
+      # because the files were on disk; only a clean clone could see they were never
+      # committed. This step makes that failure mode loud and immediate.
+      - name: Assert no source or config file is gitignored
+        run: |
+          missing=$(git ls-files --others --ignored --exclude-standard \
+            -- 'configs/**/*.yaml' 'src/**/*.py' 'tests/**/*.py' 'tests/**/*.json')
+          if [ -n "$missing" ]; then
+            echo "::error::these tracked-by-intent files are being ignored by .gitignore:"
+            echo "$missing"
+            exit 1
+          fi
+          for group in env models agents memory writepolicy conditions; do
+            n=$(git ls-files "configs/$group" | wc -l)
+            if [ "$n" -eq 0 ]; then
+              echo "::error::configs/$group is empty in git — check .gitignore"
+              exit 1
+            fi
+            echo "configs/$group: $n file(s)"
+          done
+
       - name: Lint
         run: |
           python -m ruff check src tests
