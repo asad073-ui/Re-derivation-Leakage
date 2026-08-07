@@ -32,10 +32,43 @@ import typer
 
 from ..eval.aggregate import condition_delta_gate, paired_delta_gate
 from ..eval.controls import NOT_APPLICABLE, is_blocking
-from ..eval.openunlearning_bridge import UPSTREAM_EVAL_BATCH_SIZE, UPSTREAM_EVAL_SEED
+from ..eval.openunlearning_bridge import (
+    UPSTREAM_EVAL_ATTN,
+    UPSTREAM_EVAL_BATCH_SIZE,
+    UPSTREAM_EVAL_DTYPE,
+    UPSTREAM_EVAL_SEED,
+)
 from ..logging_utils import read_jsonl
 from ..models.registry import entry_for
 from ..paths import manifest_path, results_dir
+
+
+def report_is_exact_parity(r: dict) -> bool:
+    """Did this report come from a run at ALL FOUR published settings, on clean code?
+
+    `published_parity` in a report covers batch size and seed only; dtype and attention
+    land in `parity_gaps`, which the gate never inspected. A batch-32/seed-0 run under
+    SDPA therefore satisfied the Day-1 prerequisite while not using the documented
+    FlashAttention-2.
+
+    Reports predating these fields are treated as NOT exact parity rather than as
+    unknown-and-therefore-fine. `parity_gaps` missing is indistinguishable from a run
+    that never computed it, and the whole point of this gate is to stop trusting the
+    optimistic reading. `git_dirty` is tri-state: only an explicit `True` disqualifies,
+    because reports written before Fix A legitimately have no such key — those are
+    caught by the missing-`parity_gaps` rule instead when they predate it.
+    """
+    if not r.get("published_parity"):
+        return False
+    if r.get("git_dirty") is True:
+        return False
+    gaps = r.get("parity_gaps")
+    if gaps is None or gaps != []:
+        return False
+    if r.get("torch_dtype") not in (None, UPSTREAM_EVAL_DTYPE):
+        return False
+    return r.get("attn_implementation") in (None, UPSTREAM_EVAL_ATTN)
+
 
 __all__ = [
     "GATE_PAIRINGS",
@@ -307,13 +340,17 @@ def reproduction_blockers(runs: list[dict], conds: dict[str, dict]) -> list[str]
         # MISS there cannot separate a broken install from a batching difference — so a
         # PASS there cannot vouch for the install either. Reports predating this field
         # have no `published_parity` key and are treated as unknown, i.e. not parity.
-        if not any(r.get("passed") and r.get("published_parity") for r in hits):
+        if not any(r.get("passed") and report_is_exact_parity(r) for r in hits):
             settings = sorted(
-                f"batch_size={r.get('batch_size')}/seed={r.get('seed')}" for r in hits
+                f"batch_size={r.get('batch_size')}/seed={r.get('seed')}"
+                f"/gaps={r.get('parity_gaps')}/dirty={r.get('git_dirty')}"
+                for r in hits
             )
             blockers.append(
-                f"Days 1-2: `--target {target}` passed, but never at published parity "
-                f"(batch_size={UPSTREAM_EVAL_BATCH_SIZE}, seed={UPSTREAM_EVAL_SEED}). "
+                f"Days 1-2: `--target {target}` passed, but never at EXACT published "
+                f"parity (batch_size={UPSTREAM_EVAL_BATCH_SIZE}, seed={UPSTREAM_EVAL_SEED}, "
+                f"torch_dtype={UPSTREAM_EVAL_DTYPE}, attn={UPSTREAM_EVAL_ATTN}, "
+                "empty parity_gaps, clean git tree). "
                 f"Runs found: {settings}. Re-run it at upstream's settings — that is the "
                 "run that says our install computes their metrics correctly."
             )

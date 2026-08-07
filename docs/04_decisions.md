@@ -823,3 +823,77 @@ training on a single GPU. Please use the below numbers only for reproducibility 
 different training run from the one that produced the row. That is a claim about the
 artifact, not about this installation — and it is exactly the claim the Day-1 gate exists
 to surface before anything is built on top of it.
+
+---
+
+## ADR-0039 — 2026-08-07 — The historical evaluator confirms it: the released NPO checkpoint, not our stack
+
+**Decision.** The fp32-logits shim (ADR-0037) is accepted as a faithful reconstruction
+of the historical evaluator, and ADR-0038's conclusion is upgraded from "most probable
+reading" to **established**: the released NPO forget10 checkpoint does not reproduce its
+`docs/repro.md` row under the exact software that row was published with.
+
+**Context.** ADR-0038 could not separate two hypotheses: a wrong artifact, or a
+historical software difference the shim failed to reconstruct. So the checkpoint was
+re-evaluated against open-unlearning at `fd825ea` — the commit that last touched
+`docs/repro.md`, 2025-07-20 — in an isolated venv pinned to that commit's own
+`requirements.txt`: transformers 4.45.1, huggingface-hub 0.29.1, lm-eval 0.4.8,
+torch 2.4.1, numpy 2.2.3, datasets 3.0.1, accelerate 0.34.2. **No shim** — 4.45.1 still
+upcasts logits, which is itself an independent confirmation of ADR-0037's root cause:
+the bf16 crash simply does not occur there.
+
+| checkpoint | metric | historical exact | shimmed current | published |
+|---|---|---|---|---|
+| `full` | model_utility | 0.60010 | 0.60122 | 0.60 |
+| `full` | forget_truth_ratio | 0.4753644629178423 | 0.4753644629178423 | 0.48 |
+| `retain90` | model_utility | 0.59018 | 0.59231 | 0.59 |
+| `retain90` | forget_truth_ratio | 0.6273686349110743 | 0.6273686349110743 | 0.63 |
+| `npo_forget10` | model_utility | 0.43237 | 0.43169 | **0.46** |
+| `npo_forget10` | forget_truth_ratio | 0.6413989131591031 | 0.6413989131591031 | **0.70** |
+
+Two facts settle it. First, `forget_truth_ratio` is **bit-identical** between the two
+runtimes on all three checkpoints, and `forget_quality` likewise — the shim is not an
+approximation of the historical evaluator on the gated metrics, it is the same number.
+`model_utility` differs by 1–2e-3, consistent with generation-driven ROUGE terms.
+Second, the historical runtime reproduces `full` and `retain90` *better* than the
+shimmed one (|d| 0.0001 and 0.0002 on model_utility) and still misses NPO by 0.028 and
+0.059 — 100–300× its own demonstrated error.
+
+**Consequence.** No evaluator-side explanation remains. Day 1 stays failed, nothing
+downstream proceeds, and the next action is an upstream question about the artifact, not
+a further code change. `ou_runtime_mode` now distinguishes `historical_exact` from
+`current_with_fp32_logits_shim` so the two are never conflated in a later report.
+
+---
+
+## ADR-0040 — 2026-08-07 — Parity means all four settings AND a checkoutable tree
+
+**Decision.** `is_exact_published_parity()` requires batch_size 32, seed 0, bfloat16,
+flash_attention_2, empty `parity_gaps`, and a clean git tree. `make-report` gates on it
+via `report_is_exact_parity()`. `run-repro` refuses to start on a dirty tree unless
+`--allow-dirty`, which permanently marks the report a diagnostic.
+
+**Context.** Two independent holes, both found by review of the Day-1 runs.
+
+`published_parity` only ever meant batch size and seed. dtype and attention went into
+`parity_gaps`, which no gate inspected — so a batch-32/seed-0 run under SDPA satisfied
+the Days 1-2 prerequisite while not using the documented FlashAttention-2.
+
+Worse, the Day-1 GPU reports record `git_sha: 1ea12bf` and a command invoking
+`python -m rdl.compat.ou_eval_shim`, which `1ea12bf` does not contain. The runs were
+made from a working tree carrying the then-uncommitted shim. The numbers are not
+thereby wrong — they are reproduced above under an independent runtime — but a reviewer
+checking out that SHA cannot run the recorded command, and nothing in the report said
+so. Those reports are retained as diagnostic records of a dirty tree, not as
+authoritative artifacts.
+
+**Rejected: treat a missing `parity_gaps` as parity.** Reports predating the field carry
+no claim about dtype or attention, and an absent claim must not read as a passing one.
+
+**Consequence.** Reports gain `exact_published_parity`, `git_dirty`, `git_diff_sha256`,
+`ou_runtime_mode`, `ou_source_sha`, `transformers_version` and `tokenizer` (repo,
+revision, chat-template SHA-256 — upstream reads the tokenizer from a moving branch).
+Determinism is now established inside the eval subprocess by `ou_eval_shim`: the parent
+called `set_all_seeds` and the report claimed `deterministic_algorithms: true`, but
+torch settings are process-local and only `PYTHONHASHSEED` and `CUBLAS_WORKSPACE_CONFIG`
+were ever inherited by the process that ran the kernels.

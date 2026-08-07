@@ -34,6 +34,22 @@ from . import fp32_logits
 __all__ = ["main"]
 
 
+def _seed_from_argv(argv: list[str]) -> int | None:
+    """The `seed=N` Hydra override, if the caller emitted one.
+
+    Read from argv rather than taken as a separate flag so the subprocess can never be
+    seeded differently from the value the recorded command shows. `build_eval_command`
+    always emits `seed=`; a missing one means something built the command by hand.
+    """
+    for arg in argv:
+        if arg.startswith("seed="):
+            try:
+                return int(arg.split("=", 1)[1])
+            except ValueError:
+                return None
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
@@ -52,6 +68,28 @@ def main(argv: list[str] | None = None) -> int:
     # Printed, not logged: this line lands in the captured subprocess output that the
     # run report keeps, so the shim's presence is recoverable from the log alone.
     print(f"rdl-shim: fp32_logits active -> {record.get('target')}", flush=True)
+
+    # Determinism has to be established HERE, in the process that actually runs the
+    # kernels. `run-repro` calls set_all_seeds() in the PARENT, and the report then
+    # recorded `deterministic_algorithms: true` — but torch settings are process-local,
+    # so none of `use_deterministic_algorithms`, `cudnn.deterministic` or the torch RNG
+    # seeds ever reached this subprocess. (Only the two env vars, PYTHONHASHSEED and
+    # CUBLAS_WORKSPACE_CONFIG, are inherited.) Upstream's eval.py does call its own
+    # seed_everything, so the run was seeded; it was not running deterministic kernels
+    # while the report said it was. That gap is the reason this block exists.
+    seed = _seed_from_argv(args[1:])
+    if seed is not None:
+        from ..seeding import set_all_seeds
+
+        seed_record = set_all_seeds(seed)
+        print(
+            f"rdl-shim: subprocess determinism seed={seed} "
+            f"deterministic_algorithms={seed_record.deterministic_algorithms} "
+            f"cudnn_deterministic={seed_record.cudnn_deterministic}",
+            flush=True,
+        )
+    else:
+        print("rdl-shim: no seed= override found; subprocess determinism NOT set", flush=True)
 
     # `python <script>` puts the script's directory at the head of sys.path.
     # `runpy.run_path` does not, and open-unlearning's eval.py needs it.
