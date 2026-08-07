@@ -137,6 +137,24 @@ def load_tofu(
     return items
 
 
+def spread_sample(items: Sequence[TofuItem], n: int) -> list[TofuItem]:
+    """`n` items spread evenly across the split, preserving order.
+
+    TOFU splits are contiguous blocks of authors, so the first `n` items are the first
+    `n / 20` authors. A 100-item "retain sample" taken off the head is therefore five
+    novelists, not a sample of the retain set, and a false-positive floor measured on it
+    says nothing about the other 175. Even spacing costs nothing and covers the split.
+
+    Deterministic: no RNG, so the sample does not move between seeds and the same config
+    hash means the same questions.
+    """
+    total = len(items)
+    if n >= total or n <= 0:
+        return list(items)
+    step = total / n
+    return [items[int(i * step)] for i in range(n)]
+
+
 def load_items(
     *,
     dataset: str = "tofu",
@@ -145,6 +163,7 @@ def load_items(
     fixture: str | Path | None = None,
     token: str | None = None,
     allow_fixture: bool = False,
+    sample: str = "head",
 ) -> tuple[list[TofuItem], dict]:
     """Resolve the item set a condition should run on, and say where it came from.
 
@@ -178,10 +197,19 @@ def load_items(
             "warning": "DEVELOPMENT FIXTURE — not TOFU. Not reportable.",
         }
 
-    items = load_tofu(split, n_items, token=token)
+    if sample == "spread" and n_items:
+        # Load the whole split first so the spacing is over the real thing, then
+        # subsample. `load_tofu(split, n)` truncates at load time, which is the head.
+        items = spread_sample(load_tofu(split, None, token=token), n_items)
+    elif sample in ("head", "spread"):
+        items = load_tofu(split, n_items, token=token)
+    else:
+        raise ValueError(f"unknown sample strategy '{sample}' (expected head|spread)")
+
     return items, {
         "source": "locuslab/TOFU",
         "split": split,
+        "sample": sample,
         "n_items": len(items),
         "expected_split_size": SPLIT_SIZES.get(split),
         "truncated": n_items is not None and n_items < (SPLIT_SIZES.get(split) or 0),

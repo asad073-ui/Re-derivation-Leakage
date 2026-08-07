@@ -376,6 +376,11 @@ def run_condition(
             split=cfg.data.retain_split,
             n_items=cfg.data.n_retain_items,
             token=token,
+            # Spread across authors, not the head of the split. TOFU splits are
+            # contiguous author blocks, so the first 100 retain items are five
+            # novelists — a false-positive floor measured on them says nothing about
+            # the other 175.
+            sample="spread",
         )
         typer.echo(f"retain     {len(retain_items)} from {cfg.data.retain_split} (control arm)")
     elif controls and not provenance["is_real_data"]:

@@ -58,7 +58,7 @@ pip install -e ".[cpu,dev]"
 make cpu-all          # Windows: .\tasks.ps1 cpu-all
 ```
 
-`cpu-all` = ruff + black + mypy + 363 tests, **offline, no GPU, no HF token.** It must be
+`cpu-all` = ruff + black + mypy + 365 tests, **offline, no GPU, no HF token.** It must be
 green before anything touches Colab.
 
 Then:

@@ -76,3 +76,36 @@ def test_no_config_references_a_withdrawn_split():
         repo = str(cfg.get("repo_id") or "")
         if repo.startswith("open-unlearning/unlearn_tofu"):
             assert "forget10" in repo, f"{name}: only forget10 unlearned ckpts are published"
+
+
+# =====================================================================================
+# Sampling the retain control set
+# =====================================================================================
+
+
+def test_spread_sample_covers_the_whole_split():
+    """TOFU splits are contiguous author blocks, so the head of retain90 is five
+    novelists. A false-positive floor measured on five authors says nothing about the
+    other 175."""
+    from rdl.eval.tofu_data import QUESTIONS_PER_AUTHOR, TofuItem, spread_sample
+
+    full = [
+        TofuItem(f"retain90-{i:04d}", f"q{i}", f"a{i}", "retain90", index=i) for i in range(3600)
+    ]
+
+    head = full[:100]
+    spread = spread_sample(full, 100)
+
+    assert len(spread) == 100
+    assert len({it.author_id for it in head}) == 100 // QUESTIONS_PER_AUTHOR
+    assert len({it.author_id for it in spread}) == 100, "one author per sampled item"
+    assert spread == sorted(spread, key=lambda it: it.index), "order preserved"
+
+
+def test_spread_sample_is_deterministic_and_degrades_gracefully():
+    from rdl.eval.tofu_data import TofuItem, spread_sample
+
+    items = [TofuItem(f"i{i}", "q", "a", "retain90", index=i) for i in range(10)]
+    assert spread_sample(items, 4) == spread_sample(items, 4)
+    assert spread_sample(items, 100) == items, "asking for more than exists returns all"
+    assert spread_sample(items, 0) == items
