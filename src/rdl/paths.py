@@ -19,6 +19,8 @@ __all__ = [
     "append_manifest",
     "configs_dir",
     "docs_dir",
+    "git_diff_sha256",
+    "git_dirty",
     "git_sha",
     "make_run_id",
     "manifest_path",
@@ -86,6 +88,58 @@ def git_sha(root: Path | None = None, short: bool = True) -> str:
         return "nogit"
     sha = out.stdout.strip()
     return sha if out.returncode == 0 and sha else "nogit"
+
+
+def git_dirty(root: Path | None = None) -> bool | None:
+    """True when tracked files differ from HEAD. ``None`` when git cannot answer.
+
+    A report that records `git_sha: X` while the code that ran is not what X contains
+    is not reproducible, and nothing downstream can tell. That happened: the Day-1 GPU
+    runs recorded `1ea12bf` and executed a compatibility shim that `1ea12bf` does not
+    contain, so a reviewer checking out that commit cannot run the recorded command.
+
+    Untracked files are deliberately NOT dirt: `results/` is full of them by design.
+    """
+    root = root or repo_root()
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    return bool(out.stdout.strip())
+
+
+def git_diff_sha256(root: Path | None = None) -> str | None:
+    """Hash of the tracked-file diff against HEAD, or ``None`` when clean/unavailable.
+
+    Recorded on deliberately-dirty diagnostic runs so two such runs can at least be
+    told apart, and so a later reviewer can see that *something* uncommitted was in
+    play even though the diff itself is not in the repository.
+    """
+    root = root or repo_root()
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "diff", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    body = out.stdout
+    if not body.strip():
+        return None
+    import hashlib
+
+    return hashlib.sha256(body.encode("utf-8", "replace")).hexdigest()
 
 
 def _utc_stamp() -> str:

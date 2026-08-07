@@ -64,6 +64,7 @@ __all__ = [
     "build_eval_command",
     "compare_to_published",
     "find_summary",
+    "is_exact_published_parity",
     "is_published_parity",
     "parity_gaps",
     "parse_summary",
@@ -179,6 +180,29 @@ def is_published_parity(*, batch_size: int, seed: int) -> bool:
     Day-1 gate requires this to be true; `parity_gaps` is what the report prints.
     """
     return batch_size == UPSTREAM_EVAL_BATCH_SIZE and seed == UPSTREAM_EVAL_SEED
+
+
+def is_exact_published_parity(
+    *,
+    batch_size: int,
+    seed: int,
+    dtype: str | None,
+    attn: str | None,
+    git_dirty: bool | None = None,
+) -> bool:
+    """All FOUR published settings, plus code that a reviewer can actually check out.
+
+    `is_published_parity` covers only batch size and seed, so a batch-32/seed-0 run
+    under SDPA satisfies it while silently not using the documented FlashAttention-2 —
+    the gap lands in `parity_gaps`, which nothing was required to inspect. This is the
+    predicate the Day-1 gate and `make-report` must use.
+
+    `git_dirty=True` disqualifies the run outright: a number produced by uncommitted
+    code is not reproducible from the SHA the report records, whatever its settings.
+    """
+    if git_dirty:
+        return False
+    return not parity_gaps(batch_size=batch_size, seed=seed, dtype=dtype, attn=attn)
 
 
 # open-unlearning's SUMMARY.json keys have moved between releases. Map to stable names

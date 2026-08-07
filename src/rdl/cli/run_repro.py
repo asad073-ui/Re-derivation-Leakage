@@ -39,6 +39,7 @@ from ..eval.openunlearning_bridge import (
     UPSTREAM_EVAL_SEED,
     EvalSpec,
     compare_to_published,
+    is_exact_published_parity,
     is_published_parity,
     parity_gaps,
     parse_summary,
@@ -47,7 +48,15 @@ from ..eval.openunlearning_bridge import (
 from ..hardware import EnvHardwareMismatch, assert_env_matches_hardware, detect
 from ..logging_utils import get_logger
 from ..models.registry import KNOWN_MODELS, entry_for
-from ..paths import append_manifest, git_sha, make_run_id, open_unlearning_dir, run_dir
+from ..paths import (
+    append_manifest,
+    git_diff_sha256,
+    git_dirty,
+    git_sha,
+    make_run_id,
+    open_unlearning_dir,
+    run_dir,
+)
 from ..seeding import set_all_seeds
 
 __all__ = ["run_repro"]
@@ -73,6 +82,65 @@ def _pinned_revision(repo: str) -> str | None:
     """The Hub commit this repo is pinned to, if the registry knows the checkpoint."""
     entry = entry_for(repo)
     return entry.revision if entry else None
+
+
+def _pkg_version(name: str) -> str | None:
+    """Installed version of `name`, or None. Never raises — this is provenance, not a gate."""
+    try:
+        from importlib.metadata import version
+
+        return version(name)
+    except Exception:
+        return None
+
+
+def _ou_source_sha() -> str | None:
+    """HEAD of the open-unlearning submodule that actually ran.
+
+    The superproject SHA does not identify the evaluator: the submodule can be moved
+    without the parent noticing, and every metric comes out of the submodule's code.
+    """
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(open_unlearning_dir()), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    sha = out.stdout.strip()
+    return sha if out.returncode == 0 and sha else None
+
+
+def _tokenizer_provenance() -> dict:
+    """Which tokenizer, at which commit, with which chat template.
+
+    Upstream's model config points `tokenizer_args` at `meta-llama/Llama-3.2-1B-Instruct`
+    with NO revision, so the chat template that renders every TOFU prompt is read from a
+    moving branch. Both controls passing means it has not moved yet — it does not mean
+    it cannot. Recorded rather than pinned-and-enforced, because the tokenizer repo is
+    upstream's choice and pinning it would be a config fork.
+    """
+    repo = "meta-llama/Llama-3.2-1B-Instruct"
+    info: dict = {"repo": repo, "revision": None, "chat_template_sha256": None}
+    try:
+        import hashlib
+        import os
+
+        from huggingface_hub import HfApi
+        from transformers import AutoTokenizer
+
+        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+        info["revision"] = HfApi(token=token).model_info(repo).sha
+        template = getattr(AutoTokenizer.from_pretrained(repo, token=token), "chat_template", None)
+        if template:
+            info["chat_template_sha256"] = hashlib.sha256(template.encode("utf-8")).hexdigest()
+    except Exception as exc:  # provenance is best-effort; never fail a finished eval
+        info["error"] = f"{type(exc).__name__}: {exc}"
+    return info
 
 
 def run_repro(
@@ -129,6 +197,14 @@ def run_repro(
     condition: Path | None = typer.Option(
         None, "--condition", help="condition YAML (recorded in the report; not required)"
     ),
+    allow_dirty: bool = typer.Option(
+        False,
+        "--allow-dirty",
+        help="permit a run from a working tree with uncommitted tracked changes. The "
+        "report is then marked git_dirty=true and can NEVER clear the Day-1 gate — it "
+        "is a diagnostic run, because the recorded git_sha does not describe the code "
+        "that produced the number.",
+    ),
 ) -> None:
     """Run the open-unlearning eval and gate against the published numbers."""
     if target not in PUBLISHED_TARGETS and model_path is None:
@@ -136,6 +212,33 @@ def run_repro(
             f"unknown target '{target}'. Known: {sorted(_TARGET_TO_REPO)}", fg=typer.colors.RED
         )
         raise typer.Exit(code=2)
+
+    # ---- provenance, BEFORE anything downloads --------------------------------------
+    # A report that records `git_sha: X` while executing code X does not contain is not
+    # reproducible from that SHA, and nothing downstream could tell. That is exactly how
+    # the first Day-1 GPU runs were recorded against `1ea12bf` while running a
+    # compatibility shim added afterwards.
+    # `--dry-run` is exempt: it writes no report, so there is no provenance to get
+    # wrong, and inspecting the command you are ABOUT to commit to is exactly what you
+    # do while the tree is still dirty.
+    dirty = git_dirty()
+    if dirty and not allow_dirty and not dry_run:
+        typer.secho(
+            f"REFUSING TO RUN: the working tree has uncommitted tracked changes, but "
+            f"this report would record git_sha={git_sha()}.\n"
+            "  A reviewer checking out that commit could not reproduce the recorded "
+            "command.\n"
+            "  -> commit the changes, then re-run; or pass --allow-dirty to take a "
+            "DIAGNOSTIC measurement that can never clear the Day-1 gate.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=2)
+    if dirty:
+        typer.secho(
+            "--allow-dirty: this is a DIAGNOSTIC run. git_dirty=true is recorded and "
+            "the report is disqualified from exact published parity.",
+            fg=typer.colors.YELLOW,
+        )
 
     repo = model_path or _TARGET_TO_REPO[target]
     rev = revision or _pinned_revision(repo)
@@ -316,6 +419,30 @@ def run_repro(
         # weights' dtype nor any published-parity setting. A report that does not say
         # this is a report that cannot be checked. See rdl.compat.fp32_logits.
         "ou_compat_shims": ["fp32_logits"],
+        # Which evaluator produced this number. `current_with_fp32_logits_shim` is NOT
+        # the same statement as `historical_exact` (open-unlearning at fd825ea under
+        # transformers 4.45.1, no shim), and conflating a reconstruction with the
+        # original is exactly the claim this field exists to prevent. See ADR-0039.
+        "ou_runtime_mode": "current_with_fp32_logits_shim",
+        "ou_source_sha": _ou_source_sha(),
+        "transformers_version": _pkg_version("transformers"),
+        # Provenance of the CODE, not merely of the settings. See paths.git_dirty.
+        "git_dirty": bool(dirty) if dirty is not None else None,
+        "git_diff_sha256": git_diff_sha256() if dirty else None,
+        # The ONLY parity predicate the Day-1 gate may use: all four published settings
+        # and a tree a reviewer can check out. `published_parity` below is batch+seed
+        # only and is kept for backwards comparison.
+        "exact_published_parity": is_exact_published_parity(
+            batch_size=batch_size,
+            seed=seed,
+            dtype=run_dtype,
+            attn=hw.recommended_attn,
+            git_dirty=dirty,
+        ),
+        # Fix E: the tokenizer is a separate artifact from the weights and was never
+        # pinned. Its chat template decides how every prompt is rendered, so an upstream
+        # edit to it moves every metric with nothing in the report to show for it.
+        "tokenizer": _tokenizer_provenance(),
         # Which of the two Day 1-2 runs this is. `make-report` requires the parity one:
         # a miss at batch 1 / seed 42 cannot distinguish a broken install from a
         # settings difference, so only the parity run can clear the trust gate.

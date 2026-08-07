@@ -40,8 +40,25 @@ def _repro(
     passed: bool = True,
     batch_size: int = 32,
     seed: int = 0,
+    dtype: str = "bfloat16",
+    attn: str = "flash_attention_2",
+    git_dirty: bool = False,
 ) -> dict:
-    """A Days 1-2 report. Defaults are PUBLISHED PARITY — upstream's own eval settings."""
+    """A Days 1-2 report. Defaults are EXACT published parity — upstream's own settings.
+
+    `dtype`, `attn` and `git_dirty` are part of the fixture because the gate now
+    requires all four published settings plus a checkoutable tree (ADR-0040), not just
+    batch size and seed.
+    """
+    gaps: list[str] = []
+    if batch_size != 32:
+        gaps.append(f"batch_size={batch_size} (published: 32)")
+    if seed != 0:
+        gaps.append(f"seed={seed} (published: 0)")
+    if dtype != "bfloat16":
+        gaps.append(f"torch_dtype={dtype} (published: bfloat16)")
+    if attn != "flash_attention_2":
+        gaps.append(f"attn_implementation={attn} (published: flash_attention_2)")
     return {
         "run_id": f"20260807T000000Z-{target}-b{batch_size}s{seed}",
         "phase": "phase0_days1-2_repro",
@@ -52,6 +69,10 @@ def _repro(
         "batch_size": batch_size,
         "seed": seed,
         "published_parity": batch_size == 32 and seed == 0,
+        "parity_gaps": gaps,
+        "torch_dtype": dtype,
+        "attn_implementation": attn,
+        "git_dirty": git_dirty,
         "comparisons": [],
     }
 
@@ -305,7 +326,9 @@ def test_a_pass_only_at_batch_one_does_not_clear_the_trust_gate():
         _measure(AGENT_B, AGENT_B_REV),
     ]
     verdict = evaluate_gates(runs)
-    assert any("never at published parity" in b for b in verdict["blockers"]), verdict["blockers"]
+    assert any("never at EXACT published parity" in b for b in verdict["blockers"]), verdict[
+        "blockers"
+    ]
     assert not verdict["overall_passed"]
 
 
@@ -335,7 +358,7 @@ def test_a_legacy_report_without_the_parity_field_is_not_assumed_to_be_parity():
         _measure(AGENT_B, AGENT_B_REV),
     ]
     verdict = evaluate_gates(runs)
-    assert any("never at published parity" in b for b in verdict["blockers"])
+    assert any("never at EXACT published parity" in b for b in verdict["blockers"])
 
 
 def test_agent_b_without_its_own_measurement_is_blocked():
