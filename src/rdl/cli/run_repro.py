@@ -310,6 +310,12 @@ def run_repro(
         "hardware": hw.to_dict(),
         "attn_implementation": hw.recommended_attn,
         "torch_dtype": run_dtype,
+        # Which upstream compatibility shims this number was produced under. Recorded
+        # because the shim changes the numerical environment (fp32 logits, as
+        # transformers <= 4.45.1 produced them) even though it changes neither the
+        # weights' dtype nor any published-parity setting. A report that does not say
+        # this is a report that cannot be checked. See rdl.compat.fp32_logits.
+        "ou_compat_shims": ["fp32_logits"],
         # Which of the two Day 1-2 runs this is. `make-report` requires the parity one:
         # a miss at batch 1 / seed 42 cannot distinguish a broken install from a
         # settings difference, so only the parity run can clear the trust gate.

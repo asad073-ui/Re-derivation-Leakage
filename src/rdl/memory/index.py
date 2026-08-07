@@ -123,7 +123,11 @@ class NumpyBruteForce:
         self._mat: np.ndarray = np.zeros((0, dim), dtype=np.float32)
 
     def add(self, node_id: str, vector: np.ndarray) -> None:
-        v = np.asarray(vector, dtype=np.float32).reshape(-1)
+        # Annotated, not inferred. `asarray(...).reshape(-1)` infers the exact
+        # (1-D, float32) type, and `v / norm` widens it back to (Any-D, floating[Any]) —
+        # numpy's stubs cannot see that dividing by a Python float is dtype-preserving
+        # under NEP 50. The narrow inferred type then rejects the re-assignment.
+        v: np.ndarray = np.asarray(vector, dtype=np.float32).reshape(-1)
         if v.shape[0] != self.dim:
             raise ValueError(f"vector dim {v.shape[0]} != index dim {self.dim}")
         norm = float(np.linalg.norm(v))
@@ -151,7 +155,7 @@ class NumpyBruteForce:
     def search(self, vector: np.ndarray, k: int) -> list[tuple[str, float]]:
         if len(self._ids) == 0 or k <= 0:
             return []
-        q = np.asarray(vector, dtype=np.float32).reshape(-1)
+        q: np.ndarray = np.asarray(vector, dtype=np.float32).reshape(-1)
         norm = float(np.linalg.norm(q))
         if norm > 0:
             q = q / norm
@@ -198,7 +202,7 @@ class FaissFlat:
             self._index.add(np.stack([self._vecs[i] for i in self._ids]))
 
     def add(self, node_id: str, vector: np.ndarray) -> None:
-        v = np.asarray(vector, dtype=np.float32).reshape(-1)
+        v: np.ndarray = np.asarray(vector, dtype=np.float32).reshape(-1)
         if v.shape[0] != self.dim:
             raise ValueError(f"vector dim {v.shape[0]} != index dim {self.dim}")
         norm = float(np.linalg.norm(v))
@@ -223,7 +227,7 @@ class FaissFlat:
     def search(self, vector: np.ndarray, k: int) -> list[tuple[str, float]]:
         if not self._ids or k <= 0:
             return []
-        q = np.asarray(vector, dtype=np.float32).reshape(1, -1)
+        q: np.ndarray = np.asarray(vector, dtype=np.float32).reshape(1, -1)
         norm = float(np.linalg.norm(q))
         if norm > 0:
             q = q / norm
