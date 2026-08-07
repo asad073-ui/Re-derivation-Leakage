@@ -11,6 +11,10 @@ batch_size: 1
 max_new_tokens: 128
 allow_fp16_training: false
 index_backend: faiss    # corpus is <=10k nodes; faiss-CPU flat, still exact. NEVER faiss-gpu.
+min_vram_gb: 70.0       # an H100 reports ~80 GB; anything smaller is not this profile
+min_python: "3.11"      # open-unlearning's python_requires
+# Phase 0 runs on the 3090 first (`vast_rtx3090`); this profile is for the scale-up.
+# Keep the conditions untouched when moving here — only `--env` changes.
 notes: >
   Even here, keep batch_size 1 for reported numbers. The determinism argument is about
   reproducibility, not about throughput.

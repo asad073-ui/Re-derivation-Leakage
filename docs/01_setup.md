@@ -11,7 +11,8 @@ longer the default. For the end-to-end 3090 sequence, read
 
 ## 1. Local CPU — the gate
 
-No GPU, no network, no HF token. **This must be green before anything touches Colab.**
+No GPU, no network, no HF token. **This must be green before anything touches a GPU** —
+including the rented one, where every minute is billed.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
@@ -38,7 +39,7 @@ Python 3.10–3.13. See ADR-0002 for why the range is wider than open-unlearning
 ### Optional: the tiny-model integration test
 
 Needs network (~1 MB download). Proves the real loader, chat template, and padding logic
-before Colab:
+before the GPU box:
 
 ```bash
 make test-integration

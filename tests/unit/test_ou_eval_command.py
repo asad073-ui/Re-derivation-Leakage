@@ -21,10 +21,13 @@ import pytest
 from rdl.eval.openunlearning_bridge import (
     TOFU_SPLITS,
     UPSTREAM_EVAL_BATCH_SIZE,
+    UPSTREAM_EVAL_SEED,
     EvalSpec,
     build_eval_command,
     compare_to_published,
     find_summary,
+    is_published_parity,
+    parity_gaps,
 )
 from rdl.hardware import HardwareProfile
 
@@ -245,5 +248,67 @@ def test_no_note_when_batching_matches_upstream():
         {"model_utility": 0.46, "forget_truth_ratio": 0.70},
         "npo_forget10",
         batch_size=UPSTREAM_EVAL_BATCH_SIZE,
+        seed=UPSTREAM_EVAL_SEED,
     )
     assert "batch_size_note" not in rep.meta
+
+
+# =====================================================================================
+# Published parity
+# =====================================================================================
+
+
+def test_upstream_defaults_match_the_pinned_submodule():
+    """Read off configs/eval/tofu.yaml (`batch_size: 32`) and configs/eval.yaml
+    (`seed: 0`) at 4ad738a. If a SHA bump moves either, the parity gate is measuring
+    against the wrong reference and this is the test that says so."""
+    assert UPSTREAM_EVAL_BATCH_SIZE == 32
+    assert UPSTREAM_EVAL_SEED == 0
+
+
+def test_parity_requires_both_batch_and_seed():
+    assert is_published_parity(batch_size=32, seed=0)
+    assert not is_published_parity(batch_size=1, seed=0)
+    assert not is_published_parity(batch_size=32, seed=42)
+
+
+def test_parity_gaps_name_every_difference():
+    gaps = parity_gaps(batch_size=1, seed=42, dtype="float16", attn="sdpa")
+    joined = " ".join(gaps)
+    assert "batch_size=1" in joined
+    assert "seed=42" in joined
+    assert "torch_dtype=float16" in joined
+    assert "attn_implementation=sdpa" in joined
+
+
+def test_a_parity_run_on_a_t4_still_reports_its_hardware_gaps():
+    """A T4 cannot run bf16 or FA2 at all, so batch/seed parity is the most it can
+    offer. The gap is reported rather than silently folded into a pass."""
+    assert is_published_parity(batch_size=32, seed=0)
+    gaps = parity_gaps(batch_size=32, seed=0, dtype="float16", attn="sdpa")
+    assert len(gaps) == 2 and all("batch_size" not in g and "seed=" not in g for g in gaps)
+
+
+def test_report_records_parity_and_the_reason_it_is_not():
+    off = compare_to_published(
+        {"model_utility": 0.46, "forget_truth_ratio": 0.70},
+        "npo_forget10",
+        batch_size=1,
+        seed=42,
+        dtype="bfloat16",
+        attn="sdpa",
+    )
+    assert off.meta["published_parity"] is False
+    assert any("seed=42" in g for g in off.meta["parity_gaps"])
+    assert "Run the parity gate" in off.meta["batch_size_note"]
+
+    on = compare_to_published(
+        {"model_utility": 0.46, "forget_truth_ratio": 0.70},
+        "npo_forget10",
+        batch_size=32,
+        seed=0,
+        dtype="bfloat16",
+        attn="flash_attention_2",
+    )
+    assert on.meta["published_parity"] is True
+    assert on.meta["parity_gaps"] == []

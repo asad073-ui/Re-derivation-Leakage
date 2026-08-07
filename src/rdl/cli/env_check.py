@@ -19,9 +19,10 @@ import typer
 
 from ..config import ConfigError, load_env
 from ..hardware import check_env_against_hardware, detect
+from ..models.registry import KNOWN_MODELS
 from ..paths import open_unlearning_dir, repo_root
 
-__all__ = ["collect_env", "env_check"]
+__all__ = ["collect_env", "env_check", "strict_blockers"]
 
 _PACKAGES = (
     "torch",
@@ -98,6 +99,14 @@ def _submodule_sha(root: Path) -> dict:
 
 
 def _hf_status(token: str | None, check_gated: bool) -> dict:
+    """Hub reachability for every checkpoint the run needs, AT ITS PINNED REVISION.
+
+    Checking the repo without the revision is a weaker test than it looks: a pin that
+    points at a commit which was force-removed resolves as a healthy repo here and 404s
+    inside `from_pretrained` later. Agent A's and agent B's NPO checkpoints are included
+    — they were missing, which meant the one repo the whole experiment turns on was the
+    one nobody verified.
+    """
     out: dict = {"token_present": bool(token)}
     if not token:
         out["hint"] = "set HF_TOKEN (Colab: Secrets -> HF_TOKEN, notebook access on)"
@@ -108,16 +117,17 @@ def _hf_status(token: str | None, check_gated: bool) -> dict:
         out["user"] = whoami(token=token).get("name")
         if check_gated:
             api = HfApi(token=token)
-            for repo in (
-                "meta-llama/Llama-3.2-1B-Instruct",
-                "open-unlearning/tofu_Llama-3.2-1B-Instruct_full",
-                "open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90",
-            ):
+            # (repo, pinned revision or None). The gated base model first: it is the
+            # tokenizer/chat template every eval goes through.
+            targets: list[tuple[str, str | None]] = [("meta-llama/Llama-3.2-1B-Instruct", None)]
+            targets += [(e.repo_id, e.revision) for e in KNOWN_MODELS.values() if e.revision]
+            for repo, revision in targets:
                 try:
-                    api.model_info(repo)
-                    out[repo] = "ok"
+                    api.model_info(repo, revision=revision)
+                    out[repo] = f"ok @ {revision[:12]}" if revision else "ok"
                 except Exception as exc:
-                    out[repo] = f"BLOCKED ({type(exc).__name__})"
+                    at = f" @ {revision[:12]}" if revision else ""
+                    out[repo] = f"BLOCKED{at} ({type(exc).__name__})"
             if str(out.get("meta-llama/Llama-3.2-1B-Instruct", "")).startswith("BLOCKED"):
                 out["blocker"] = (
                     "Accept the Llama 3.2 community licence with the SAME account as this "
@@ -128,6 +138,75 @@ def _hf_status(token: str | None, check_gated: bool) -> dict:
         out["error"] = "huggingface_hub not installed"
     except Exception as exc:
         out["error"] = f"{type(exc).__name__}: {exc}"
+    return out
+
+
+def _retain_logs_status(root: Path) -> dict:
+    """`forget_quality` is computed against the published retain-model eval log.
+
+    Without it the metric is silently unavailable rather than loudly missing, so its
+    presence is part of the preflight rather than something the eval discovers.
+    """
+    p = (
+        open_unlearning_dir(root)
+        / "saves"
+        / "eval"
+        / "tofu_Llama-3.2-1B-Instruct_retain90"
+        / "TOFU_EVAL.json"
+    )
+    info: dict = {"path": str(p), "present": p.exists()}
+    if not p.exists():
+        info["hint"] = "cd third_party/open-unlearning && python setup_data.py --eval_logs"
+    return info
+
+
+def strict_blockers(info: dict) -> list[str]:
+    """Everything that must hold before a GPU hour is spent. Pure, so it is testable.
+
+    `env-check` prints all of these regardless; under `--strict` they also decide the
+    exit code. The split exists because the diagnostic form is useful on a laptop with
+    no token and no submodule, where none of it is a problem.
+    """
+    out: list[str] = []
+    profile = info.get("env_profile") or {}
+
+    if profile.get("requested"):
+        if profile.get("error"):
+            out.append(f"env profile could not be loaded: {profile['error']}")
+        for p in profile.get("problems") or []:
+            out.append(p)
+
+    hf = info.get("huggingface") or {}
+    if not hf.get("token_present"):
+        out.append(
+            "no HF_TOKEN in the environment. The TOFU checkpoints and the gated Llama "
+            "tokenizer both need one."
+        )
+    if hf.get("error"):
+        out.append(f"huggingface: {hf['error']}")
+    for key, value in hf.items():
+        if isinstance(value, str) and value.startswith("BLOCKED"):
+            out.append(f"{key} is not reachable with this token: {value}")
+
+    for name, version in (info.get("packages") or {}).items():
+        if version == "MISSING":
+            out.append(f"required package `{name}` is not installed")
+
+    sub = info.get("submodule") or {}
+    if not sub.get("present"):
+        out.append("third_party/open-unlearning is missing: git submodule update --init")
+    elif sub.get("matches_pin") is False:
+        out.append(
+            f"open-unlearning is at {sub.get('head_sha')}, but this repo pins "
+            f"{sub.get('pinned_sha')}. Every published number is quoted against the pin."
+        )
+
+    logs = info.get("retain_logs") or {}
+    if not logs.get("present"):
+        out.append(
+            f"retain-model eval logs missing at {logs.get('path')}. `forget_quality` "
+            "cannot be computed without them: " + str(logs.get("hint", ""))
+        )
     return out
 
 
@@ -169,6 +248,7 @@ def collect_env(
         },
         "huggingface": _hf_status(token, check_hf),
         "submodule": _submodule_sha(root),
+        "retain_logs": _retain_logs_status(root),
         "env_profile": profile,
     }
 
@@ -181,6 +261,14 @@ def env_check(
         "--env",
         help="check a configs/env profile against this box, e.g. vast_rtx3090. "
         "Exits non-zero if the machine does not match it.",
+    ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="full preflight: also fail on a missing HF token, a blocked Llama licence, "
+        "any checkpoint unreachable at its pinned revision, a missing or mismatched "
+        "submodule, a missing package, or absent retain eval logs. Run this before "
+        "spending a GPU hour.",
     ),
     write_versions: Path | None = typer.Option(
         None,
@@ -207,6 +295,9 @@ def env_check(
             typer.echo(f"  {k:<18} {v}")
         typer.echo("submodule")
         for k, v in info["submodule"].items():
+            typer.echo(f"  {k:<18} {v}")
+        typer.echo("retain eval logs")
+        for k, v in info["retain_logs"].items():
             typer.echo(f"  {k:<18} {v}")
         if environment:
             typer.echo("env profile")
@@ -262,6 +353,18 @@ def env_check(
         with write_versions.open("a", encoding="utf-8") as fh:
             fh.write("\n".join(lines))
         typer.echo(f"\nappended resolved versions to {write_versions}")
+
+    # `--strict` is the full preflight: everything that would otherwise be discovered
+    # an hour in, with the checkpoint already downloaded. It subsumes the profile check.
+    if strict:
+        blockers = strict_blockers(info)
+        if blockers:
+            typer.secho("\nPREFLIGHT FAILED — do not start a GPU run:", fg=typer.colors.RED)
+            for b in blockers:
+                typer.secho(f"  - {b}", fg=typer.colors.RED)
+            raise typer.Exit(code=1)
+        typer.secho("\nPREFLIGHT OK — every checkpoint, package and pin verified.", fg="green")
+        return
 
     # Non-zero when an explicitly requested profile does not match: `scripts/00_env_check.sh`
     # runs under `set -e`, so this is what stops a session on the wrong instance.

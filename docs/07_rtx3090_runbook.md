@@ -22,12 +22,21 @@ must be recorded as one (ADR-0003, ADR-0027).
 
 | filter | value | why |
 |---|---|---|
-| GPU | RTX 3090 ×1 | 24 GB; `min_vram_gb: 20` refuses anything smaller |
+| GPU | RTX 3090 ×1 | 24 GB. The profile checks the **name** too: `min_vram_gb: 20` alone would also accept a 4090 or an A6000, and a report stamped `vast_rtx3090` must not have run on one |
 | rental | **on-demand** for the grid | interruptible instances are paused when outbid; fine for a 5-item smoke test, not for a 7-condition grid |
 | reliability | ≥ 95 % | |
 | disk | 80–100 GB | **cannot be resized after creation**, and storage bills while the instance is stopped |
-| image | CUDA/PyTorch; **devel** only if you want FlashAttention-2 | the runtime image has no `nvcc`, so `flash-attn` cannot build |
+| **Python** | **3.11** | open-unlearning declares `python_requires >= 3.11`. An arbitrary CUDA image may ship 3.10 and the submodule install fails on it. `min_python: "3.11"` refuses the box up front |
+| image | CUDA/PyTorch **devel** if you want FlashAttention-2 | the runtime image has no `nvcc`, so `flash-attn` cannot build |
 | SSH | direct, key-based | Vast starts sessions inside tmux — use it, the grid outlives a dropped connection |
+
+Check the image before renting, not after:
+
+```bash
+python --version     # must be 3.11.x
+nvidia-smi           # NVIDIA GeForce RTX 3090, ~24 GiB
+nvcc --version       # only needed for the FA2 path
+```
 
 Destroy the instance once results are pushed; a stopped instance still costs storage.
 
@@ -46,14 +55,27 @@ Upstream's `configs/model/Llama-3.2-1B-Instruct.yaml` hard-codes
 `ImportError` inside `from_pretrained` — *after* the 2.5 GB checkpoint has downloaded.
 The bridge's unconditional override is what prevents it.
 
-* **Option A — SDPA.** Do nothing. Slower, zero build risk, correct. Recommended for the
-  first smoke test.
-* **Option B — FA2.** Use a CUDA *devel* image, then
-  `INSTALL_FLASH_ATTN=1 bash scripts/01_bootstrap_openunlearning.sh` (~20 min build).
+The probe does not stop at `find_spec`: it imports `flash_attn` in a **subprocess**,
+because a wheel built against a different torch or CUDA is locatable but not importable,
+and that failure would otherwise land inside `from_pretrained`.
 
-Either is fine. **Never mix them inside one comparison** — the implementation is recorded
-in every report (`hardware.recommended_attn`), so a mixed table is detectable after the
-fact, but not fixable without a rerun.
+* **Option B — FA2. Recommended for the parity gate.** Upstream's published numbers were
+  produced under `flash_attention_2`, so this is the closest available reproduction. Use
+  a CUDA *devel* image, then
+  `INSTALL_FLASH_ATTN=1 bash scripts/01_bootstrap_openunlearning.sh` (~20 min build).
+  Verify before the gate:
+
+  ```
+  fa2_hardware=True  fa2_installed=True  recommended_attn=flash_attention_2
+  ```
+
+* **Option A — SDPA.** Do nothing. Slower, zero build risk, and the eval runs. But the
+  run is then off-parity on attention, and the report says so in `parity_gaps`. Fine for
+  the first smoke test; not what you want the headline Day-1 gate to have used.
+
+Either way, **never mix them inside one comparison** — the implementation is recorded in
+every report, so a mixed table is detectable after the fact, but not fixable without a
+rerun.
 
 ---
 
@@ -85,32 +107,48 @@ python -m pytest tests/integration -q     # needs network, ~1 MB model
 ## Phase C — Day 1–2 reproduction
 
 ```bash
-ENV_NAME=vast_rtx3090 bash scripts/00_env_check.sh    # refuses the wrong instance
-ENV_NAME=vast_rtx3090 bash scripts/02_repro_tofu_npo_forget10.sh --batch-size 1
+ENV_NAME=vast_rtx3090 STRICT=1 bash scripts/00_env_check.sh   # full preflight
+ENV_NAME=vast_rtx3090 bash scripts/02_repro_tofu_npo_forget10.sh
 ```
 
-That script runs all four required steps in order. To drive them individually:
+`--strict` is the one that stops a bad session in four seconds. It fails on: the wrong
+GPU, no bf16, too little VRAM or disk, Python < 3.11, a missing `HF_TOKEN`, a blocked
+Llama licence, **any checkpoint unreachable at its pinned revision**, a missing or
+off-pin submodule, a missing package, or absent retain eval logs.
+
+The script runs the two Day-1 gates in the right order. Individually:
 
 ```bash
-python -m rdl.cli env-check --env vast_rtx3090
+# RUN A — PUBLISHED PARITY. batch 32 / seed 0 are upstream's own eval defaults and are
+# what produced the published row, so this is the trust gate. These are also run-repro's
+# defaults; they are spelled out here because the distinction is the point.
+python -m rdl.cli run-repro --target full         --env vast_rtx3090 --batch-size 32 --seed 0
+python -m rdl.cli run-repro --target npo_forget10 --env vast_rtx3090 --batch-size 32 --seed 0
 
-# parity with upstream's eval default (32) …
-python -m rdl.cli run-repro --target full --env vast_rtx3090 --batch-size 32
-# … and the pre-registered deterministic protocol (1)
-python -m rdl.cli run-repro --target full --env vast_rtx3090 --batch-size 1
+# RUN B — the pre-registered deterministic protocol. Reported, NOT a substitute.
+python -m rdl.cli run-repro --target full         --env vast_rtx3090 --batch-size 1 --seed 42
+python -m rdl.cli run-repro --target npo_forget10 --env vast_rtx3090 --batch-size 1 --seed 42
 
-python -m rdl.cli run-repro --target npo_forget10 --env vast_rtx3090 --batch-size 32
-python -m rdl.cli run-repro --target npo_forget10 --env vast_rtx3090 --batch-size 1
-
-# Agent B: MEASURED, never compared to agent A's published row
+# Agent B: MEASURED, never compared to agent A's published row. At parity settings so it
+# is comparable with A's parity run.
 python -m rdl.cli run-repro \
   --model-path open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr2e-05_beta0.5_alpha1_epoch10 \
-  --measure-only --checkpoint-label agent_b_independent --env vast_rtx3090
+  --measure-only --checkpoint-label agent_b_independent \
+  --env vast_rtx3090 --batch-size 32 --seed 0
 ```
 
 Gates: `full` → model_utility 0.60 / forget_truth_ratio 0.48; `npo_forget10` → 0.46 /
-0.70, both ±0.01. `forget_quality` is reported, never gated. All three runs above are
-**prerequisites**: `make-report` blocks the grid without them (ADR-0029).
+0.70, both ±0.01. `forget_quality` is reported, never gated.
+
+| outcome | what to do |
+|---|---|
+| parity passes, batch-1 passes | proceed to Phase D |
+| parity passes, batch-1 misses | proceed; the batching effect is a recorded protocol finding |
+| **parity misses** | **stop.** Bisect one change at a time: chat template → padding_side → batch_size → dtype → attention → transformers version. Log each attempt in `docs/04_decisions.md` |
+| `full` passes, `npo_forget10` misses | the install is fine; check the NPO checkpoint id and its pinned revision |
+
+`make-report` blocks the grid unless both targets passed **at parity** and agent B was
+measured (ADR-0029, ADR-0033).
 
 ## Phase D — 5-item GPU smoke test
 
@@ -167,7 +205,23 @@ the profile while leaving Colab's `/content` cache path in place. Pinned by
 | message | meaning |
 |---|---|
 | `requires at least 20 GB of VRAM, but … reports 11.8` | wrong instance rented. Destroy it. |
+| `expects a GPU matching /RTX 3090/, but this box reports …` | a different card. It may evaluate fine — but use `--env rtx3090` so the report does not claim hardware it did not run on. |
+| `expects compute capability 8.6, but this GPU reports 9.0` | that is an H100. Use `--env h100`. |
 | `requires CUDA, but no CUDA device was detected` | torch has no CUDA build, or the container has no GPU passthrough. Check `nvidia-smi`. |
 | `requires bfloat16, but … has no bf16 datapath` | this is a T4. Use `--env colab_t4`. |
+| `requires Python >= 3.11, but this interpreter is 3.10.x` | wrong image; open-unlearning will not install. |
 | `pins attn_implementation=flash_attention_2, but the flash_attn package is not installed` | build it, or leave `attn_implementation: auto`. |
 | `expects at least 60 GB free disk` | two checkpoints plus eval logs do not fit; disk cannot be resized. |
+| `… is not reachable with this token` | accept the Llama licence, or the pinned revision moved — check `configs/models/`. |
+| `open-unlearning is at …, but this repo pins …` | `git submodule update --init --recursive`. |
+| `retain-model eval logs missing` | `cd third_party/open-unlearning && python setup_data.py --eval_logs`. |
+
+---
+
+## Moving to the H100 later
+
+Nothing about the conditions changes. Run the same grid with `--env h100` /
+`ENV_NAME=h100`; the profile requires ≥70 GB VRAM and Python ≥3.11 and leaves the GPU
+name unconstrained. Re-run Days 1–2 on that box first — the reproduction vouches for an
+*install*, and the H100 is a different one. Do not pool 3090 and H100 numbers in a single
+comparison unless both cleared the parity gate under the same attention implementation.

@@ -168,6 +168,65 @@ def test_cpu_profile_still_works_on_a_cpu_box():
     assert check_env_against_hardware(load_env("local_cpu"), cpu_hw) == []
 
 
+# =====================================================================================
+# provenance: the profile NAMES a card, so it must verify it
+# =====================================================================================
+
+
+def test_a_bigger_ampere_card_is_refused_by_the_named_profile():
+    """VRAM and bf16 alone would accept a 4090 or an A6000. Both evaluate fine — and
+    neither is what a report stamped `vast_rtx3090` says it ran on."""
+    a6000 = _profile(name="NVIDIA RTX A6000", total_vram_gb=48.0)
+    problems = check_env_against_hardware(load_env("vast_rtx3090"), a6000)
+    assert any("RTX 3090" in p for p in problems)
+    assert any("generic profile" in p for p in problems), "the message must say what to use"
+
+
+def test_an_h100_is_refused_by_the_3090_profile():
+    h100 = _profile(name="NVIDIA H100 80GB HBM3", compute_capability=(9, 0), total_vram_gb=80.0)
+    problems = check_env_against_hardware(load_env("vast_rtx3090"), h100)
+    assert any("RTX 3090" in p for p in problems)
+    assert any("compute capability 8.6" in p for p in problems)
+
+
+def test_the_generic_ampere_profile_accepts_other_ampere_class_cards():
+    """`rtx3090` is the profile for 'an Ampere box I own'. Naming a card is the vast
+    profile's job, because only its reports claim one."""
+    assert check_env_against_hardware(load_env("rtx3090"), _profile(name="NVIDIA RTX A6000")) == []
+
+
+def test_a_real_3090_name_variant_still_matches():
+    for name in ("NVIDIA GeForce RTX 3090", "NVIDIA GeForce RTX 3090 Ti", "rtx 3090"):
+        assert check_env_against_hardware(load_env("vast_rtx3090"), _profile(name=name)) == [], name
+
+
+# =====================================================================================
+# open-unlearning needs Python >= 3.11
+# =====================================================================================
+
+
+def test_python_310_is_refused_on_a_gpu_profile():
+    """`python_requires >= 3.11` upstream. Picking a Vast image without checking is how
+    that is discovered after the instance is already running."""
+    problems = check_env_against_hardware(
+        load_env("vast_rtx3090"), _profile(python_version="3.10.13")
+    )
+    assert any("Python >= 3.11" in p for p in problems)
+
+
+def test_python_311_and_above_pass():
+    for v in ("3.11.0", "3.11.9", "3.12.1"):
+        assert (
+            check_env_against_hardware(load_env("vast_rtx3090"), _profile(python_version=v)) == []
+        ), v
+
+
+def test_the_cpu_gate_is_exempt_from_the_311_requirement():
+    """The rdl core runs its CPU gate on 3.10 (ADR-0002); only the box that installs the
+    submodule is bound."""
+    assert load_env("local_cpu").min_python is None
+
+
 def test_colab_t4_profile_is_still_selectable_and_still_correct():
     """Kept, not deleted: a result that only exists on one device is uncheckable."""
     t4 = _profile(

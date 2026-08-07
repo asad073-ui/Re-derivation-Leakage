@@ -93,16 +93,48 @@ with *"unrecognized arguments"* before anything downloads.
 `tests/unit/test_ou_eval_command.py` asserts each item offline so a wrong override fails
 on the laptop rather than on the GPU box.
 
-### Batch size and what "reproduced" means
+### Two runs, and what "reproduced" means
 
-The published reference was produced at upstream's default of **32**. We evaluate at
-**1** because batched generation with left-padding changes greedy output under fp16 and
-the pre-registration commits to batch 1 for every number in the paper.
+The published numbers were produced under upstream's own defaults, read from the pinned
+submodule:
 
-So agreement within ±0.01 is **within tolerance of**, not **identical to**.
-`compare_to_published` stamps a `batch_size_note` on the report whenever the two differ.
-If the tolerance turns out to be tight at batch 1, run once at 32 to separate "our
-install is wrong" from "batching moved it".
+| setting | published | source |
+|---|---|---|
+| `batch_size` | **32** | `configs/eval/tofu.yaml` |
+| `seed` | **0** | `configs/eval.yaml` |
+| `torch_dtype` | `bfloat16` | `configs/model/Llama-3.2-1B-Instruct.yaml` |
+| `attn_implementation` | `flash_attention_2` | same |
+
+**Run A — published parity. This is the trust gate.**
+
+```bash
+python -m rdl.cli run-repro --target npo_forget10 --env vast_rtx3090   # defaults: 32 / 0
+```
+
+It is the only run whose miss means *our install is wrong* rather than *we changed a
+setting*. `run-repro` defaults to these values, records `published_parity: true` on the
+report, and `make-report` refuses a grid whose Days 1-2 never passed at parity.
+
+**Run B — the pre-registered deterministic protocol.**
+
+```bash
+python -m rdl.cli run-repro --target npo_forget10 --env vast_rtx3090 --batch-size 1 --seed 42
+```
+
+Batch 1 because batched generation with left-padding changes greedy output, and the
+pre-registration commits to batch 1 for every number in the paper. Reported, never a
+substitute for A.
+
+| outcome | reading |
+|---|---|
+| A passes, B passes | install validated; the protocol does not move the metric |
+| A passes, B misses | install is fine — batching moved it. A finding about the protocol, recorded as one |
+| A misses | **stop.** Bisect before reading anything downstream |
+
+Agreement within ±0.01 is **within tolerance of**, not **identical to**. Every report
+carries `parity_gaps`, naming each setting that differed — including a dtype or
+attention gap forced by the hardware (a T4 has neither bf16 nor FA2, so batch/seed
+parity is the most it can offer).
 
 ---
 
@@ -110,8 +142,9 @@ install is wrong" from "batching moved it".
 
 ### DO NOT reproduce the training
 
-You cannot match 2× L40s ZeRO-3 bf16 on a single T4 in fp16, upstream says so
-themselves, and a gradient-ascent-family objective in fp16 is numerically unsound.
+You cannot match 2× L40s ZeRO-3 bf16 on one GPU, upstream says so themselves. **This
+does not change on the RTX 3090.** bf16 makes a gradient-ascent-family objective
+numerically *sound* — it does not make one 24 GB card equal to two L40S under ZeRO-3.
 Attempting it burns the week and produces a mismatch you cannot interpret.
 
 `hardware.assert_training_allowed` refuses to start training on a device without bf16
@@ -208,10 +241,10 @@ blocker if you hit it at hour six. `rdl env-check` reports this explicitly.
 
 ## 5. Resolved versions
 
-> **TO BE FILLED ON FIRST COLAB RUN — DO NOT LEAVE BLANK.**
+> **TO BE FILLED ON THE FIRST RTX 3090 RUN — DO NOT LEAVE BLANK.**
 >
 > Version drift is the single most likely cause of a failed reproduction. Fill this in
-> before running the gate, and pin `requirements-gpu-t4.txt` to whatever lands here.
+> before running the gate, and pin `requirements-gpu-ampere.txt` to whatever lands here.
 >
 > ```bash
 > python -m rdl.cli env-check --write-versions docs/02_repro_targets.md
@@ -228,9 +261,9 @@ Verify it still matches before every gated run — `rdl env-check` reports
 ### Expected, read from the pinned submodule (2026-08-07)
 
 `third_party/open-unlearning/requirements.txt` at `4ad738a` pins these exactly, so this
-is what `pip install -e ".[lm-eval]"` inside the submodule will resolve to. Colab's
-preinstalled `torch`/`transformers` **will be moved** by that install — expect a runtime
-restart afterwards.
+is what `pip install -e ".[lm-eval]"` inside the submodule will resolve to. Any
+preinstalled `torch`/`transformers` in the image **will be moved** by that install — on
+Colab, expect a runtime restart afterwards.
 
 | package | pinned by the submodule |
 |---|---|
@@ -242,19 +275,21 @@ restart afterwards.
 | `numpy` | `2.2.3` |
 | `lm-eval` (extra) | `0.4.11` |
 
-`python_requires >= 3.11`. That binds the **submodule's** environment (Colab), not the
-pure-Python `rdl` core, which runs the CPU gate on 3.10 — see ADR-0002.
+`python_requires >= 3.11`. That binds the **GPU box's** environment, not the pure-Python
+`rdl` core, which runs the CPU gate on 3.10 — see ADR-0002. It is enforced per
+environment as `min_python: "3.11"` in the GPU profiles, so a Vast image that ships 3.10
+is refused by `env-check` rather than by `pip` twenty minutes in.
 
 ### Actual, recorded from the run
 
 | package | version |
 |---|---|
-| `torch` | _pending first Colab run_ |
-| `transformers` | _pending first Colab run_ |
-| `datasets` | _pending first Colab run_ |
-| `accelerate` | _pending first Colab run_ |
-| `tokenizers` | _pending first Colab run_ |
-| `numpy` | _pending first Colab run_ |
+| `torch` | _pending first RTX 3090 run_ |
+| `transformers` | _pending first RTX 3090 run_ |
+| `datasets` | _pending first RTX 3090 run_ |
+| `accelerate` | _pending first RTX 3090 run_ |
+| `tokenizers` | _pending first RTX 3090 run_ |
+| `numpy` | _pending first RTX 3090 run_ |
 
 If "actual" ever diverges from "expected", stop and find out why before reading any
 metric: that divergence is the single most likely cause of a failed reproduction.

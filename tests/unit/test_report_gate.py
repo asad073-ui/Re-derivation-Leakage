@@ -32,14 +32,26 @@ FULL = "open-unlearning/tofu_Llama-3.2-1B-Instruct_full"
 FULL_REV = "88e31200b97e4c0c04ae0d2f0b591f427046d192"
 
 
-def _repro(target: str, checkpoint: str, revision: str, *, passed: bool = True) -> dict:
+def _repro(
+    target: str,
+    checkpoint: str,
+    revision: str,
+    *,
+    passed: bool = True,
+    batch_size: int = 32,
+    seed: int = 0,
+) -> dict:
+    """A Days 1-2 report. Defaults are PUBLISHED PARITY — upstream's own eval settings."""
     return {
-        "run_id": f"20260807T000000Z-{target}-0",
+        "run_id": f"20260807T000000Z-{target}-b{batch_size}s{seed}",
         "phase": "phase0_days1-2_repro",
         "target": target,
         "checkpoint": checkpoint,
         "revision": revision,
         "passed": passed,
+        "batch_size": batch_size,
+        "seed": seed,
+        "published_parity": batch_size == 32 and seed == 0,
         "comparisons": [],
     }
 
@@ -276,6 +288,54 @@ def test_a_failed_reproduction_blocks_the_grid():
     verdict = evaluate_gates(runs)
     assert any("did NOT pass" in b for b in verdict["blockers"])
     assert not verdict["overall_passed"]
+
+
+def test_a_pass_only_at_batch_one_does_not_clear_the_trust_gate():
+    """The published 0.46 / 0.70 were produced at upstream's batch 32 / seed 0.
+
+    A pass at batch 1 / seed 42 is a fine second data point, but it cannot vouch for the
+    install: if it had MISSED, the miss would have been ambiguous between a broken
+    install and a batching difference — so its pass is equally ambiguous.
+    """
+    runs = [
+        _report("C3D", recall=0.60),
+        _report("C1W", recall=0.15),
+        _repro("full", FULL, FULL_REV, batch_size=1, seed=42),
+        _repro("npo_forget10", AGENT_A, AGENT_A_REV, batch_size=1, seed=42),
+        _measure(AGENT_B, AGENT_B_REV),
+    ]
+    verdict = evaluate_gates(runs)
+    assert any("never at published parity" in b for b in verdict["blockers"]), verdict["blockers"]
+    assert not verdict["overall_passed"]
+
+
+def test_parity_pass_plus_batch_one_pass_is_the_intended_state():
+    """Both runs present: the install is validated AND the protocol is characterised."""
+    runs = [
+        _report("C3D", recall=0.60),
+        _report("C1W", recall=0.15),
+        *_day1(),
+        _repro("full", FULL, FULL_REV, batch_size=1, seed=42),
+        _repro("npo_forget10", AGENT_A, AGENT_A_REV, batch_size=1, seed=42),
+    ]
+    verdict = evaluate_gates(runs)
+    assert verdict["overall_passed"], verdict["blockers"]
+
+
+def test_a_legacy_report_without_the_parity_field_is_not_assumed_to_be_parity():
+    """Reports written before the field existed carry no claim about their settings, and
+    an absent claim is not a passing one."""
+    legacy = _repro("full", FULL, FULL_REV)
+    del legacy["published_parity"]
+    runs = [
+        _report("C3D", recall=0.60),
+        _report("C1W", recall=0.15),
+        legacy,
+        _repro("npo_forget10", AGENT_A, AGENT_A_REV),
+        _measure(AGENT_B, AGENT_B_REV),
+    ]
+    verdict = evaluate_gates(runs)
+    assert any("never at published parity" in b for b in verdict["blockers"])
 
 
 def test_agent_b_without_its_own_measurement_is_blocked():
