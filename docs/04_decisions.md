@@ -733,3 +733,93 @@ discovered when the submodule install fails — after the instance is running an
 **Rejected: make the named profile a warning.** The whole point is that a rented box is
 refused before anything downloads. The escape hatch is the generic profile: run a 4090
 under `--env rtx3090`, where no card is named and nothing is being claimed.
+
+---
+
+## ADR-0037 — 2026-08-07 — open-unlearning's bf16 eval is broken at its own pins; we shim fp32 logits
+
+**Decision.** `rdl.compat.fp32_logits` restores, at runtime, the unconditional
+`logits.float()` upcast that transformers removed in 4.46. The bridge invokes
+`python -m rdl.compat.ou_eval_shim src/eval.py …` instead of `python src/eval.py …`, so
+the shim is named in the command string every report records, and every report carries
+`ou_compat_shims: ["fp32_logits"]`. No file under `third_party/` is modified.
+
+**Context.** At the pinned submodule SHA, `src/evals/metrics/utils.py:98` does
+`avg_losses.cpu().numpy()`, and `Tensor.numpy()` has no bfloat16 conversion. Upstream's
+own `configs/model/Llama-3.2-1B-Instruct.yaml` pins `torch_dtype: bfloat16`, so the
+DEFAULT eval configuration dies with `TypeError: Got unsupported ScalarType BFloat16`
+partway through the first metric. `src/evals/metrics/utility.py:62` fails the same way
+immediately after. The dates are the whole argument:
+
+    2025-07-20  docs/repro.md last updated, under transformers==4.45.1
+    (4.46)      transformers removes the logits.float() upcast
+    2026-03-07  open-unlearning a456aa2 bumps the pin to transformers==4.51.3
+
+Commit `a456aa2` touched `src/trainer/*`, `requirements.txt` and the docs. It did not
+touch `src/evals/` at all, so the eval path was never re-run against the new pin. The
+pinned SHA `4ad738a` is upstream HEAD — there is no upstream fix to move to. This
+reproduces with a 1 MB random Llama on CPU; it is not specific to our bridge or to an
+RTX 3090.
+
+**Rejected: cast at line 98.** That leaves upstream's cross-entropy running in bf16 —
+about three decimal digits of mantissa — and `exp(-avg_loss)` would then miss the
+published probabilities by far more than the ±0.01 gate. Upcasting at the source
+reproduces the numerical environment the published numbers were produced under.
+
+**Rejected: downgrade to transformers 4.45.1.** Tested: `lm_eval==0.4.11` imports
+`transformers.AutoModelForImageTextToText`, which does not exist before 4.47. It would
+break two pins the runbook asserts and produce an untested combination.
+
+**Rejected: evaluate in float32.** It runs, but `torch_dtype=float32` is a parity gap,
+so `parity_gaps` is non-empty and the run is no longer the published reproduction.
+
+**Consequence.** Model weights stay bf16 and FlashAttention-2 stays on, so
+`published_parity` is preserved and `parity_gaps == []`. Validated below.
+
+---
+
+## ADR-0038 — 2026-08-07 — The released NPO forget10 checkpoint does not reproduce its repro.md row
+
+**Decision.** Day 1 stops here. `DAY1_GATE` is NOT met. Nothing downstream —
+batch-size-1 runs, Agent B measurement, C1W/C3D, the condition grid — proceeds until
+this is resolved. The failing report is committed rather than discarded.
+
+**Context.** Three published checkpoints, all at published parity
+(batch 32 / seed 0 / bf16 / FA2, `parity_gaps == []`):
+
+| target | metric | ours | published | delta | verdict |
+|---|---|---|---|---|---|
+| `full` | model_utility | 0.60122 | 0.60 | 0.0012 | PASS |
+| `full` | forget_truth_ratio | 0.47536 | 0.48 | 0.0046 | PASS |
+| `retain90` | model_utility | 0.59231 | 0.59 | 0.0023 | PASS |
+| `retain90` | forget_truth_ratio | 0.62737 | 0.63 | 0.0026 | PASS |
+| `npo_forget10` | model_utility | 0.43169 | 0.46 | 0.0283 | **FAIL** |
+| `npo_forget10` | forget_truth_ratio | 0.64140 | 0.70 | 0.0586 | **FAIL** |
+
+Against upstream's published eval LOG for `full` (not the rounded table), our run agrees
+to ~2e-3 on `model_utility`, 3.9e-5 on `forget_Q_A_Prob`, and reproduces
+`forget_quality = 3.9054713571083378e-22` to every printed digit. The evaluator's
+demonstrated error on two independent reference checkpoints is ≤ 0.005. The NPO gap is
+6–23× that.
+
+Ruled out, one variable at a time:
+
+* **checkpoint identity** — the pinned revision `94ed64eb` IS `main`; the repo has one
+  model upload and no other candidate;
+* **published targets** — re-derived from the `Llama-3.2-1B-Instruct` table in
+  `docs/repro.md`; `PUBLISHED_TARGETS` transcribes it correctly;
+* **run settings** — `parity_gaps == []`, so this is not batch size, seed, dtype or
+  attention;
+* **install / evaluator** — validated by `full` and `retain90` on the same command path.
+
+`open-unlearning/eval` publishes eval logs for reference models only (full, retain90/95/99);
+there is **no** published eval log for any unlearned checkpoint, and the NPO model card is
+an empty auto-generated template. Nothing ties the released artifact to the table row.
+Upstream's own caveat: "Results may vary even with the same effective hyperparameters
+when trained with modifications to the distributed training setup, including when
+training on a single GPU. Please use the below numbers only for reproducibility purposes."
+
+**Consequence.** The most probable reading is that the released NPO checkpoint is a
+different training run from the one that produced the row. That is a claim about the
+artifact, not about this installation — and it is exactly the claim the Day-1 gate exists
+to surface before anything is built on top of it.

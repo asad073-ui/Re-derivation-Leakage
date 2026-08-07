@@ -1,0 +1,108 @@
+{
+  "run_id": "20260807T173807Z-1ea12bf-5206d739c8fd",
+  "phase": "phase0_days1-2_repro",
+  "measure_only": false,
+  "target": "retain90",
+  "checkpoint": "open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90",
+  "revision": "7114300c0049527a71833f5683965c358ad9dcbf",
+  "checkpoint_label": "tofu_llama32_1b_retain90",
+  "hardware": {
+    "device": "cuda",
+    "name": "NVIDIA GeForce RTX 3090",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "supports_bf16": true,
+    "supports_flash_attn2": true,
+    "total_vram_gb": 25.3,
+    "recommended_dtype": "bfloat16",
+    "recommended_train_dtype": "bfloat16",
+    "recommended_attn": "flash_attention_2",
+    "torch_version": "2.4.1+cu121",
+    "cuda_version": "12.1",
+    "python_version": "3.11.9",
+    "platform": "Linux-6.8.0-117-generic-x86_64",
+    "free_disk_gb": 128.3,
+    "cpu_count": 32,
+    "flash_attn_installed": true
+  },
+  "attn_implementation": "flash_attention_2",
+  "torch_dtype": "bfloat16",
+  "ou_compat_shims": [
+    "fp32_logits"
+  ],
+  "published_parity": true,
+  "parity_gaps": [],
+  "env_profile": "vast_rtx3090",
+  "seeding": {
+    "seed": 0,
+    "python_seeded": true,
+    "numpy_seeded": true,
+    "torch_seeded": true,
+    "torch_cuda_seeded": true,
+    "deterministic_algorithms": true,
+    "cudnn_deterministic": true,
+    "cublas_workspace_config": ":4096:8",
+    "warnings": [],
+    "fully_deterministic": true
+  },
+  "open_unlearning_command": "python -m rdl.compat.ou_eval_shim src/eval.py --config-name=eval.yaml experiment=eval/tofu/default model=Llama-3.2-1B-Instruct model.model_args.pretrained_model_name_or_path=open-unlearning/tofu_Llama-3.2-1B-Instruct_retain90 model.model_args.attn_implementation=flash_attention_2 model.model_args.torch_dtype=bfloat16 forget_split=forget10 holdout_split=holdout10 retain_logs_path=saves/eval/tofu_Llama-3.2-1B-Instruct_retain90/TOFU_EVAL.json seed=0 eval.tofu.batch_size=32 eval.tofu.overwrite=true task_name=rdl_repro_tofu_llama32_1b_retain90_forget10_s0_b32_20260807T173555Z paths.output_dir=saves/eval/rdl_repro_tofu_llama32_1b_retain90_forget10_s0_b32_20260807T173555Z +model.model_args.revision=7114300c0049527a71833f5683965c358ad9dcbf",
+  "task_name": "rdl_repro_tofu_llama32_1b_retain90_forget10_s0_b32_20260807T173555Z",
+  "forget_split": "forget10",
+  "holdout_split": "holdout10",
+  "batch_size": 32,
+  "seed": 0,
+  "summary_path": "/workspace/Re-derivation-Leakage/third_party/open-unlearning/saves/eval/rdl_repro_tofu_llama32_1b_retain90_forget10_s0_b32_20260807T173555Z/TOFU_SUMMARY.json",
+  "summary_written_after": 1786124154.7147534,
+  "condition_file": null,
+  "git_sha": "1ea12bf",
+  "metrics": {
+    "model_utility": 0.5923075013352759,
+    "forget_quality": 0.999999999999994,
+    "forget_truth_ratio": 0.6273686349110743,
+    "forget_Q_A_ROUGE": 0.3751739833880353,
+    "forget_Q_A_Prob": 0.11619945442653261,
+    "extraction_strength": 0.059625474519908364,
+    "privleak": -0.0010123301814457053
+  },
+  "checkpoint_key": "retain90",
+  "passed": true,
+  "comparisons": [
+    {
+      "metric": "model_utility",
+      "ours": 0.5923075013352759,
+      "published": 0.59,
+      "tolerance": 0.01,
+      "passed": true,
+      "gated": true,
+      "note": "|d|=0.0023"
+    },
+    {
+      "metric": "forget_truth_ratio",
+      "ours": 0.6273686349110743,
+      "published": 0.63,
+      "tolerance": 0.01,
+      "passed": true,
+      "gated": true,
+      "note": "|d|=0.0026"
+    },
+    {
+      "metric": "forget_quality",
+      "ours": 0.999999999999994,
+      "published": 1.0,
+      "tolerance": null,
+      "passed": true,
+      "gated": false,
+      "note": "log10=-0.00, expected in [-1.00, 1.00]: ok"
+    }
+  ],
+  "meta": {
+    "batch_size": 32,
+    "upstream_eval_batch_size": 32,
+    "seed": 0,
+    "upstream_eval_seed": 0,
+    "published_parity": true,
+    "parity_gaps": []
+  }
+}

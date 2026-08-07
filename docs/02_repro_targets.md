@@ -322,3 +322,22 @@ Every eval also emits `+model.model_args.revision=<sha>` when the checkpoint is 
 Hydra rejects a plain override for an absent key — the same failure mode as
 `retain_split=`. `make-report` blocks if the revision the reproduction used differs from
 the one the condition grid ran.
+
+### Resolved versions — 2026-08-07 17:13 UTC
+
+- device: `cuda:NVIDIA GeForce RTX 3090 cc=8.6 vram=25.3GB bf16=True fa2_hardware=True fa2_installed=True -> dtype=bfloat16 attn=flash_attention_2`
+
+| package | version |
+|---|---|
+| `torch` | `2.4.1+cu121` |
+| `transformers` | `4.51.3` |
+| `datasets` | `3.0.1` |
+| `accelerate` | `0.34.2` |
+| `tokenizers` | `0.21.4` |
+| `numpy` | `2.2.3` |
+| `pandas` | `3.0.5` |
+| `omegaconf` | `2.3.1` |
+| `pydantic` | `2.13.4` |
+| `huggingface_hub` | `0.36.0` |
+
+- open-unlearning SHA: `4ad738aaf60f6a4385f6e2506d01da99e76c31f3`

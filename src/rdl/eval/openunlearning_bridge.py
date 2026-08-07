@@ -102,7 +102,16 @@ DEFAULT_TOLERANCES: dict[str, float] = {
     "forget_truth_ratio": 0.01,
 }
 
+# Fallback band, used ONLY when the target carries no published forget_quality to
+# anchor against. It is not a universal expectation: the published values span
+# 1.0 (retain90), 0.02 (npo_forget10), 1.66e-21 (full) and 1.06e-239 (grad_ascent).
 FORGET_QUALITY_LOG10_RANGE: tuple[float, float] = (-2.0, 0.0)
+
+# "Same order of magnitude", as the note above promises, measured against the
+# PUBLISHED value for this target rather than against a single hard-coded band. A fixed
+# [-2, 0] window silently declared `full` (published 1.66e-21) OUT OF RANGE on a run
+# that had in fact landed within a factor of five of the published number.
+FORGET_QUALITY_LOG10_TOLERANCE: float = 1.0
 
 # TOFU's splits travel in triples. Upstream's own scripts/tofu_unlearn.sh pairs them as
 # below; the eval only ever needs `forget_split` + `holdout_split`, with `retain_split`
@@ -250,6 +259,15 @@ def build_eval_command(
 
     cmd = [
         python,
+        # NOT `python src/eval.py`. Upstream's eval crashes with
+        # `TypeError: Got unsupported ScalarType BFloat16` at its own pinned
+        # transformers==4.51.3, because 4.46 removed the logits.float() upcast that
+        # `src/evals/metrics/utils.py` depends on. The shim restores it at runtime
+        # without touching a single file under third_party/, and is spelled out here so
+        # that it appears in the command string every report records. See
+        # rdl.compat.fp32_logits for the full dating of the regression.
+        "-m",
+        "rdl.compat.ou_eval_shim",
         "src/eval.py",
         "--config-name=eval.yaml",
         f"experiment={spec.experiment}",
@@ -314,6 +332,10 @@ def run_eval(
             f"open-unlearning submodule not found at {ou}. Run: "
             "git submodule update --init --recursive"
         )
+
+    # Fail before the checkpoint downloads if the shim the command names is not
+    # importable in this interpreter, rather than inside the subprocess an hour later.
+    from ..compat import fp32_logits as _fp32_logits  # noqa: F401
 
     log.info("running open-unlearning eval: %s", command_string(cmd))
     # Recorded BEFORE the subprocess starts, and with a one-second slack for
@@ -535,10 +557,16 @@ def compare_to_published(
     note = "KS p-value; unstable over 200 orders of magnitude — reported only"
     if fq is not None and fq > 0:
         log10 = math.log10(fq)
-        lo, hi = FORGET_QUALITY_LOG10_RANGE
+        if fq_target is not None and fq_target > 0:
+            anchor = math.log10(fq_target)
+            lo = anchor - FORGET_QUALITY_LOG10_TOLERANCE
+            hi = anchor + FORGET_QUALITY_LOG10_TOLERANCE
+        else:
+            lo, hi = FORGET_QUALITY_LOG10_RANGE
         in_range = lo <= log10 <= hi
         note = (
-            f"log10={log10:.2f}, expected in [{lo}, {hi}]: {'ok' if in_range else 'OUT OF RANGE'}"
+            f"log10={log10:.2f}, expected in [{lo:.2f}, {hi:.2f}]: "
+            f"{'ok' if in_range else 'OUT OF RANGE'}"
         )
     report.comparisons.append(
         MetricComparison("forget_quality", fq, fq_target, None, True, False, note)
