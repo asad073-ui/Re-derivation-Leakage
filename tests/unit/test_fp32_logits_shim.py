@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from rdl.compat import fp32_logits
 from rdl.eval.openunlearning_bridge import EvalSpec, build_eval_command, command_string
 from rdl.hardware import HardwareProfile
@@ -78,6 +80,13 @@ def test_published_parity_overrides_are_unchanged_by_the_shim():
 
 
 def test_install_is_idempotent_and_reports_its_target():
+    """Needs transformers, so it is NOT part of the CPU gate.
+
+    `make cpu-all` installs only `.[cpu,dev]` — no transformers, no GPU, no network —
+    and `install()` patches a transformers class. Everything above this line stays in
+    the gate because it is pure string construction; only the patch itself is skipped.
+    """
+    pytest.importorskip("transformers", reason="the shim patches a transformers class")
     record = fp32_logits.install()
     again = fp32_logits.install()
     assert fp32_logits.is_installed()
