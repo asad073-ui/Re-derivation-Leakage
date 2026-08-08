@@ -173,7 +173,15 @@ def test_one_seed_under_cumulative_scope_is_a_blocker():
 def test_a_dirty_tree_run_cannot_be_reported():
     r = _report("C3C", recall=0.6)
     r["git_dirty"] = True
-    assert any("dirty working tree" in b for b in scale_blockers({"C3C": r}))
+    assert any("git_dirty is True, not false" in b for b in scale_blockers({"C3C": r}))
+
+
+def test_a_run_that_does_not_say_whether_it_was_dirty_cannot_be_reported():
+    """ADR-0061: `git_dirty is True` was the ONLY rejected state, so every report written
+    before ADR-0054 — which has no such key at all — was accepted as clean."""
+    r = _report("C3C", recall=0.6)
+    r["git_dirty"] = None
+    assert any("git_dirty is None, not false" in b for b in scale_blockers({"C3C": r}))
 
 
 # =====================================================================================

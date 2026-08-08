@@ -29,6 +29,12 @@
 #
 #   ENV_NAME=vast_rtx3090 bash scripts/03_run_phase0_grid.sh              # seeds per scope
 #   ENV_NAME=colab_t4 CONDITIONS="C1W C3D" PILOT=1 bash scripts/03_run_phase0_grid.sh --limit 5
+#   ENV_NAME=vast_rtx3090 SCOPE=cumulative bash scripts/03_run_phase0_grid.sh   # Phase F2
+#
+# RUN THE WHOLE SESSION FROM ONE COMMIT. `make-report` requires every condition, both
+# Day-1 reproductions and agent B's measurement to record the SAME git SHA on a clean
+# tree (ADR-0061). That is now possible because `results/` no longer counts as dirt
+# (ADR-0059) — before, the first run's manifest append made the second refuse to start.
 #
 # ENV_NAME swaps the EXECUTION environment only. The conditions are identical across
 # hardware by construction, which is what makes a result checkable on a box that is not
@@ -48,6 +54,18 @@ ENV_NAME="${ENV_NAME:-vast_rtx3090}"
 # tables, prints "not a reportable run", and exits zero. Never set it on a full grid: it
 # is the one switch that turns the pre-registered criteria off.
 PILOT="${PILOT:-0}"
+# WHICH EXPERIMENT this grid is. `per_item` is the primary; `cumulative` is Phase F2,
+# longitudinal recontamination, which is a different question with a different seed count
+# and gets its own report and its own verdict. Setting it here does two things — it runs
+# the conditions at that scope and it gates that scope — because setting only the first
+# is exactly the bug: `--set episode.store_scope=cumulative` used to run F2 and then
+# re-print the already-valid per-item verdict (ADR-0062).
+SCOPE="${SCOPE:-per_item}"
+case "$SCOPE" in
+    per_item) SCOPE_ARGS=() ;;
+    cumulative) SCOPE_ARGS=(--set episode.store_scope=cumulative) ;;
+    *) echo "unknown SCOPE '$SCOPE' (expected per_item|cumulative)" >&2; exit 2 ;;
+esac
 
 # `--seeds` is passed ONLY when SEEDS is set. Passing `--seeds ""` sends an empty string
 # where Typer expects an integer, so the grid died on its own advertised invocation
@@ -60,6 +78,7 @@ if [ -n "$SEEDS" ]; then
 fi
 
 echo "env        $ENV_NAME"
+echo "scope      $SCOPE$([ "$SCOPE" = "cumulative" ] && echo '  (Phase F2 — NOT the primary experiment)')"
 echo "seeds      ${SEEDS:-<per store scope: 1 per_item / 5 cumulative>}"
 echo "conditions $CONDITIONS"
 echo "mode       $([ "$PILOT" = "1" ] && echo 'PILOT (--no-gate, NOT reportable)' || echo 'full (gated)')"
@@ -77,6 +96,7 @@ for C in $CONDITIONS; do
         --condition "configs/conditions/${C}.yaml" \
         --env "$ENV_NAME" \
         "${SEED_ARGS[@]+"${SEED_ARGS[@]}"}" \
+        "${SCOPE_ARGS[@]+"${SCOPE_ARGS[@]}"}" \
         "$@"
 done
 
@@ -85,7 +105,7 @@ echo "=== report + gate ==="
 if [ "$PILOT" = "1" ]; then
     # A truncated pilot cannot clear the scale checks, by design. Report without the
     # verdict rather than teaching the operator that a red gate is normal.
-    python -m rdl.cli make-report --no-gate
+    python -m rdl.cli make-report --scope "$SCOPE" --no-gate
     echo
     echo "PILOT: tables written, NO verdict applied. This run is not reportable and its"
     echo "numbers are not a result. Re-run without PILOT=1 and without --limit for that."
@@ -93,7 +113,9 @@ if [ "$PILOT" = "1" ]; then
 fi
 
 # Exits non-zero when the pre-registered criteria are not met. Do not add `|| true`.
-python -m rdl.cli make-report
+# `--scope` gates the experiment this grid actually ran; without it an F2 invocation
+# reprints the per-item verdict and reads as though F2 had passed (ADR-0062).
+python -m rdl.cli make-report --scope "$SCOPE"
 
 echo
 echo "Criteria applied (docs/00e_preregistration_v5.md):"

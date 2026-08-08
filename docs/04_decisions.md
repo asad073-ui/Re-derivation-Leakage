@@ -1350,3 +1350,108 @@ sent operators looking at batch sizes for provenance failures. `pinned_ou_source
 reads `git ls-tree HEAD third_party/open-unlearning` rather than the checked-out
 submodule's HEAD: comparing the working tree against itself would make a moved submodule
 agree with itself.
+
+## ADR-0059 — 2026-08-08 — `results/` is this program's output, not its source
+
+**Decision.** `git_dirty()` and `git_diff_sha256()` are computed over the source tree with
+`results/` excluded and untracked files INCLUDED:
+
+```
+git status --porcelain --untracked-files=normal --ignore-submodules=untracked \
+    -- . ':(exclude)results/**'
+git diff HEAD --ignore-submodules=untracked -- . ':(exclude)results/**'
+```
+
+**Context.** The predicate was `status --porcelain --untracked-files=no` over the whole
+tree, which had both failure modes exactly backwards.
+
+*The tree became dirty by running.* `results/manifest.jsonl` is TRACKED and every run
+appends to it. So the first `run-repro` of a session succeeded, and the second refused to
+start — deterministically, on a rented GPU, after the first result was already paid for.
+`scripts/02_repro_tofu_npo_forget10.sh` stopped before NPO and before agent B; a fresh
+grid ran C0 and then refused at C1. Neither escape was real: `--allow-dirty` marks the
+report `reportable: false` by design, and committing between runs gives the arms
+different git SHAs, which ADR-0061 blocks outright.
+
+*Untracked source was invisible.* `--untracked-files=no` meant a source or config file
+present on the box and in no commit did not count. That is the same class of failure as
+the `.gitignore` rule that once swallowed `configs/env/`: the run works locally and cannot
+be reproduced from the SHA it records.
+
+**Consequence.** A whole GPU session — both Day-1 reproductions, agent B's measurement and
+every condition — now runs at one clean commit without a single intermediate commit, which
+is exactly what ADR-0061's same-SHA requirement needs to be satisfiable.
+`--ignore-submodules=untracked` is deliberate: open-unlearning writes its outputs inside
+its own tree and the superproject's `.gitignore` does not reach in there, so without it
+Day 1 would report a dirty tree the moment the evaluator it is running produced a file. A
+submodule at the wrong COMMIT still counts, and `ou_source_sha` gates that separately.
+
+## ADR-0060 — 2026-08-08 — The reports are committed; the bulk is not
+
+**Decision.** `.gitignore` un-ignores `REPORT*.md`, `gate_verdict*.json`, `fig*.png`, and
+per-run `condition_report.json`, `repro_report.json`, `measure_report.json`,
+`SUMMARY.json` and `handoff_evidence.json`. `99_sync_results.sh` stages and then VERIFIES
+that each report on disk reached the index, aborting if one did not. `run-condition`
+writes `handoff_evidence.json` for every handoff arm.
+
+**Context.** `results/**` was excluded with only `.gitkeep` and `manifest.jsonl`
+un-ignored, and the sync script stages with `git add -A results/ docs/` — which does not
+add ignored files. A GPU session therefore produced every report, pushed the manifest,
+reported success, and the runbook's next line is "destroy the instance". The evidence
+would have been on it.
+
+`!results/*/` is load-bearing: git will not re-include a file whose parent directory is
+excluded, so the run directories have to be un-ignored before anything inside them can be.
+
+**Consequence.** Transcripts, evaluator scratch and weights stay ignored — they are large
+and reconstructible. `handoff_evidence.json` exists because the C3S/C3C claim rests on
+data that was only in the ignored transcripts: per handoff, the text handed over, whose
+question it answered, agent A's own answer to that item, both SHA-256s so the copy can be
+checked without trusting either, and whether the carrier node was certified clean.
+
+## ADR-0061 — 2026-08-08 — Provenance is required of every report, and the session is one commit
+
+**Decision.** Three things, all previously asserted and none previously checked:
+
+1. A measure-only report (agent B) must clear
+   `parity_provenance_gaps(..., require_parity=False)`. Parity cannot be asked of it —
+   it has no published row — everything else can.
+2. Every condition report must clear `condition_provenance_gaps`: `git_dirty is False`,
+   a real `git_sha`, transformers/torch versions, the tokenizer chat-template hash, and
+   a resolved dtype and attention implementation for every HF model.
+3. The conditions must agree on one git SHA, and every Day-1 run the grid leans on must
+   record that same SHA.
+
+**Context.** ADR-0058 tightened the Day-1 gate for `full` and the characterized NPO
+target, and the summary claimed agent B was covered too. It was not:
+`measured_checkpoints` was `{r["checkpoint"]: r for r in measures}` — existence alone —
+so any measure-only report satisfied the requirement whatever its tree state, evaluator
+SHA, tokenizer or commit. Separately, `scale_blockers` rejected `git_dirty is True` and
+nothing else, so a report with `git_dirty: null` and no runtime block (the shape of every
+report written before ADR-0054) was accepted, and `_fingerprint` compared two arms field
+by field where a field missing on BOTH sides read as agreement.
+
+**Consequence.** Arms are only ever read as differences, and a difference across two
+commits is a difference between two programs. `same_commit` compares by prefix because
+condition reports carry the short SHA and some Day-1 fields carry the full 40; `"nogit"`
+and empty never match anything.
+
+## ADR-0062 — 2026-08-08 — The longitudinal grid is a separate experiment with its own verdict
+
+**Decision.** `make-report --scope {per_item|cumulative}`. Each scope gets its own
+verdict, its own report file (`REPORT_cumulative.md`, `gate_verdict_cumulative.json`,
+`fig*_cumulative.png`) and its own seed requirement. `markdown_table` carries a
+`store_scope` column. `03_run_phase0_grid.sh` takes `SCOPE=`, which both runs the
+conditions at that scope and gates that scope.
+
+**Context.** ADR-0053 keyed reports by `(condition, store_scope)` so a cumulative run
+could not silently become the primary estimand — and stopped there. `evaluate_gates`
+loaded the cumulative reports and returned `sorted(longitudinal)`, a list of NAMES, with
+no verdict attached. So the runbook's Phase F2 command ran the longitudinal grid and then
+`make-report` re-printed the already-valid per-item verdict, which reads as "F2 passed".
+The main table had no scope column either, so a per-item C3C and a cumulative C3C were two
+rows with the same name and different numbers — indistinguishable from run-to-run noise.
+
+**Consequence.** The two experiments answer different questions (item-exchangeable
+recovery vs longitudinal recontamination), have different seed counts (1 vs 5), and are
+never differenced against each other. A verdict now says which one it is.

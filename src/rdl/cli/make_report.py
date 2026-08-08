@@ -194,6 +194,58 @@ def parity_provenance_gaps(
     return gaps
 
 
+def same_commit(a: str | None, b: str | None) -> bool:
+    """Do two recorded git SHAs name the same commit?
+
+    Prefix comparison, because `git_sha()` records the SHORT sha in condition reports and
+    some fields elsewhere carry the full 40. Empty and `"nogit"` never match anything: a
+    run that could not identify its own commit has not agreed with any other run.
+    """
+    if not a or not b or "nogit" in (a, b):
+        return False
+    x, y = str(a), str(b)
+    n = min(len(x), len(y))
+    return n >= 7 and x[:n] == y[:n]
+
+
+def condition_provenance_gaps(r: dict) -> list[str]:
+    """Everything a condition report must say about what produced it (ADR-0061).
+
+    `scale_blockers` rejected exactly one provenance state — `git_dirty is True` — so a
+    report with `git_dirty: null` (every report written before ADR-0054) was accepted,
+    and `_fingerprint` compared two arms field by field where a field missing on BOTH
+    sides read as agreement. Two arms differenced across an SDPA run and an FA2 run, or
+    across a moved chat template, are two experiments reported as one; the gate can only
+    say so if the facts are required rather than merely welcomed.
+    """
+    gaps: list[str] = []
+    if r.get("git_dirty") is not False:
+        gaps.append(f"git_dirty is {r.get('git_dirty')!r}, not false")
+    sha = r.get("git_sha")
+    if not sha or sha == "nogit":
+        gaps.append(f"git_sha is {sha!r} — the run cannot say which commit produced it")
+    runtime = r.get("runtime") or {}
+    for field in ("transformers_version", "torch_version"):
+        if not runtime.get(field):
+            gaps.append(f"no runtime.{field}")
+    if not (runtime.get("tokenizer") or {}).get("chat_template_sha256"):
+        gaps.append(
+            "no runtime.tokenizer.chat_template_sha256 — the template renders every "
+            "prompt and upstream reads it from an unpinned branch"
+        )
+    models = runtime.get("models") or {}
+    hf = {name: m for name, m in models.items() if m.get("kind") == "hf"}
+    if not hf:
+        gaps.append("runtime.models records no HF model; what turned weights into tokens is unsaid")
+    for name, m in sorted(hf.items()):
+        # RESOLVED, not requested: `dtype_override: null` means "ask the hardware", so the
+        # config alone does not say what ran.
+        for field in ("resolved_dtype", "resolved_attn"):
+            if not m.get(field):
+                gaps.append(f"model {name}: no {field}")
+    return gaps
+
+
 def report_is_exact_parity(r: dict, pinned_sha: str | None = None) -> bool:
     """Did this report come from a run at ALL FOUR published settings, on clean, IDENTIFIED code?
 
@@ -215,6 +267,7 @@ __all__ = [
     "REQUIRED_STANDALONE",
     "certified_joint_leak_rate",
     "collect_runs",
+    "condition_provenance_gaps",
     "evaluate_gates",
     "handoff_blockers",
     "handoff_control_blockers",
@@ -226,6 +279,7 @@ __all__ = [
     "pinned_ou_source_sha",
     "report_is_exact_parity",
     "reproduction_blockers",
+    "same_commit",
     "scale_blockers",
     "validity_table",
 ]
@@ -350,22 +404,34 @@ def _fmt_ci(stat: dict[str, Any] | None) -> str:
     return f"{mean:.3f} [{ci[0]:.3f}, {ci[1]:.3f}]"
 
 
-def markdown_table(runs: list[dict]) -> str:
-    """The main results table: one row per condition."""
+def markdown_table(runs: list[dict], scope: str | None = None) -> str:
+    """The main results table: one row per condition.
+
+    `store_scope` is a COLUMN, and the rows are sorted by it. Without it a per-item C3C
+    and a cumulative C3C are two rows with the same name and different numbers — which
+    reads as run-to-run noise rather than as two experiments (ADR-0062). `scope` filters
+    to one of them; None shows both, labelled.
+    """
     conds = [r for r in runs if r.get("phase") == "phase0_days3-5"]
+    if scope is not None:
+        conds = [r for r in conds if str(r.get("store_scope") or "cumulative") == scope]
     if not conds:
         return "_no condition runs found_"
 
     rows = [
-        "| condition | n seeds | SysRecall@k (store) | SysRecall@k (final) | "
+        "| condition | store_scope | n seeds | SysRecall@k (store) | SysRecall@k (final) | "
         "laundering_rate | delegation_rate | write policy |",
-        "|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|",
     ]
-    for r in sorted(conds, key=lambda x: str(x.get("condition"))):
+    for r in sorted(
+        conds,
+        key=lambda x: (str(x.get("store_scope") or "cumulative"), str(x.get("condition"))),
+    ):
         recall = r.get("recall_at_k", {})
         rows.append(
-            "| {cond} | {n} | {store} | {final} | {laund} | {deleg} | `{wp}` |".format(
+            "| {cond} | `{scope}` | {n} | {store} | {final} | {laund} | {deleg} | `{wp}` |".format(
                 cond=r.get("condition", "?"),
+                scope=str(r.get("store_scope") or "cumulative"),
                 n=r.get("n_seeds", "?"),
                 store=_fmt_ci(recall.get("persistent_store_after_episode")),
                 final=_fmt_ci(recall.get("final_answer")),
@@ -721,6 +787,12 @@ def reproduction_blockers(
     # WAS. None when git is unavailable, in which case the SHA is required to be present
     # but not required to match anything.
     pinned_sha = pinned_ou_source_sha()
+    # The commit the GRID ran at. Every Day-1 run the grid leans on must agree with it —
+    # `scale_blockers` has already required the conditions to agree among themselves, so
+    # any one of them names the grid. None when the conditions disagree or say nothing,
+    # in which case that blocker fires instead of this one.
+    grid_shas = {str(r.get("git_sha")) for r in conds.values() if r.get("git_sha")}
+    grid_sha = next(iter(grid_shas)) if len(grid_shas) == 1 else None
 
     # --- 1 + 2: the gated reproductions -------------------------------------------
     # Under `study_mode: released_artifact` a target listed in `characterized_targets`
@@ -778,9 +850,21 @@ def reproduction_blockers(
         # either. And a pass whose evaluator, tree state and tokenizer are unrecorded
         # vouches for nothing at all: missing provenance is unknown provenance, never
         # clean provenance (ADR-0058).
-        if not any(r.get("passed") and report_is_exact_parity(r, pinned_sha) for r in hits):
+        #
+        # The accepted run must also be at the GRID's commit (ADR-0061). A reproduction
+        # from an older checkout validates the evaluator that checkout contained, which is
+        # exactly the distinction `git_dirty` exists to draw — drawn one level up.
+        # `grid_sha is None` means the conditions disagreed among themselves; that fires
+        # its own blocker in `scale_blockers` and is not restated here.
+        if not any(
+            r.get("passed")
+            and report_is_exact_parity(r, pinned_sha)
+            and (grid_sha is None or same_commit(r.get("git_sha"), grid_sha))
+            for r in hits
+        ):
             found = sorted(
-                f"[{r.get('run_id')}] " + "; ".join(parity_provenance_gaps(r, pinned_sha))
+                f"[{r.get('run_id')}] sha={r.get('git_sha')} "
+                + "; ".join(parity_provenance_gaps(r, pinned_sha) or ["settings OK"])
                 for r in hits
                 if r.get("passed")
             ) or [f"no passing run (of {len(hits)})"]
@@ -788,10 +872,10 @@ def reproduction_blockers(
                 f"Days 1-2: `--target {target}` passed, but never at EXACT published "
                 f"parity (batch_size={UPSTREAM_EVAL_BATCH_SIZE}, seed={UPSTREAM_EVAL_SEED}, "
                 f"torch_dtype={UPSTREAM_EVAL_DTYPE}, attn={UPSTREAM_EVAL_ATTN}) on a clean "
-                "tree with a recorded evaluator SHA, tokenizer template and runtime mode. "
-                f"Runs found: {found}. Re-run it at upstream's settings on the current "
-                "commit — that is the run that says our install computes their metrics "
-                "correctly."
+                "tree, with a recorded evaluator SHA, tokenizer template and runtime mode, "
+                f"at the grid's own commit ({grid_sha!r}). Runs found: {found}. Re-run it "
+                "at upstream's settings on the current commit — that is the run that says "
+                "our install computes their metrics correctly."
             )
     for r in repros:
         if r.get("passed") and r.get("checkpoint"):
@@ -811,6 +895,29 @@ def reproduction_blockers(
                 "checkpoint whose forgetting is unmeasured cannot be interpreted "
                 "(docs/00b_preregistration_v2.md, acceptance item 8)."
             )
+        else:
+            # THE agent-B hole (ADR-0061). `measured_checkpoints` was built by existence
+            # alone — `{r["checkpoint"]: r for r in measures}` — so any measure-only
+            # report satisfied the requirement whatever its provenance. Agent B has no
+            # published row, so parity cannot be asked of it; everything else can, and
+            # must be, or "agent B was characterised on the final clean commit" is a
+            # sentence with nothing behind it.
+            prov = parity_provenance_gaps(day1, pinned_sha, require_parity=False)
+            if prov:
+                blockers.append(
+                    f"{repo}: the Days 1-2 run that characterises it "
+                    f"(`{day1.get('run_id')}`) carries no checkable provenance: "
+                    + "; ".join(prov)
+                    + f". {where} is built on it, so the grid inherits the gap. Re-run it "
+                    "on the current clean commit."
+                )
+            if grid_sha and not same_commit(day1.get("git_sha"), grid_sha):
+                blockers.append(
+                    f"{repo}: characterised at commit {day1.get('git_sha')!r} but "
+                    f"{where} ran at {grid_sha!r}. Days 1-2 and the grid must be one "
+                    "program: the reproduction vouches for the evaluator the GRID used, "
+                    "not for a different checkout of it (ADR-0061)."
+                )
 
         declared = slot["revisions"]
         if None in declared:
@@ -947,10 +1054,16 @@ def scale_blockers(conds: dict[str, dict]) -> list[str]:
                 "varies under greedy decoding — cannot change any outcome, and extra "
                 "seeds are copies rather than replicates (ADR-0050)."
             )
-        if r.get("git_dirty") is True:
+        # Every provenance fact REQUIRED, not merely un-denied. `git_dirty is True` was
+        # the only rejected state, so a report carrying `git_dirty: null` and no runtime
+        # block at all cleared this check (ADR-0061).
+        prov = condition_provenance_gaps(r)
+        if prov:
             out.append(
-                f"{name} was produced from a dirty working tree, so the recorded commit "
-                "does not contain the code that ran (ADR-0054)."
+                f"{name} cannot say what produced it: {'; '.join(prov)}. A report whose "
+                "commit, tree state, library versions or resolved dtype/attention are "
+                "unrecorded cannot be differenced against another arm (ADR-0054, "
+                "ADR-0061)."
             )
         n_retain = r.get("n_retain_items")
         if n_retain is not None and int(n_retain) != REQUIRED_N_RETAIN:
@@ -958,6 +1071,18 @@ def scale_blockers(conds: dict[str, dict]) -> list[str]:
                 f"{name} ran {n_retain} retain control item(s); the pre-registration "
                 f"fixes {REQUIRED_N_RETAIN}. The false-positive floor is not comparable."
             )
+    # ONE commit for the whole grid. The arms are only ever read as differences, and a
+    # difference across two commits is a difference between two programs. This is also
+    # what makes ADR-0059's fix complete: with `results/` out of the dirty check, a whole
+    # session runs at one clean SHA, so requiring agreement costs nothing legitimate.
+    shas = {name: r.get("git_sha") for name, r in sorted(conds.items())}
+    distinct = {str(s) for s in shas.values() if s}
+    if len(distinct) > 1:
+        out.append(
+            f"the conditions were produced at {len(distinct)} different commits: {shas}. "
+            "Arms differenced across two commits are two programs reported as one — "
+            "commit once, then run the whole grid (ADR-0061)."
+        )
     for required in REQUIRED_STANDALONE:
         if required not in conds:
             out.append(
@@ -1157,11 +1282,21 @@ def _pairing_fingerprint_blockers(treatment: str, baseline: str, t: dict, b: dic
     return out
 
 
-def evaluate_gates(runs: list[dict]) -> dict:
-    """Apply every pre-registered criterion. Returns a JSON-safe verdict block."""
+def evaluate_gates(runs: list[dict], scope: str = PRIMARY_STORE_SCOPE) -> dict:
+    """Apply every pre-registered criterion **within one store scope**.
+
+    `scope` selects which experiment is being gated. `per_item` is the primary; the
+    cumulative grid (Phase F2) is a SEPARATE experiment about longitudinal
+    recontamination and gets its own verdict, its own report file and its own seed count
+    (ADR-0062). It used to get neither: `evaluate_gates` loaded the cumulative reports
+    and then returned only `sorted(longitudinal)` — a list of names — so `bash
+    scripts/03_run_phase0_grid.sh --set episode.store_scope=cumulative` re-printed the
+    already-valid per-item verdict and looked like it had evaluated F2.
+    """
     study = load_study_mode()
-    conds = _by_condition(runs, PRIMARY_STORE_SCOPE)
-    longitudinal = _by_condition(runs, "cumulative")
+    conds = _by_condition(runs, scope)
+    other_scope = "cumulative" if scope == PRIMARY_STORE_SCOPE else PRIMARY_STORE_SCOPE
+    longitudinal = _by_condition(runs, other_scope)
     gates: list[dict] = []
     blockers: list[str] = []
 
@@ -1434,12 +1569,20 @@ def evaluate_gates(runs: list[dict]) -> dict:
     return {
         "study_mode": study.get("mode"),
         "study_claim": study.get("claim"),
+        # WHICH experiment this verdict is about. Without it a cumulative gate_verdict.json
+        # and a per-item one are indistinguishable files with the same keys (ADR-0062).
+        "store_scope": scope,
+        "is_primary_experiment": scope == PRIMARY_STORE_SCOPE,
+        "conditions_evaluated": sorted(conds),
         "validity": validity,
         "gates": gates,
         "joint_only_recovery": joint,
         "content_specific_joint_recovery": content_joint,
         "certified_joint_leak_rate": certified,
-        "longitudinal_conditions": sorted(longitudinal),
+        "other_scope": other_scope,
+        "other_scope_conditions": sorted(longitudinal),
+        # Kept under its old name for readers written against the per-item verdict.
+        "longitudinal_conditions": sorted(longitudinal if scope == PRIMARY_STORE_SCOPE else conds),
         "blockers": sorted(set(blockers)),
         "min_delta_points": MIN_DELTA_POINTS,
         "min_composition_delta_points": MIN_COMPOSITION_DELTA_POINTS,
@@ -1565,7 +1708,12 @@ def joint_table(verdict: dict) -> str:
     return "\n".join(rows)
 
 
-def _figures(runs: list[dict], out_dir: Path, verdict: dict | None = None) -> list[Path]:
+def _figures(
+    runs: list[dict],
+    out_dir: Path,
+    verdict: dict | None = None,
+    scope: str = PRIMARY_STORE_SCOPE,
+) -> list[Path]:
     """Figure 2 is the HEADLINE and figure 3 is a diagnostic — that order used to be
     reversed in everything but the arithmetic.
 
@@ -1583,11 +1731,18 @@ def _figures(runs: list[dict], out_dir: Path, verdict: dict | None = None) -> li
     except ImportError:
         return []
 
-    conds = [r for r in runs if r.get("phase") == "phase0_days3-5"]
+    # One scope per figure set: bars from two different experiments in one axis is the
+    # same ambiguity the table had (ADR-0062).
+    conds = [
+        r
+        for r in runs
+        if r.get("phase") == "phase0_days3-5" and str(r.get("store_scope") or "cumulative") == scope
+    ]
     if not conds:
         return []
     conds.sort(key=lambda x: str(x.get("condition")))
 
+    suffix = "" if scope == PRIMARY_STORE_SCOPE else f"_{scope}"
     written: list[Path] = []
     labels = [str(c.get("condition")) for c in conds]
 
@@ -1611,7 +1766,7 @@ def _figures(runs: list[dict], out_dir: Path, verdict: dict | None = None) -> li
     ax.set_ylim(0, 1)
     ax.set_title("Forget-set recovery from the shared memory store")
     fig.tight_layout()
-    p = out_dir / "fig1_sysrecall_store.png"
+    p = out_dir / f"fig1_sysrecall_store{suffix}.png"
     fig.savefig(p, dpi=150)
     plt.close(fig)
     written.append(p)
@@ -1633,7 +1788,7 @@ def _figures(runs: list[dict], out_dir: Path, verdict: dict | None = None) -> li
         for i, b in enumerate(bars):
             ax.text(i, b[1], f"{b[1]:.4f}", ha="center", va="bottom")
         fig.tight_layout()
-        p = out_dir / "fig2_certified_content_specific_headline.png"
+        p = out_dir / f"fig2_certified_content_specific_headline{suffix}.png"
         fig.savefig(p, dpi=150)
         plt.close(fig)
         written.append(p)
@@ -1646,7 +1801,7 @@ def _figures(runs: list[dict], out_dir: Path, verdict: dict | None = None) -> li
     ax.set_ylim(0, 1)
     ax.set_title("DIAGNOSTIC: recovered items whose node passes both SBU invariants")
     fig.tight_layout()
-    p = out_dir / "fig3_laundering_rate_diagnostic.png"
+    p = out_dir / f"fig3_laundering_rate_diagnostic{suffix}.png"
     fig.savefig(p, dpi=150)
     plt.close(fig)
     written.append(p)
@@ -1666,22 +1821,52 @@ def make_report(
         "--no-gate writes the tables without a verdict; use it while a grid is "
         "still incomplete, never to report a result.",
     ),
+    scope: str = typer.Option(
+        PRIMARY_STORE_SCOPE,
+        "--scope",
+        help="which experiment to gate: `per_item` (the primary grid) or `cumulative` "
+        "(Phase F2, longitudinal recontamination). They are separate experiments with "
+        "separate seed counts and are never differenced against each other; --scope "
+        "cumulative writes REPORT_cumulative.md and gate_verdict_cumulative.json.",
+    ),
 ) -> None:
     """Read results/, emit a markdown report plus figures, and apply the gate."""
+    if scope not in REQUIRED_N_SEEDS_BY_SCOPE:
+        typer.secho(
+            f"unknown --scope {scope!r}; expected one of " f"{sorted(REQUIRED_N_SEEDS_BY_SCOPE)}",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=2)
+
     runs = collect_runs()
     if not runs:
         typer.secho("no runs found under results/", fg=typer.colors.YELLOW)
 
     rd = results_dir()
     rd.mkdir(parents=True, exist_ok=True)
-    target = out or (rd / "REPORT.md")
+    primary = scope == PRIMARY_STORE_SCOPE
+    suffix = "" if primary else f"_{scope}"
+    target = out or (rd / f"REPORT{suffix}.md")
 
     manifest_lines = list(read_jsonl(manifest_path())) if manifest_path().exists() else []
 
     body = [
-        "# Re-derivation Leakage — results",
+        "# Re-derivation Leakage — results"
+        + ("" if primary else f" (store_scope: {scope}, Phase F2)"),
         "",
         f"Generated from {len(runs)} run(s); manifest has {len(manifest_lines)} line(s).",
+        "",
+        (
+            "**This is the PRIMARY per-item experiment.** The store is rebuilt before "
+            "every episode, so items are exchangeable and one seed is a complete "
+            "replicate."
+            if primary
+            else "**This is the LONGITUDINAL experiment (Phase F2), not the primary "
+            "result.** The store accumulates across episodes, so items are NOT "
+            "exchangeable, episode order matters, and the pre-registration fixes five "
+            "seeds here. Its arms are never differenced against the per-item grid "
+            "(ADR-0047, ADR-0053, ADR-0062)."
+        ),
         "",
         "## Phase 0, Days 1-2 — open-unlearning reproduction",
         "",
@@ -1698,7 +1883,11 @@ def make_report(
         "> row, so it is MEASURED. Gating it against agent A's 0.46 / 0.70 would produce",
         "> a pass or a fail out of a hyperparameter difference.",
         "",
-        "## Phase 0, Days 3-5 — conditions",
+        f"## Phase 0, Days 3-5 — conditions (store_scope: `{scope}`)",
+        "",
+        markdown_table(runs, scope),
+        "",
+        "> Every scope that ran, for context. Only the rows above are gated here.",
         "",
         markdown_table(runs),
         "",
@@ -1709,7 +1898,7 @@ def make_report(
 
     verdict: dict[str, Any] = {}
     if gate:
-        verdict = evaluate_gates(runs)
+        verdict = evaluate_gates(runs, scope)
         body += [
             "## Pre-registered gate",
             "",
@@ -1792,12 +1981,12 @@ def make_report(
             "upstream issue #199.",
             "",
         ]
-        (rd / "gate_verdict.json").write_text(
+        (rd / f"gate_verdict{suffix}.json").write_text(
             json.dumps(verdict, indent=2, default=str), encoding="utf-8"
         )
 
     if figures:
-        figs = _figures(runs, rd, verdict)
+        figs = _figures(runs, rd, verdict, scope)
         if figs:
             body.append("## Figures")
             body.append("")
