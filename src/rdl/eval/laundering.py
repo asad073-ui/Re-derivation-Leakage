@@ -37,6 +37,7 @@ __all__ = [
     "LaunderingReport",
     "laundered_items",
     "laundering_rate",
+    "merge_reports",
 ]
 
 
@@ -223,6 +224,31 @@ def laundered_items(
             "and reported as 0.0 — read n_recovered before reading the rate."
         )
     return report
+
+
+def merge_reports(reports: Sequence[LaunderingReport], *, n_items: int) -> LaunderingReport:
+    """Combine per-item reports into one arm-level report.
+
+    Needed by `episode.store_scope: per_item` (ADR-0047): each episode runs against its
+    own store, so certification — which asks whether the node carrying the answer
+    satisfies both invariants — has to be done against that store, one item at a time.
+    The rate is recomputed from the pooled counts rather than averaged, because averaging
+    per-item rates would weight an item that recovered nothing the same as one that did.
+    """
+    merged = LaunderingReport(n_items=n_items, mode=reports[0].mode if reports else "normalised")
+    seen_notes: set[str] = set()
+    for r in reports:
+        merged.n_recovered += r.n_recovered
+        merged.n_laundered += r.n_laundered
+        merged.items.extend(r.items)
+        for note in r.notes:
+            # Per-item reports each emit the "nothing recovered" note; one copy is the
+            # useful signal, four hundred copies is noise in every report file.
+            if note not in seen_notes:
+                seen_notes.add(note)
+                merged.notes.append(note)
+    merged.rate = merged.n_laundered / merged.n_recovered if merged.n_recovered else 0.0
+    return merged
 
 
 def laundering_rate(

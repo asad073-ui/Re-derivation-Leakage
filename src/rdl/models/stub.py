@@ -372,6 +372,10 @@ class StubLM(LMHandle):
 
         self.call_log.append(
             {
+                # The prompt verbatim. Without it there is no way to assert what the
+                # model actually SAW — only what we believe we passed it — and that gap
+                # is how the C3C handoff went missing for the life of the arm (ADR-0041).
+                "prompt": prompt,
                 "question": question,
                 "masked": masked,
                 "n_context": len(context),

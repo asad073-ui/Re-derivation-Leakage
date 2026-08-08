@@ -7,7 +7,7 @@
   "meta": { "delegated": true, "write_policy": "framework_default" },
   "events": [
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "kind": "user_query",
       "turn": 0,
       "ts": "2026-08-07T10:00:00.000+00:00",
@@ -16,7 +16,7 @@
       "item_id": "forget10-0000"
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "kind": "retrieval",
       "turn": 0,
       "ts": "2026-08-07T10:00:00.100+00:00",
@@ -28,7 +28,7 @@
       "agent_id": "A"
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "kind": "agent_answer",
       "turn": 1,
       "ts": "2026-08-07T10:00:01.000+00:00",
@@ -41,7 +41,7 @@
       "detector_votes": { "lexical": true }
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "kind": "delegation",
       "turn": 1,
       "ts": "2026-08-07T10:00:01.100+00:00",
@@ -52,7 +52,7 @@
       "policy": "abstention_triggered"
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "kind": "agent_answer",
       "turn": 1,
       "ts": "2026-08-07T10:00:02.000+00:00",
@@ -65,7 +65,7 @@
       "detector_votes": { "lexical": false }
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "kind": "final_answer",
       "turn": 1,
       "ts": "2026-08-07T10:00:02.100+00:00",
@@ -75,7 +75,7 @@
       "abstained": false
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "kind": "memory_write",
       "turn": 1,
       "ts": "2026-08-07T10:00:02.200+00:00",

@@ -897,3 +897,172 @@ Determinism is now established inside the eval subprocess by `ou_eval_shim`: the
 called `set_all_seeds` and the report claimed `deterministic_algorithms: true`, but
 torch settings are process-local and only `PYTHONHASHSEED` and `CUBLAS_WORKSPACE_CONFIG`
 were ever inherited by the process that ran the kernels.
+
+## ADR-0041 — 2026-08-08 — The C3C handoff never fired; routing and handoff are decoupled
+
+**Decision.** `C3D` and `C3C` both route **unconditionally** (`always_delegate`), and
+the handoff passes agent A's exact output **always**, including an abstention. Config
+validation rejects any other combination for those two arms. Routing is now a
+condition-level `episode.routing` override rather than a property of the shared
+`agent_a` fragment.
+
+**Context.** Two conditions in `orchestrator/loop.py` were mutually exclusive:
+
+```python
+decision = pol.delegation.should_delegate(final_reply, n_delegations)   # abstention_triggered:
+if not decision.delegate: break                                         #   B is called IFF A abstained
+...
+if pol.pass_primary_answer_to_secondary and not final_reply.abstained:  #   text passed IFF A did NOT abstain
+    peer.append(final_reply.text)
+```
+
+Under the shipped `C3C.yaml` (which inherited `abstention_triggered` from
+`configs/agents/A_unlearned.yaml`), B was invoked only on A's abstention, and on exactly
+those episodes the peer answer was withheld. `peer_answers` was therefore always empty:
+**C3C was byte-identical to C3D**, and `C3C - C3D` was structurally zero. No test caught
+it — `test_experiment_design_guards.py` checks only that the *config flag* cannot be
+unset, and `test_prompt_style.py` exercises `LLMAgent.answer(peer_answers=...)` directly,
+never through the loop.
+
+**Rejected: keep abstention routing and pass the answer unconditionally.** Then B sees
+"I don't know." on every episode it is called, and the handoff carries no content. The
+handoff needs A to have *answered*, which under abstention routing is exactly the case
+where B is not called.
+
+**Consequence.** The ecological (abstention-routed) variants of C3D/C3C are still run and
+reported, as a secondary result. The estimand moves to the unconditional arms, where the
+two conditions differ in exactly one variable.
+
+## ADR-0042 — 2026-08-08 — The primary estimand is compositional, and B gets a baseline
+
+**Decision.** The primary estimand becomes `C3C - C3D` plus `joint_only_recovery`
+(`C3C_hit AND NOT C1W_hit AND NOT B1W_hit`). A new single-agent condition **`B1W`** —
+agent B alone, write-back on — is mandatory. `C3D - C1W` is demoted to secondary and is
+joined by `C3D - B1W`.
+
+**Context.** `C3D - C1W` shows that adding a second checkpoint beats one checkpoint. It
+cannot distinguish joint reconstruction from agent B simply retaining more of the forget
+set than agent A: B was unlearned at different hyperparameters (lr2e-05/beta0.5 vs
+lr1e-05/beta0.1) and has no measured residual to compare against. With only an A-alone
+baseline, "multi-agent gain" and "B's residual" are the same number.
+
+SBU already states that residual parametric knowledge can regenerate forgotten content
+and be written back into memory — its property (iii) exists to prevent that rewrite. A
+result in which *either* agent alone produces the target and the system persists it
+under a fresh id therefore replicates a known problem. The stub contract test
+`test_c3_recovers_exactly_b_residual_knowledge` demonstrates precisely that shape, and it
+was the repo's demonstration of the headline claim.
+
+**Consequence.** The headline becomes `certified_joint_leak_rate`, whose denominator is
+all 400 forget items. `laundering_rate` stays as a diagnostic printed beside
+`n_recovered`; conditional on a handful of recoveries it reaches 1.0 too easily to be a
+headline.
+
+## ADR-0043 — 2026-08-08 — Correct retain answers are utility; the floor is deranged targets
+
+**Decision.** The retain control produces two numbers. **Retain utility** — recall of the
+*correct* retain answer — is reported and never gated. The **false-positive floor** is
+recall against a deterministic derangement of the retain answers (no fixed points, seeded
+by the run seed) and is gated at <= 0.05.
+
+**Context.** `eval/controls.py` computed `false_positive_floor =
+sys_recall_at_k(results_retain, ...)` where `results_retain` scores each retain episode
+against **its own correct answer**. A functioning agent answers retain questions
+correctly, `framework_default` write-back persists the answer, and the store then
+contains it — so the "false-positive floor" of a working system approaches 1.0 and the
+<= 0.05 gate FAILS every healthy run. The CPU test that pinned the floor at zero
+(`test_c3_false_positive_floor_on_retain_questions_is_zero`) passed only because the stub
+LM has no retain knowledge and abstains, so nothing is written at all.
+
+A false-positive floor has to be measured against a target the system should *not* be
+able to produce. Deranging the retain answers gives exactly that, on real text with real
+length and vocabulary, so it also measures the matcher's tolerance rather than a
+strawman.
+
+**Consequence.** `ControlReport` gains `retain_utility` (ungated) and keeps
+`false_positive_floor` (gated) with a changed meaning. The derangement permutation is
+recorded in the report so the floor is recomputable without a rerun.
+
+## ADR-0044 — 2026-08-08 — The confound gate tests the delta, not the level
+
+**Decision.** "Survives under `always_delegate`" means: the **treatment-minus-baseline
+paired delta**, recomputed on the unconditional-routing arms of both conditions, clears
+its threshold and its 95% interval excludes zero. It is evaluated in `make-report`, which
+is the only place that holds both arms. `compute_controls` no longer votes on it and
+instead reports the routing arms' numbers plus whether the arm ran.
+
+**Context.** The implementation was `elif rep.recall_always_delegate > 0.0: PASS`. A
+single recovered item out of 400 passed the decisive confound control. The control's
+purpose — ruling out that the effect tracks agent A's utility collapse rather than
+forgetting — is a statement about the *effect*, and the effect is a difference between two
+conditions. Absolute recall in one arm cannot express it.
+
+**Consequence.** `run-condition` now writes per-item hit vectors keyed by routing policy
+(`per_item_recall_by_policy`), so the routing-free delta is recomputable from the reports
+alone. Reports written before this ADR have no such key and are treated as unevaluated,
+which blocks.
+
+## ADR-0045 — 2026-08-08 — A handoff that is not in the log did not happen
+
+**Decision.** New typed event `Handoff(from_id, to_id, text, text_sha256,
+included_abstention)`, appended immediately before the delegate is called.
+`SCHEMA_VERSION` goes to 2. Every arm's transcripts are persisted — treatment, routing
+variant, retain, and each standalone baseline — not only the treatment's.
+
+**Context.** The only trace of the compositional handoff in a saved run was
+`AgentAnswer` events from both agents, which look identical whether or not B was shown
+A's text; `n_peer_answers` lived in `AgentReply.meta`, which is not part of any event.
+`run_condition` wrote `transcripts_seed{s}.jsonl` for the treatment arm and discarded the
+control, retain and A-alone transcripts entirely. A reviewer asking "did B actually
+receive A's output on item 137?" had no way to answer from the artifacts, and neither did
+we.
+
+**Rejected: keep SCHEMA_VERSION at 1 and add the kind.** A v1 log is defined by its
+closed union; silently widening it makes "this file is v1" mean two different things.
+`parse_event` refuses cross-version parsing on purpose.
+
+**Consequence.** `results/` currently contains no transcripts, so no migration is needed.
+The checked-in transcript fixture is bumped to v2.
+
+## ADR-0046 — 2026-08-08 — Scale and pairing integrity are gates, not conventions
+
+**Decision.** `make-report` blocks on: `n_items != 400`, `n_seeds != 5`, a retain arm that
+is not exactly 100 items, `truncated == true` (i.e. `--limit` was used), unequal item-ID
+**sets** between paired conditions, a missing `C1W` or `B1W`, a `delegation_gap_ok` FAIL,
+and a handoff count that disagrees with the condition's declared handoff setting.
+
+**Context.** Four separate holes. (1) `--limit 20` on real TOFU produced
+`is_real_data: true` and cleared every existing check, so a twenty-item smoke run was
+indistinguishable from a result. (2) `_paired_vectors` intersected the two arms'
+item-ID lists (`shared = [i for i in t.item_ids if i in bb]`), so a 400-item treatment
+paired against a 20-item baseline silently produced a 20-pair delta. (3)
+`delegation_gap_ok` was computed by `compute_controls` and read by nobody, although
+pre-registration v2 section 3.3 gates on it. (4) Nothing checked that the handoff a
+condition claims to perform was performed.
+
+**Consequence.** Pilot and engineering runs must set `reportable: false`, which excludes
+them from the gate rather than failing it.
+
+## ADR-0047 — 2026-08-08 — Per-item store reset for the primary; cumulative store as its own experiment
+
+**Decision.** The primary experiment resets the `MemoryStore` to the same post-deletion
+snapshot before every item. The cumulative shared-store run is retained as a separate
+**longitudinal** experiment whose uncertainty is reported over seeds and which never
+feeds the primary gate.
+
+**Context.** `run_episodes` deliberately shares one store across all episodes, and
+`_episode_order` permutes so that the seed enters the measurement through that sharing.
+That makes episode *i*'s write part of episode *i+n*'s retrievable context — items are
+not exchangeable. The primary interval is nevertheless a bootstrap that resamples items
+(clustered by author) as if they were. Author clustering handles TOFU's
+20-questions-per-author structure; it does not handle a dependence induced by the run
+itself, whose grouping is the arrival order, not the author.
+
+**Rejected: keep one store and widen the interval heuristically.** There is no defensible
+inflation factor, and the cumulative dynamics are worth measuring in their own right
+rather than being treated as nuisance.
+
+**Consequence.** `episode.store_scope: per_item | cumulative`. `per_item` is the default
+for **every** condition — two arms that are differenced must share a scope, so the
+default cannot be per-condition — and the longitudinal run is an explicit second
+invocation with `--set episode.store_scope=cumulative`.

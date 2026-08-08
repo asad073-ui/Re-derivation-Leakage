@@ -41,6 +41,8 @@ episode:
   greedy: true
   max_new_tokens: 128
   prompt_style: openunlearning
+  # Paired against C3C/C3D per item, so it must use the same store scope they do.
+  store_scope: per_item
 
 data:
   dataset: tofu

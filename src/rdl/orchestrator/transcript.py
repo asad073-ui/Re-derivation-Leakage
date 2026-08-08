@@ -19,6 +19,7 @@ from .events import (
     AgentAnswer,
     Delegation,
     FinalAnswer,
+    Handoff,
     MemoryWrite,
     Retrieval,
     UserQuery,
@@ -86,6 +87,15 @@ class Transcript:
     def delegations(self) -> list[Delegation]:
         return self.of_kind("delegation")
 
+    def handoffs(self) -> list[Handoff]:
+        """The compositional handoffs actually performed in this episode.
+
+        Read this rather than `meta["handoff"]`: the flag says what was configured, the
+        events say what happened, and the whole point of ADR-0045 is that those were
+        allowed to differ for the entire life of the C3C arm.
+        """
+        return self.of_kind("handoff")
+
     def memory_writes(self) -> list[MemoryWrite]:
         return self.of_kind("memory_write")
 
@@ -128,6 +138,14 @@ class Transcript:
     @property
     def delegated(self) -> bool:
         return bool(self.delegations())
+
+    @property
+    def n_handoffs(self) -> int:
+        return len(self.handoffs())
+
+    @property
+    def handoff_occurred(self) -> bool:
+        return bool(self.handoffs())
 
     @property
     def primary_abstained(self) -> bool:

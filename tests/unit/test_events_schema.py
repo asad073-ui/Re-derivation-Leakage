@@ -18,6 +18,7 @@ from rdl.orchestrator.events import (
     AgentAnswer,
     Delegation,
     FinalAnswer,
+    Handoff,
     MemoryWrite,
     Retrieval,
     UserQuery,
@@ -31,6 +32,7 @@ def test_every_event_kind_is_in_the_closed_union():
         Retrieval(query="q").kind,
         AgentAnswer(agent_id="A", text="a").kind,
         Delegation(from_id="A", to_id="B").kind,
+        Handoff(from_id="A", to_id="B", text="A's answer").kind,
         MemoryWrite(node_id="m", content="c", source_agent="B").kind,
         FinalAnswer(text="f").kind,
     }
@@ -78,6 +80,7 @@ def test_memory_write_allows_empty_parent_ids():
         Retrieval(query="q", returned_node_ids=[], blocked_node_ids=["m1"]),
         AgentAnswer(agent_id="A", text="I don't know.", abstained=True, logprob=-2.6),
         Delegation(from_id="A", to_id="B", reason="A abstained"),
+        Handoff(from_id="A", to_id="B", text="f", text_sha256="ab", included_abstention=False),
         MemoryWrite(node_id="m2", content="f", parent_ids=[], source_agent="B"),
         FinalAnswer(text="f", contributing_agent_ids=["A", "B"]),
     ],
@@ -91,7 +94,7 @@ def test_event_round_trips_through_json(event):
 
 
 def test_parse_event_dispatches_on_kind():
-    payload = {"schema_version": 1, "kind": "delegation", "from_id": "A", "to_id": "B"}
+    payload = {"schema_version": SCHEMA_VERSION, "kind": "delegation", "from_id": "A", "to_id": "B"}
     assert isinstance(parse_event(payload), Delegation)
 
 
@@ -109,7 +112,7 @@ def test_unknown_schema_version_is_refused():
 
 def test_unknown_kind_is_refused():
     with pytest.raises(ValueError, match="unknown event kind"):
-        parse_event({"schema_version": 1, "kind": "telepathy", "text": "q"})
+        parse_event({"schema_version": SCHEMA_VERSION, "kind": "telepathy", "text": "q"})
 
 
 def test_parse_event_rejects_a_non_mapping():

@@ -150,27 +150,74 @@ Gates: `full` → model_utility 0.60 / forget_truth_ratio 0.48; `npo_forget10` �
 `make-report` blocks the grid unless both targets passed **at parity** and agent B was
 measured (ADR-0029, ADR-0033).
 
-## Phase D — 5-item GPU smoke test
+> **Day-1 status, 2026-08-08.** `full` and `retain90` reproduce. `npo_forget10` does
+> **not**: measured 0.43237 / 0.64140 against the documented 0.460 / 0.700 at revision
+> `94ed64eb`, under two independent evaluation environments (ADR-0038, ADR-0039;
+> upstream issue #199 open). `DAY1_GATE = BLOCKED_EXTERNAL_ARTIFACT_MISMATCH`. Phase 0
+> proceeds as a **released-artifact study** and claims no published-row reproduction —
+> see pre-registration v3 §1. The agent-B measure-only run above is doubly required
+> under that framing: neither checkpoint's forgetting can be assumed from a table.
+
+## Phase D — 5-item GPU smoke test, then READ THE TRANSCRIPTS
+
+All four estimand arms, including both standalone baselines.
 
 ```bash
-python -m rdl.cli run-condition --condition configs/conditions/C1W.yaml \
-  --env vast_rtx3090 --seeds 1 --limit 5
-python -m rdl.cli run-condition --condition configs/conditions/C3D.yaml \
-  --env vast_rtx3090 --seeds 1 --limit 5
+for C in C1W B1W C3D C3C; do
+  python -m rdl.cli run-condition --condition configs/conditions/$C.yaml \
+    --env vast_rtx3090 --seeds 1 --limit 5
+done
 ```
 
-## Phase E — small pilot
+**Do not proceed on the summary line alone.** Open the C3C transcripts and check by eye:
 
 ```bash
-ENV_NAME=vast_rtx3090 SEEDS=1 CONDITIONS="C1W C3 C3D C3C" \
+D=$(ls -td results/*/ | head -1)
+python - <<'PY'
+import json, glob, os
+d = sorted(glob.glob("results/*/"), key=os.path.getmtime)[-1]
+ev = [json.loads(l) for l in open(d + "transcripts_treatment_seed0.jsonl", encoding="utf-8")]
+hand = [e for e in ev if e["kind"] == "handoff"]
+print(f"{len(hand)} handoffs in {d}")
+print(json.dumps(hand[0], indent=2)[:800])
+PY
+```
+
+Every C3C episode must carry exactly one `handoff` event whose `text` equals agent A's
+`agent_answer` text and whose `text_sha256` matches it. Zero handoffs means the arm is an
+ensemble under a compositional name — the ADR-0041 failure — and nothing downstream is
+worth running. `run-condition` also prints `handoffs recorded = N (configured: …)` and
+shouts in red when a handoff arm records none.
+
+## Phase E — small pilot, explicitly unreportable
+
+```bash
+ENV_NAME=vast_rtx3090 SEEDS=1 CONDITIONS="C1W B1W C3 C3D C3C" \
   bash scripts/03_run_phase0_grid.sh --limit 20
 ```
+
+`--limit` marks every report `truncated: true` / `reportable: false`, and `make-report`
+blocks on it. This phase exists to find crashes and OOMs, not numbers (ADR-0046).
 
 ## Phase F — the full grid
 
 ```bash
-ENV_NAME=vast_rtx3090 SEEDS=5 CONDITIONS="C0 C1 C1W C2 C3 C3D C3C" \
+ENV_NAME=vast_rtx3090 SEEDS=5 CONDITIONS="C0 C1 C1W B1W C2 C3 C3D C3C" \
   bash scripts/03_run_phase0_grid.sh
+```
+
+`B1W` is **not optional**: `joint_only_recovery = C3C AND NOT C1W AND NOT B1W` is the
+primary quantity, and `make-report` blocks a grid missing either standalone baseline.
+
+### Phase F2 — the longitudinal run (separate experiment)
+
+The primary grid resets the store per item so items are exchangeable. Cumulative
+recontamination is a different question and gets its own invocation, reported over seeds
+and never differenced against the per-item arms (ADR-0047):
+
+```bash
+ENV_NAME=vast_rtx3090 SEEDS=5 CONDITIONS="C1W B1W C3D C3C" \
+  bash scripts/03_run_phase0_grid.sh --set episode.store_scope=cumulative
 ```
 
 `make-report` runs at the end and exits non-zero if the pre-registered gate fails. Do not
