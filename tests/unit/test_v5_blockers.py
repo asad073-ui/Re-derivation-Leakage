@@ -10,6 +10,7 @@ from rdl.cli.make_report import (
     handoff_control_blockers,
     joint_only_recovery,
 )
+from rdl.cli.run_condition import _aggregate_handoff_audits
 
 # =====================================================================================
 # ADR-0055 — C3S must actually be a negative control
@@ -47,8 +48,21 @@ def test_a_seeded_mapping_algorithm_is_a_blocker():
 def test_a_control_with_no_audit_at_all_is_a_blocker():
     r = _report("C3S", recall=0.35)
     r["handoff_audit"] = {}
+    r["handoff_audit_by_seed"] = []
+    r["handoff_audit_aggregate"] = {}
     out = handoff_control_blockers({"C3S": r})
-    assert any("records no handoff audit" in b for b in out), out
+    assert any("records no per-seed handoff audit" in b for b in out), out
+
+
+def test_a_report_carrying_only_the_old_seed_zero_audit_is_a_blocker():
+    """The v5 report hoisted `per_seed[0]["handoff_audit"]` and gated on that alone. A
+    report in that shape is not evidence about the other seeds, so it is rejected rather
+    than read as though seed 0 spoke for them (ADR-0057)."""
+    r = _report("C3S", recall=0.35, n_seeds=5)
+    del r["handoff_audit_by_seed"]
+    del r["handoff_audit_aggregate"]
+    out = handoff_control_blockers({"C3S": r})
+    assert any("records no per-seed handoff audit" in b for b in out), out
 
 
 def test_a_clean_control_produces_no_blockers():
@@ -64,6 +78,100 @@ def test_a_contaminated_control_invalidates_the_whole_grid():
     runs[1] = _report("C3S", recall=0.35, same_author=19)
     verdict = evaluate_gates(runs)
     assert not verdict["experiment_valid"], verdict["blockers"]
+
+
+# =====================================================================================
+# ADR-0057 — the control is audited at EVERY seed, not at seed 0
+# =====================================================================================
+
+
+def test_a_leak_at_one_seed_only_is_a_blocker():
+    """THE gap. The mapping is seed-independent, so the same-author and fixed-point counts
+    genuinely are too — but `target_answer_in_handoff` is a property of the generated
+    TEXT. Under `store_scope: cumulative` episode order changes the live store, changes
+    agent A's source answer, and can put the target answer into a seed-4 handoff that was
+    clean at seed 0. Gating on `per_seed[0]` would have reported a leaking control as a
+    valid one."""
+    r = _report("C3S", recall=0.35, n_seeds=5, target_leak_by_seed={4: 6})
+    assert (
+        r["handoff_audit"]["target_answer_in_handoff_count"] == 0
+    ), "seed 0 is clean — that is the whole point of the fixture"
+    out = handoff_control_blockers({"C3S": r})
+    assert any("leaking the content" in b and "[4]" in b for b in out), out
+
+
+def test_a_leak_at_one_seed_only_invalidates_the_whole_grid():
+    runs = _grid(n_seeds=5)
+    runs[1] = _report("C3S", recall=0.35, n_seeds=5, target_leak_by_seed={4: 6})
+    verdict = evaluate_gates(runs)
+    assert not verdict["experiment_valid"], verdict["blockers"]
+    assert any("leaking the content" in b for b in verdict["blockers"]), verdict["blockers"]
+
+
+def test_the_leak_count_is_summed_over_seeds_not_read_off_one():
+    r = _report("C3S", recall=0.35, n_seeds=5, target_leak_by_seed={1: 2, 3: 3})
+    agg = r["handoff_audit_aggregate"]
+    assert agg["target_answer_in_handoff_count"] == 5
+    assert agg["seeds_with_target_answer_in_handoff"] == [1, 3]
+
+
+def test_an_unaudited_seed_is_a_blocker():
+    """An audit covering fewer seeds than the run has is not evidence about the rest."""
+    r = _report("C3S", recall=0.35, n_seeds=5)
+    r["handoff_audit_by_seed"] = r["handoff_audit_by_seed"][:2]
+    r["handoff_audit_aggregate"]["n_seeds"] = 2
+    out = handoff_control_blockers({"C3S": r})
+    assert any("ran 5 seed(s) but audited 2" in b for b in out), out
+
+
+def test_a_mapping_that_differs_between_seeds_is_a_blocker():
+    """The seed-independence claim, checked rather than assumed: one hash across all
+    seeds is the evidence the single-seed primary design rests on."""
+    r = _report("C3S", recall=0.35, n_seeds=5, mapping_sha_by_seed={3: "a" * 64})
+    out = handoff_control_blockers({"C3S": r})
+    assert any("differs between seeds" in b for b in out), out
+
+
+def test_a_clean_multi_seed_control_produces_no_blockers():
+    assert handoff_control_blockers({"C3S": _report("C3S", recall=0.35, n_seeds=5)}) == []
+
+
+def _audit(seed: int, *, leaks: int = 0, sha: str = "f" * 64) -> dict:
+    return {
+        "seed": seed,
+        "handoff_audit": {
+            "mapping": {"algorithm": "rotate-by-smallest-cross-author-shift", "sha256": sha},
+            "fixed_point_count": 0,
+            "same_author_count": 0,
+            "target_answer_in_handoff_count": leaks,
+            "target_answer_in_handoff_items": [f"forget10-{seed:04d}"] if leaks else [],
+        },
+    }
+
+
+def test_run_condition_unions_the_audits_it_writes():
+    """The producer side of ADR-0057: the report must carry every seed's audit and a
+    union over them, not `per_seed[0]`."""
+    by_seed, agg = _aggregate_handoff_audits(
+        [_audit(0), _audit(1), _audit(2, leaks=3), _audit(3), _audit(4, leaks=1)]
+    )
+    assert [a["seed"] for a in by_seed] == [0, 1, 2, 3, 4]
+    assert agg["n_seeds"] == 5
+    assert agg["mapping_hashes"] == ["f" * 64], "one hash: the mapping is seed-independent"
+    assert agg["target_answer_in_handoff_count"] == 4
+    assert agg["seeds_with_target_answer_in_handoff"] == [2, 4]
+    assert agg["target_answer_in_handoff_items"] == ["forget10-0002", "forget10-0004"]
+
+
+def test_a_seed_dependent_mapping_shows_up_as_two_hashes():
+    _, agg = _aggregate_handoff_audits([_audit(0), _audit(1, sha="a" * 64)])
+    assert len(agg["mapping_hashes"]) == 2
+
+
+def test_an_arm_with_no_deranged_handoff_gets_no_audit():
+    """C3C, C3D and the standalone arms have no source mapping; an empty audit must stay
+    empty rather than becoming an aggregate full of reassuring zeros."""
+    assert _aggregate_handoff_audits([{"seed": 0, "handoff_audit": {}}]) == ([], {})
 
 
 # =====================================================================================

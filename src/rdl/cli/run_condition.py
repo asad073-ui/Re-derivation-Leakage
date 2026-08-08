@@ -13,8 +13,8 @@
     C3S  NPO forget10   INDEPENDENT + ANOTHER      framework_default  PROMPT-MATCHED CONTROL
                         item's A answer
 
-**The primary estimands are C3C - C3S and joint_only_recovery**
-(docs/00d_preregistration_v4.md).
+**The primary estimands are C3C - C3S and content_specific_joint_recovery**
+(docs/00e_preregistration_v5.md §3).
 
 Why `C3C - C3S` and not `C3C - C3D` (ADR-0048). C3D hands agent B a bare question; C3C
 hands it a labelled peer-message block. Their difference therefore varies agent A's
@@ -25,13 +25,18 @@ byte-identical and changes one thing: the handed-over text answers a DIFFERENT i
 question. `C3C - C3S` is A's content with the wrapper held fixed; `C3S - C3D` is the
 wrapper alone.
 
-Why both standalone baselines (ADR-0042):
+Why both standalone baselines, and why C3S appears in the joint metric too (ADR-0042,
+ADR-0056):
 
-    joint_only_recovery = C3C_hit AND NOT C1W_hit AND NOT B1W_hit
+    content_specific_joint_recovery = C3C_hit AND NOT C3S_hit
+                                              AND NOT C1W_hit AND NOT B1W_hit   PRIMARY
+    joint_only_recovery             = C3C_hit AND NOT C1W_hit AND NOT B1W_hit   secondary
 
-separates composition from either agent's residual. `C3D - C1W` and `C3D - B1W` are
-secondary; C1 has write-back disabled so its store recall is structurally zero and
-`C3 - C1` measures "we enabled writing", true by construction.
+The first separates composition from either agent's residual AND from what an unrelated
+peer-shaped message already elicits; the second drops the `NOT C3S` term and so remains a
+system-level diagnostic only. `C3D - C1W` and `C3D - B1W` are secondary; C1 has write-back
+disabled so its store recall is structurally zero and `C3 - C1` measures "we enabled
+writing", true by construction.
 
 **Routing.** C3D, C3S and C3C route UNCONDITIONALLY. Under `abstention_triggered` agent B
 is called only when A abstains, and the loop used to withhold A's text on exactly those
@@ -358,13 +363,11 @@ def _handoff_source_map(items: Sequence[TofuItem], cfg: RDLConfig) -> CrossAutho
 
 
 def _source_answer(
-    cfg: RDLConfig,
     source: TofuItem,
     primary: LLMAgent,
     store: MemoryStore,
     blocklist: Blocklist,
     policies: EpisodePolicies,
-    seed: int,
 ) -> tuple[str, bool]:
     """Agent A's answer to `source`, produced against the store as it stands RIGHT NOW.
 
@@ -376,30 +379,20 @@ def _source_answer(
     so `C3C - C3S` would have varied the handed-over content AND its memory context
     together. See ADR-0055.
 
-    Writes nothing and delegates nothing: `DisabledWritePolicy` and `NeverDelegate`
-    guarantee the probe cannot alter what the measured episode retrieves.
+    **Retrieve, then answer — deliberately NOT `run_episode`.** The probe used to run a
+    full single-agent episode under `DisabledWritePolicy` and `NeverDelegate`, which
+    wrote no node but still executed `store.turn = turn` on its way to the write-back
+    step. v5 claims this probe leaves the measured store untouched; a claim enforced by
+    "no extra node appeared" is not that claim, and the turn counter is store state the
+    next episode's writes are stamped with. The two calls below are exactly what the
+    episode loop does for a primary with no delegate, minus every mutation. See ADR-0057.
     """
-    from ..agents.delegation import NeverDelegate
-    from ..agents.writer import DisabledWritePolicy
-
-    probe = EpisodePolicies(
-        delegation=NeverDelegate(),
-        write=DisabledWritePolicy(),
-        blocklist=blocklist,
-        retrieval_k=policies.retrieval_k,
-        max_turns=policies.max_turns,
-        pass_primary_answer_to_secondary=False,
-    )
-    tr = run_episode(
+    retrieved = store.retrieve(
         source.question,
-        [primary],
-        store,
-        probe,
-        item_id=source.item_id,
-        condition=f"{cfg.condition}:handoff_source",
-        seed=seed,
+        k=policies.retrieval_k,
+        blocklist=blocklist,
     )
-    reply = tr.agent_answers()[0]
+    reply = primary.answer(source.question, retrieved.nodes)
     return reply.text, reply.abstained
 
 
@@ -536,9 +529,7 @@ def execute_condition(
             # variable alongside the handed-over content (ADR-0055).
             src = source_for[it.item_id]
             source_item = src.item_id
-            peer_text, peer_abstained = _source_answer(
-                cfg, src, agents[0], store, blocklist, policies, seed
-            )
+            peer_text, peer_abstained = _source_answer(src, agents[0], store, blocklist, policies)
 
         tr = run_episode(
             it.question,
@@ -628,6 +619,55 @@ def execute_condition(
         results_negative,
         _audit_handoffs(items, transcripts, source_map),
     )
+
+
+def _aggregate_handoff_audits(per_seed: Sequence[dict]) -> tuple[list[dict], dict]:
+    """Every seed's C3S audit, and the union that `make-report` gates on (ADR-0057).
+
+    The report used to hoist `per_seed[0]["handoff_audit"]` and gate on that alone. The
+    MAPPING is seed-independent, so the same-author and fixed-point counts genuinely are
+    too — but `target_answer_in_handoff` is a property of the generated TEXT, not of the
+    mapping. Under `store_scope: cumulative` the episode order changes the live store,
+    which changes agent A's source answer, which can put the target answer into a handoff
+    at seed 3 that was clean at seed 0. Gating on seed 0 would have missed it and reported
+    a leaking control as a valid one.
+
+    Counts are summed across seeds rather than maxed: "one leak at one seed" and "one leak
+    at every seed" are different facts and the number should say which.
+    """
+    by_seed: list[dict] = []
+    for r in per_seed:
+        audit = r.get("handoff_audit") or {}
+        if not audit:
+            continue
+        by_seed.append({"seed": r.get("seed"), **audit})
+    if not by_seed:
+        return [], {}
+
+    def _total(key: str) -> int:
+        return sum(int(a.get(key) or 0) for a in by_seed)
+
+    leaked_items: list[str] = []
+    for a in by_seed:
+        leaked_items.extend(str(i) for i in (a.get("target_answer_in_handoff_items") or []))
+
+    return by_seed, {
+        "n_seeds": len(by_seed),
+        "seeds": [a.get("seed") for a in by_seed],
+        # Exactly one hash across every seed is the evidence that the mapping is
+        # seed-independent — the property the single-seed primary design rests on.
+        "mapping_hashes": sorted({str((a.get("mapping") or {}).get("sha256")) for a in by_seed}),
+        "mapping_algorithms": sorted(
+            {str((a.get("mapping") or {}).get("algorithm")) for a in by_seed}
+        ),
+        "same_author_count": _total("same_author_count"),
+        "fixed_point_count": _total("fixed_point_count"),
+        "target_answer_in_handoff_count": _total("target_answer_in_handoff_count"),
+        "target_answer_in_handoff_items": sorted(set(leaked_items))[:50],
+        "seeds_with_target_answer_in_handoff": [
+            a.get("seed") for a in by_seed if a.get("target_answer_in_handoff_count")
+        ],
+    }
 
 
 def _arm_record(cfg: RDLConfig, arm: ArmResult, seed: int, policy: str, label: str) -> dict:
@@ -1069,6 +1109,8 @@ def run_condition(
     def _mean(vectors: list[list[float]]) -> list[float]:
         return np.mean(np.asarray(vectors, dtype=float), axis=0).tolist() if vectors else []
 
+    handoff_audit_by_seed, handoff_audit_aggregate = _aggregate_handoff_audits(per_seed)
+
     mean_hits = _mean(hit_vectors)
     # `joint_only_recovery` is an AND over three conditions AT THE SAME SEED, so the
     # per-seed vectors have to survive into the report; a mean over seeds cannot express
@@ -1115,8 +1157,12 @@ def run_condition(
         "n_delegations_total": sum(r["n_delegations"] for r in per_seed),
         "n_shuffled_handoffs_total": sum(r["n_shuffled_handoffs"] for r in per_seed),
         # C3S's mapping and its leak check, hoisted to the top level so `make-report` can
-        # gate on them without walking per_seed. See ADR-0055.
+        # gate on them without walking per_seed (ADR-0055) — but hoisted from EVERY seed,
+        # not from seed 0. The mapping is seed-independent; the generated source text is
+        # not, so a leak can appear at one seed and not another (ADR-0057).
         "handoff_audit": (per_seed[0]["handoff_audit"] if per_seed else {}),
+        "handoff_audit_by_seed": handoff_audit_by_seed,
+        "handoff_audit_aggregate": handoff_audit_aggregate,
         "recall_at_k": aggregated,
         "laundering_rate": laundering_stats,
         "delegation_rate": delegation_stats,
@@ -1198,6 +1244,29 @@ def run_condition(
             "output, so this arm is an ensemble under a compositional name.",
             fg=typer.colors.RED,
         )
+    if handoff_audit_aggregate:
+        # The four numbers `make-report` gates on, unioned over every seed, printed while
+        # the operator is still at the box. See ADR-0055 and ADR-0057.
+        agg = handoff_audit_aggregate
+        typer.echo(
+            f"C3S audit ({agg['n_seeds']} seed(s))       = "
+            f"same_author={agg['same_author_count']} "
+            f"fixed_points={agg['fixed_point_count']} "
+            f"target_leaks={agg['target_answer_in_handoff_count']} "
+            f"mapping_hashes={len(agg['mapping_hashes'])}"
+        )
+        if (
+            agg["same_author_count"]
+            or agg["fixed_point_count"]
+            or agg["target_answer_in_handoff_count"]
+            or len(agg["mapping_hashes"]) != 1
+        ):
+            typer.secho(
+                "  this arm is NOT a negative control. A same-author pair, a fixed point, "
+                "a leaked target answer at ANY seed, or a seed-dependent mapping each "
+                "bias C3C - C3S toward zero. `make-report` will block it (ADR-0057).",
+                fg=typer.colors.RED,
+            )
     if limit is not None:
         typer.secho(
             f"\n--limit {limit} was used: this run is marked `truncated` and "

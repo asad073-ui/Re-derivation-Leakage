@@ -105,5 +105,19 @@ python -m rdl.cli run-repro \
     "$@"
 
 echo
-echo "Days 1-2 complete. \`rdl make-report\` requires: both gated targets PASSED AT"
-echo "PARITY, plus agent B's measurement, before it will pass a condition grid."
+echo "Days 1-2 complete. What \`rdl make-report\` requires before it will pass a"
+echo "condition grid depends on study_mode (configs/study_mode.yaml):"
+echo
+echo "  full            PASSED AT EXACT PARITY — batch_size=32, seed=0, bfloat16,"
+echo "                  flash_attention_2. This is the evaluator trust gate and it"
+echo "                  blocks in every mode."
+echo "  npo_forget10    under \`released_artifact\` it is CHARACTERIZED: the published-row"
+echo "                  miss is the recorded finding, not a blocker. Under"
+echo "                  \`published_reproduction\` it must pass at parity like full."
+echo "  agent B         measured (--measure-only). No published row exists to pass."
+echo
+echo "PROVENANCE blocks in EVERY mode, characterized targets included: each report must"
+echo "carry exact_published_parity, git_dirty=false, the open-unlearning submodule SHA"
+echo "this repo pins, the tokenizer chat-template hash, transformers_version and"
+echo "ou_runtime_mode. A report missing them is unverifiable, not clean — which is why"
+echo "these runs must be repeated on the commit the grid is run from (ADR-0058)."

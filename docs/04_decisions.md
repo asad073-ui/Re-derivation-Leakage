@@ -1292,3 +1292,61 @@ invalid" at the same time. The separation existed in the prose and not in the co
 
 **Consequence.** Only an *unevaluable* quantity blocks: a missing arm, or a mapping that
 cannot be computed. Zero is an answer.
+
+## ADR-0057 — 2026-08-08 — The C3S audit is a union over every seed, and the source probe touches nothing
+
+**Decision.** `run-condition` writes `handoff_audit_by_seed` and `handoff_audit_aggregate`
+alongside the seed-0 `handoff_audit`, and `make-report` gates on the aggregate. A report
+carrying only the seed-0 key is a blocker. `_source_answer` retrieves and answers
+directly instead of calling `run_episode`.
+
+**Context.** ADR-0055 hoisted `per_seed[0]["handoff_audit"]` to the top of the condition
+report so the gate could read it without walking `per_seed`, on the argument that the
+cross-author mapping is seed-independent. That argument is sound for the mapping and
+therefore for `same_author_count` and `fixed_point_count` — and false for
+`target_answer_in_handoff_count`, which is a property of the generated TEXT. Under
+`store_scope: cumulative` the episode order changes the live store, which changes agent
+A's answer to the source item, which can put the target answer into a handoff at seed 3
+that was clean at seed 0. The control would have been leaking the content it exists to
+withhold, at four seeds out of five, and the gate would have reported it as valid.
+
+Separately, the read-only source probe was not read-only. It ran a full single-agent
+episode under `DisabledWritePolicy` and `NeverDelegate`, which writes no node but still
+executes `store.turn = turn` on its way to the write-back step. v5 §2.2 claims the probe
+leaves the measured store unchanged; the test enforcing that claim asserted only that no
+extra node appeared, which the turn mutation passes. It does not change the present
+numbers — the measured writer passes an explicit turn — but a claim defended by a weaker
+test than the claim is a claim that stops being true silently.
+
+**Consequence.** Counts are summed across seeds rather than maxed, so "one leak at one
+seed" and "one leak at every seed" are different numbers; `mapping_hashes` must contain
+exactly one entry, which is the evidence for the seed-independence the single-seed primary
+design rests on; and an audit covering fewer seeds than the run has is itself a blocker.
+The probe is two calls — `store.retrieve` then `primary.answer` — exactly what the episode
+loop does for a primary with no delegate, minus every mutation, and the test compares the
+complete store state before and after.
+
+## ADR-0058 — 2026-08-08 — Missing Day-1 provenance is unknown provenance, never clean provenance
+
+**Decision.** A Days 1-2 report clears the trust gate only if it carries
+`exact_published_parity: true`, `git_dirty: false`, an `ou_source_sha` equal to the
+open-unlearning commit this repo pins, a tokenizer chat-template hash, a
+`transformers_version` and an `ou_runtime_mode`. Under `study_mode: released_artifact` a
+characterized target is excused its published-row MISS and nothing else: the provenance
+requirements apply in every mode.
+
+**Context.** `report_is_exact_parity` rejected exactly one thing about provenance —
+`git_dirty is True` — and read every absent field optimistically. The reports in
+`results/` were produced at commit `1ea12bf` and carry none of `exact_published_parity`,
+`git_dirty`, `ou_source_sha`, `tokenizer` or `transformers_version`, so all of them
+cleared the gate by failing to deny anything. `run_repro.py`'s own comments record that
+the commit those reports name did not contain all the code that ran — which is precisely
+the situation `git_dirty` exists to catch and which those reports cannot report.
+
+**Consequence.** The `full` reproduction, the NPO characterization and agent B's
+measurement must be re-run on the commit the grid is run from. `parity_provenance_gaps`
+returns reasons rather than a bool so the blocker names what is missing; "not at parity"
+sent operators looking at batch sizes for provenance failures. `pinned_ou_source_sha`
+reads `git ls-tree HEAD third_party/open-unlearning` rather than the checked-out
+submodule's HEAD: comparing the working tree against itself would make a moved submodule
+agree with itself.

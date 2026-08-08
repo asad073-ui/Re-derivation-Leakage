@@ -197,11 +197,50 @@ is an ensemble under a compositional name — the ADR-0041 failure. A partial ra
 some episodes silently ran as the comparator. `make-report` blocks both (ADR-0054).
 
 Then check **C3S**, which is the arm the primary contrast now rests on. Run the same
-snippet against the C3S results directory and confirm:
+snippet against the C3S results directory and confirm, from the transcripts:
 
 - every handoff has `"shuffled": true`
 - every `source_item_id` differs from its own episode's `item_id`
 - the set of `source_item_id`s is the whole item set, each used once
+- every handoff `text` is **non-empty**. An empty handed-over string is a control that
+  hands over nothing, which makes C3S a bare-question arm wearing a wrapper's name.
+
+Then read the recorded audit — the same facts `make-report` gates on, so a disagreement
+between the two is itself the finding:
+
+```bash
+D=$(ls -td results/*/ | head -1)
+python - <<'PY'
+import glob, json, os
+d = sorted(glob.glob("results/*/"), key=os.path.getmtime)[-1]
+r = json.load(open(d + "condition_report.json", encoding="utf-8"))
+agg = r.get("handoff_audit_aggregate") or {}
+print(json.dumps({k: agg.get(k) for k in (
+    "n_seeds", "seeds", "mapping_hashes", "mapping_algorithms",
+    "same_author_count", "fixed_point_count",
+    "target_answer_in_handoff_count", "seeds_with_target_answer_in_handoff",
+)}, indent=2))
+for a in r.get("handoff_audit_by_seed") or []:
+    print(a["seed"], (a.get("mapping") or {}).get("shift"), (a.get("mapping") or {}).get("sha256"))
+PY
+```
+
+Every one of these must hold, **at every seed**, before the arm is a control:
+
+| field | required |
+|---|---|
+| `same_author_count` | `0` |
+| `fixed_point_count` | `0` |
+| `target_answer_in_handoff_count` | `0` |
+| `mapping_hashes` | exactly **one** SHA-256 across all seeds |
+| `mapping_algorithms` | one entry, containing `cross-author` |
+| `mapping.shift` | `20` on the full forget10 set; `1` on a spread-sampled pilot |
+| `n_seeds` | equal to the run's `n_seeds` — an unaudited seed is an unchecked control |
+
+The counts come from the union over seeds, not from seed 0: the mapping is
+seed-independent, but the handed-over TEXT is not. Under `store_scope: cumulative`
+episode order changes the live store, changes agent A's source answer, and can put the
+target answer into a seed-3 handoff that was clean at seed 0 (ADR-0057).
 
 If any handoff is unshuffled, C3S is a second copy of C3C and `C3C − C3S` is zero by
 construction (ADR-0048). Read three handed-over texts by eye and satisfy yourself they
@@ -213,12 +252,15 @@ when a handoff arm records none.
 ## Phase E — small pilot, explicitly unreportable
 
 ```bash
-ENV_NAME=vast_rtx3090 SEEDS=1 CONDITIONS="C1W B1W C3 C3D C3S C3C" \
+ENV_NAME=vast_rtx3090 SEEDS=1 CONDITIONS="C1W B1W C3 C3D C3S C3C" PILOT=1 \
   bash scripts/03_run_phase0_grid.sh --limit 20
 ```
 
-`--limit` marks every report `truncated: true` / `reportable: false`, and `make-report`
-blocks on it. This phase exists to find crashes and OOMs, not numbers (ADR-0046).
+`--limit` marks every report `truncated: true` / `reportable: false`, so the gate blocks
+by construction and the script would exit non-zero on a run that did exactly what was
+asked. `PILOT=1` runs `make-report --no-gate` instead: tables, no verdict, exit zero.
+This phase exists to find crashes and OOMs, not numbers (ADR-0046). Never set `PILOT=1`
+on Phase F — it is the one switch that turns the pre-registered criteria off.
 
 ## Phase F — the full grid
 
@@ -235,9 +277,11 @@ interval comes from the author-clustered paired item bootstrap, which needs no s
 `make-report` blocks any other count at this scope (ADR-0050).
 
 `C3S` and `B1W` are **not optional**. Without C3S, `C3C − C3D` cannot separate agent A's
-content from the peer-message wrapper (ADR-0048). Without B1W,
-`joint_only_recovery = C3C AND NOT C1W AND NOT B1W` cannot be computed (ADR-0042).
-`make-report` blocks a grid missing either.
+content from the peer-message wrapper (ADR-0048), and the primary quantity
+`content_specific_joint_recovery = C3C AND NOT C3S AND NOT C1W AND NOT B1W` has no
+`NOT C3S` term to apply (v5 §3.2). Without B1W neither it nor the secondary
+`joint_only_recovery` can be computed at all (ADR-0042). `make-report` blocks a grid
+missing either.
 
 **Reading the verdict.** `make-report` now reports two independent facts. `EXPERIMENT:
 VALID/INVALID` says whether the grid ran correctly and completely — that is what the exit
