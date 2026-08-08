@@ -9,11 +9,37 @@
 .gitaskpass
 
 # ----------------------------------------------------------------------------------
-# Results are append-only and content-addressed. Only the manifest is committed.
+# Results are append-only and content-addressed. The REPORTS are committed; the bulk —
+# transcripts, per-episode JSONL, evaluator scratch — is not.
+#
+# Only the manifest used to be un-ignored, and `99_sync_results.sh` stages with
+# `git add -A results/`, which does NOT add ignored files. So a GPU session produced
+# condition_report.json, gate_verdict.json, REPORT.md and the figures, pushed the
+# manifest, and the instance was then destroyed with the actual evidence still on it.
+# See ADR-0060.
+#
+# `!results/*/` is load-bearing: git will not re-include a file whose PARENT DIRECTORY
+# is excluded, so un-ignoring the run directories has to come before un-ignoring what is
+# inside them. Everything else under a run dir stays ignored by `results/**`.
 # ----------------------------------------------------------------------------------
 results/**
 !results/.gitkeep
 !results/manifest.jsonl
+!results/REPORT.md
+!results/REPORT_*.md
+!results/gate_verdict.json
+!results/gate_verdict_*.json
+!results/fig*.png
+!results/*/
+!results/*/condition_report.json
+!results/*/repro_report.json
+!results/*/measure_report.json
+!results/*/SUMMARY.json
+# The raw C3S/C3C evidence the paper's control claim rests on: every handoff, the answer
+# agent A actually produced for the source item, both SHA-256s, and whether the carrier
+# node was certified clean. Small, reviewable, and the one thing that cannot be
+# reconstructed after the instance is destroyed. See ADR-0060.
+!results/*/handoff_evidence.json
 
 # ----------------------------------------------------------------------------------
 # Model weights and caches — never commit these.

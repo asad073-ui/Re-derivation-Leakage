@@ -90,20 +90,62 @@ def git_sha(root: Path | None = None, short: bool = True) -> str:
     return sha if out.returncode == 0 and sha else "nogit"
 
 
+# The SOURCE of the experiment, which is what "dirty" is a claim about. `results/` is
+# this program's own OUTPUT: every run appends to the tracked manifest and writes report
+# files beside it, so a session that produced one result was, by its own definition,
+# dirty for the next one. See ADR-0059.
+#
+# Applied as a git pathspec to both the status and the diff so the two agree; a `dirty`
+# flag computed over one file set and a `git_diff_sha256` computed over another describe
+# two different working trees.
+_SOURCE_PATHSPEC = (".", ":(exclude)results/**")
+
+# Untracked content INSIDE the submodule is not superproject dirt. open-unlearning writes
+# its evaluation outputs into its own tree (`saves/`, `data/`), and the superproject's
+# .gitignore does not reach inside a submodule — so without this, Day 1 would report a
+# dirty tree the moment the evaluator it is running produced a file. A submodule at the
+# wrong COMMIT, or with modified tracked files, still counts: that is a code difference,
+# and `ou_source_sha` gates the commit separately.
+_SUBMODULE_FLAG = "--ignore-submodules=untracked"
+
+
 def git_dirty(root: Path | None = None) -> bool | None:
-    """True when tracked files differ from HEAD. ``None`` when git cannot answer.
+    """True when the SOURCE tree differs from HEAD. ``None`` when git cannot answer.
 
     A report that records `git_sha: X` while the code that ran is not what X contains
     is not reproducible, and nothing downstream can tell. That happened: the Day-1 GPU
     runs recorded `1ea12bf` and executed a compatibility shim that `1ea12bf` does not
     contain, so a reviewer checking out that commit cannot run the recorded command.
 
-    Untracked files are deliberately NOT dirt: `results/` is full of them by design.
+    **`results/` is excluded, and untracked source files now count** (ADR-0059). The
+    previous predicate was `status --porcelain --untracked-files=no` over the whole tree,
+    which had the two failure modes exactly backwards:
+
+    * Every run appends to the TRACKED `results/manifest.jsonl`. So the first
+      `run-repro` of a session left the tree dirty and the second refused to start —
+      deterministically, on a rented GPU, after the first result was already paid for.
+      Neither escape worked: `--allow-dirty` reports are disqualified by design, and
+      committing between conditions gives the arms different git SHAs, which the
+      fingerprint check then blocks.
+    * `--untracked-files=no` meant a source or config file that existed on the box and
+      in no commit was invisible. That is the same class of failure as the `.gitignore`
+      rule that once swallowed `configs/env/`: the run works locally and cannot be
+      reproduced from the SHA it records.
     """
     root = root or repo_root()
     try:
         out = subprocess.run(
-            ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
+            [
+                "git",
+                "-C",
+                str(root),
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+                _SUBMODULE_FLAG,
+                "--",
+                *_SOURCE_PATHSPEC,
+            ],
             capture_output=True,
             text=True,
             timeout=30,
@@ -116,16 +158,28 @@ def git_dirty(root: Path | None = None) -> bool | None:
 
 
 def git_diff_sha256(root: Path | None = None) -> str | None:
-    """Hash of the tracked-file diff against HEAD, or ``None`` when clean/unavailable.
+    """Hash of the tracked SOURCE diff against HEAD, or ``None`` when clean/unavailable.
 
     Recorded on deliberately-dirty diagnostic runs so two such runs can at least be
     told apart, and so a later reviewer can see that *something* uncommitted was in
     play even though the diff itself is not in the repository.
+
+    Same pathspec as `git_dirty`: a hash that moved because the manifest grew would make
+    two runs of identical code look like two different experiments.
     """
     root = root or repo_root()
     try:
         out = subprocess.run(
-            ["git", "-C", str(root), "diff", "HEAD"],
+            [
+                "git",
+                "-C",
+                str(root),
+                "diff",
+                "HEAD",
+                _SUBMODULE_FLAG,
+                "--",
+                *_SOURCE_PATHSPEC,
+            ],
             capture_output=True,
             text=True,
             timeout=30,

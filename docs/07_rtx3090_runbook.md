@@ -104,6 +104,24 @@ make cpu-all
 python -m pytest tests/integration -q     # needs network, ~1 MB model
 ```
 
+### Then pin the session to ONE commit, and check it
+
+Everything from here — both Day-1 reproductions, agent B's measurement, and every
+condition — must record the **same** git SHA on a **clean** tree, or `make-report` blocks
+the grid (ADR-0061). Reports and the manifest do not count as dirt (ADR-0059), so nothing
+needs committing mid-session; source edits do.
+
+```bash
+git status --porcelain --untracked-files=normal -- . ':(exclude)results/**'   # must be EMPTY
+git rev-parse --short HEAD                                                    # the session SHA
+```
+
+If that first command prints anything, commit or remove it **now**. An untracked config
+or source file is the failure that once swallowed `configs/env/`: the run works on the box
+and cannot be reproduced from the SHA it records. If you change source mid-session, every
+report written before the change is at a different commit and the grid must be re-run from
+the start.
+
 ## Phase C — Day 1–2 reproduction
 
 ```bash
@@ -295,17 +313,57 @@ recontamination is a different question and gets its own invocation, reported ov
 and never differenced against the per-item arms (ADR-0047):
 
 ```bash
-ENV_NAME=vast_rtx3090 SEEDS=5 CONDITIONS="C1W B1W C3D C3S C3C" \
-  bash scripts/03_run_phase0_grid.sh --set episode.store_scope=cumulative
+ENV_NAME=vast_rtx3090 SEEDS=5 CONDITIONS="C1W B1W C3D C3S C3C" SCOPE=cumulative \
+  bash scripts/03_run_phase0_grid.sh
 ```
 
+`SCOPE=cumulative` does two things, and both are required: it runs the conditions at
+`episode.store_scope=cumulative`, **and** it gates that scope with
+`make-report --scope cumulative`. Setting only the first was the defect — the F2 grid ran,
+and then `make-report` re-printed the already-valid *per-item* verdict, which reads as
+"F2 passed" (ADR-0062).
+
+F2 writes its own files and never touches the primary ones:
+
+| primary | Phase F2 |
+|---|---|
+| `results/REPORT.md` | `results/REPORT_cumulative.md` |
+| `results/gate_verdict.json` | `results/gate_verdict_cumulative.json` |
+| `results/fig*.png` | `results/fig*_cumulative.png` |
+
 `make-report` runs at the end and exits non-zero if the pre-registered gate fails. Do not
-add `|| true`.
+add `|| true`. Its verdict is about the cumulative arms only: they are never differenced
+against the per-item grid (ADR-0047).
 
 ## Phase G — get the results off the box
 
 ```bash
 bash scripts/99_sync_results.sh "results: phase0 grid on vast rtx3090"
+```
+
+The script stages `results/` and then **verifies that every report on disk actually
+reached the index**, aborting if one did not. That check exists because `git add -A` does
+not add ignored files, and until ADR-0060 the only un-ignored thing under `results/` was
+the manifest — so this step used to push the manifest, report success, and leave every
+report behind on an instance the next line tells you to destroy.
+
+What leaves the box, and what does not:
+
+| committed | left behind |
+|---|---|
+| `REPORT*.md`, `gate_verdict*.json`, `fig*.png` | `transcripts_*.jsonl` (large) |
+| `*/condition_report.json`, `*/repro_report.json`, `*/measure_report.json` | `*/SUMMARY` scratch, HF cache |
+| `*/SUMMARY.json`, `*/handoff_evidence.json` | weights, checkpoints |
+
+`handoff_evidence.json` is the raw C3S/C3C evidence the control claim rests on: every
+handoff, agent A's own answer to that item, both SHA-256s, and whether the carrier node
+was certified clean. It is the reviewable subset of the transcripts and the one artifact
+that cannot be reconstructed after the instance is gone.
+
+**Before destroying anything**, confirm the push landed:
+
+```bash
+git log --stat -1 | grep -c condition_report.json    # expect one per condition
 ```
 
 Then destroy the instance.

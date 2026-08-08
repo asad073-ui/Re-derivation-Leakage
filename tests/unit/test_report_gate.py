@@ -30,6 +30,10 @@ AGENT_B = (
 AGENT_B_REV = "eabf32c4883a5647c784c60c998b4b96cd48b798"
 FULL = "open-unlearning/tofu_Llama-3.2-1B-Instruct_full"
 FULL_REV = "88e31200b97e4c0c04ae0d2f0b591f427046d192"
+# ONE commit for the whole session: Days 1-2, the measurements and the grid. ADR-0061
+# requires them to agree, and ADR-0059 is what makes that achievable — with `results/`
+# out of the dirty check, a session no longer has to commit between runs.
+GRID_SHA = "1a0eb6b"
 
 
 def _repro(
@@ -47,6 +51,7 @@ def _repro(
     tokenizer: dict | None = None,
     transformers_version: str | None = "4.44.2",
     ou_runtime_mode: str | None = "current_with_fp32_logits_shim",
+    git_sha: str = GRID_SHA,
 ) -> dict:
     """A Days 1-2 report. Defaults are EXACT published parity — upstream's own settings.
 
@@ -93,11 +98,27 @@ def _repro(
         ),
         "transformers_version": transformers_version,
         "ou_runtime_mode": ou_runtime_mode,
+        "git_sha": git_sha,
         "comparisons": [],
     }
 
 
-def _measure(checkpoint: str, revision: str, label: str = "agent_b_independent") -> dict:
+def _measure(
+    checkpoint: str,
+    revision: str,
+    label: str = "agent_b_independent",
+    *,
+    git_sha: str = GRID_SHA,
+    git_dirty: bool | None = False,
+    ou_source_sha: str | None = "",
+    tokenizer: dict | None = None,
+    transformers_version: str | None = "4.44.2",
+    ou_runtime_mode: str | None = "current_with_fp32_logits_shim",
+) -> dict:
+    """Agent B's characterisation. It has no published row, so PARITY cannot be asked of
+    it — but everything else can, and ADR-0061 does: `measured_checkpoints` used to be
+    built by existence alone, so any measure-only report satisfied the requirement
+    whatever produced it."""
     return {
         "run_id": f"20260807T000000Z-{label}-0",
         "phase": "phase0_days1-2_measure",
@@ -106,6 +127,16 @@ def _measure(checkpoint: str, revision: str, label: str = "agent_b_independent")
         "revision": revision,
         "checkpoint_label": label,
         "metrics": {"model_utility": 0.44, "forget_truth_ratio": 0.66},
+        "git_sha": git_sha,
+        "git_dirty": git_dirty,
+        "ou_source_sha": pinned_ou_source_sha() if ou_source_sha == "" else ou_source_sha,
+        "tokenizer": (
+            {"repo": "meta-llama/Llama-3.2-1B-Instruct", "chat_template_sha256": "c0ffee"}
+            if tokenizer is None
+            else tokenizer
+        ),
+        "transformers_version": transformers_version,
+        "ou_runtime_mode": ou_runtime_mode,
     }
 
 
@@ -127,7 +158,7 @@ def _report(
     n_seeds: int = 1,
     n_retain: int = 100,
     store_scope: str = "per_item",
-    git_sha: str = "1a0eb6b",
+    git_sha: str = GRID_SHA,
     transformers_version: str = "4.44.2",
     resolved_attn: str = "flash_attention_2",
     real: bool = True,

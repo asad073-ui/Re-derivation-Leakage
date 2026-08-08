@@ -53,6 +53,7 @@ bar is met trivially. C2 shows the write path transports content at all.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import platform
 from collections.abc import Sequence
@@ -753,6 +754,51 @@ def _write_transcripts(out: Path, arm: ArmResult, label: str, seed: int) -> None
             w.write_all(tr.events)
 
 
+def _handoff_evidence(arm: ArmResult, seed: int) -> list[dict]:
+    """The raw C3S/C3C evidence, in a file small enough to commit (ADR-0060).
+
+    The full transcripts carry all of this and are ~two orders of magnitude larger, so
+    `.gitignore` excludes them — which meant the one artifact the control claim rests on
+    lived only on a rented instance that the runbook then tells you to destroy. This is
+    the reviewable subset: for every handoff, what was handed over, whose question it
+    answered, both SHA-256s so the copy can be checked against agent A's own answer
+    without trusting either, and whether the carrier node was certified clean.
+    """
+    certified = {
+        str(i.item_id): bool(i.laundered) for i in arm.laundering.items if i.item_id is not None
+    }
+    out: list[dict] = []
+    for tr in arm.transcripts:
+        answers = tr.agent_answers()
+        primary = answers[0] if answers else None
+        for h in tr.handoffs():
+            out.append(
+                {
+                    "seed": seed,
+                    "item_id": tr.item_id,
+                    "question": tr.query_text,
+                    "shuffled": h.shuffled,
+                    "source_item_id": h.source_item_id,
+                    "handoff_text": h.text,
+                    "handoff_text_sha256": h.text_sha256,
+                    "handoff_included_abstention": h.included_abstention,
+                    # Agent A's own answer to THIS item. Under C3C it must equal the
+                    # handed-over text; under C3S it must NOT — and the two hashes are
+                    # what makes that checkable from the committed file alone.
+                    "agent_a_answer": primary.text if primary else None,
+                    "agent_a_abstained": primary.abstained if primary else None,
+                    "agent_a_answer_sha256": (
+                        hashlib.sha256(primary.text.encode("utf-8")).hexdigest()
+                        if primary
+                        else None
+                    ),
+                    "final_answer": tr.final_text,
+                    "carrier_node_certified_clean": certified.get(str(tr.item_id)),
+                }
+            )
+    return out
+
+
 def run_condition(
     condition: Path = typer.Option(..., "--condition", help="path to configs/conditions/CX.yaml"),
     seeds: int | None = typer.Option(
@@ -938,6 +984,8 @@ def run_condition(
     out = run_dir(run_id)
 
     per_seed: list[dict] = []
+    # Committed alongside the report; the full transcripts are not (ADR-0060).
+    evidence: list[dict] = []
     per_seed_control: list[dict] = []
     per_seed_retain: list[dict] = []
     per_seed_eco_retain: list[dict] = []
@@ -968,6 +1016,7 @@ def run_condition(
             typer.echo(f"  seed {s} ...")
             arm = execute_condition(cfg, items, hw, s, agents_override=shared_agents)
             _write_transcripts(out, arm, "treatment", s)
+            evidence.extend(_handoff_evidence(arm, s))
             per_seed.append(_arm_record(cfg, arm, s, policy_name, "treatment"))
             hit_vectors.append(arm.hit_vector(items, primary_surface))
             hit_vectors_by_policy.setdefault(policy_name, []).append(
@@ -1201,6 +1250,23 @@ def run_condition(
         "control_reports": control_reports,
     }
     (out / "condition_report.json").write_text(json.dumps(payload, indent=2, default=str))
+    if evidence:
+        # Only the handoff arms produce this. Written even when the grid later fails its
+        # gate: the evidence is what a reviewer re-reads to find out WHY (ADR-0060).
+        (out / "handoff_evidence.json").write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "condition": cfg.condition,
+                    "handoff_source": cfg.episode.handoff_source,
+                    "n_records": len(evidence),
+                    "records": evidence,
+                },
+                indent=2,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
 
     append_manifest(
         {

@@ -127,20 +127,58 @@ def test_the_default_grid_gates(tmp_path):
     assert report and not any("--no-gate" in c for c in report), calls
 
 
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+def test_the_default_grid_runs_and_gates_the_per_item_scope(tmp_path):
+    calls = _run_grid(tmp_path, {})
+    (report,) = [c for c in calls if "make-report" in c]
+    assert report[report.index("--scope") + 1] == "per_item"
+    assert not any("store_scope" in " ".join(c) for c in calls if "run-condition" in c)
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+def test_scope_cumulative_both_runs_and_gates_phase_f2(tmp_path):
+    """Setting only the first was the defect: `--set episode.store_scope=cumulative` ran
+    F2 and then `make-report` re-printed the per-item verdict (ADR-0062)."""
+    calls = _run_grid(tmp_path, {"SCOPE": "cumulative"})
+    run_condition = [c for c in calls if "run-condition" in c]
+    assert run_condition, calls
+    for call in run_condition:
+        assert "episode.store_scope=cumulative" in call, call
+    (report,) = [c for c in calls if "make-report" in c]
+    assert report[report.index("--scope") + 1] == "cumulative"
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+def test_an_unknown_scope_stops_the_grid_before_it_spends_anything(tmp_path):
+    """A typo must not silently run the primary experiment under a longitudinal label."""
+    with pytest.raises(AssertionError):
+        _run_grid(tmp_path, {"SCOPE": "per-item"})
+
+
 # =====================================================================================
 # 2. the rendered REPORT.md must describe the v5 experiment
 # =====================================================================================
 
 
-def _render(tmp_path: Path, monkeypatch, runs: list[dict], gate: bool = True) -> str:
-    """Render REPORT.md from `runs` into a scratch results dir and return its text."""
+def _render(
+    tmp_path: Path,
+    monkeypatch,
+    runs: list[dict],
+    gate: bool = True,
+    scope: str = mr.PRIMARY_STORE_SCOPE,
+) -> str:
+    """Render REPORT.md from `runs` into a scratch results dir and return its text.
+
+    Every option is passed explicitly: called as a plain function rather than through
+    Typer, an omitted argument is an `OptionInfo` object, not its default.
+    """
     rd = tmp_path / "results"
     rd.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(mr, "collect_runs", lambda *a, **k: runs)
     monkeypatch.setattr(mr, "results_dir", lambda *a, **k: rd)
     monkeypatch.setattr(mr, "manifest_path", lambda *a, **k: rd / "manifest.jsonl")
-    target = rd / "REPORT.md"
-    mr.make_report(out=target, figures=False, gate=gate)
+    target = rd / ("REPORT.md" if scope == mr.PRIMARY_STORE_SCOPE else f"REPORT_{scope}.md")
+    mr.make_report(out=target, figures=False, gate=gate, scope=scope)
     return target.read_text(encoding="utf-8")
 
 

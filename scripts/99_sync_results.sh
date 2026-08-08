@@ -27,8 +27,36 @@ if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
     echo "RDL_ALLOW_DEFAULT_BRANCH=1 set — pushing to '$BRANCH' anyway."
 fi
 
-# Refuse to push if a credential pattern appears in anything staged.
+# `git add -A` does NOT add ignored files. Until ADR-0060 the only un-ignored thing under
+# results/ was the manifest, so this line staged the manifest and left every report
+# behind — and the next step was "destroy the instance". Belt and braces: stage, then
+# CHECK that each report on disk actually reached the index, and refuse to continue if
+# one did not. A silent omission here loses evidence that cost GPU hours.
 git add -A results/ docs/ || true
+
+MISSING=0
+while IFS= read -r artifact; do
+    [ -e "$artifact" ] || continue
+    if ! git ls-files --error-unmatch "$artifact" >/dev/null 2>&1; then
+        echo "NOT STAGED: $artifact"
+        MISSING=1
+    fi
+done < <(
+    {
+        find results -maxdepth 1 -name 'REPORT*.md' -o -maxdepth 1 -name 'gate_verdict*.json' \
+            -o -maxdepth 1 -name 'fig*.png'
+        find results -mindepth 2 -maxdepth 2 \
+            \( -name 'condition_report.json' -o -name 'repro_report.json' \
+            -o -name 'measure_report.json' -o -name 'handoff_evidence.json' \)
+    } 2>/dev/null
+)
+if [ "$MISSING" = "1" ]; then
+    echo
+    echo "ABORT: report artifacts exist on disk but are not in the index. They are being"
+    echo "       ignored — check the results/ negation rules in .gitignore (ADR-0060)."
+    echo "       Do NOT destroy this instance: the evidence is only here."
+    exit 1
+fi
 if git diff --cached | grep -nE '(hf_[A-Za-z0-9]{34}|github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{36})'; then
     echo "ABORT: a credential pattern appears in the staged diff."
     git reset
