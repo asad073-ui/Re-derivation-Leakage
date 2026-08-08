@@ -12,7 +12,10 @@ Each test here corresponds to a way a report claimed something the run did not d
 
 from __future__ import annotations
 
-from rdl.cli.make_report import report_is_exact_parity
+from rdl.cli.make_report import (
+    pinned_ou_source_sha,
+    report_is_exact_parity,
+)
 from rdl.compat.ou_eval_shim import _seed_from_argv
 from rdl.eval.openunlearning_bridge import is_exact_published_parity, is_published_parity
 
@@ -50,12 +53,24 @@ def test_off_parity_batch_or_seed_is_not_exact():
 
 
 def _report(**over) -> dict:
+    """A Day-1 report that is exactly good enough to clear the gate.
+
+    Every provenance field is present because ADR-0058 REQUIRES each of them: the gate
+    used to reject only `git_dirty is True` and read every absent field optimistically,
+    which is how the pre-ADR-0054 reports in `results/` — carrying none of these — kept
+    satisfying the Day-1 prerequisite.
+    """
     base = {
         "published_parity": True,
+        "exact_published_parity": True,
         "parity_gaps": [],
         "torch_dtype": "bfloat16",
         "attn_implementation": "flash_attention_2",
         "git_dirty": False,
+        "ou_source_sha": pinned_ou_source_sha() or "4ad738aaf60f6a4385f6e2506d01da99e76c31f3",
+        "tokenizer": {"chat_template_sha256": "c0ffee"},
+        "transformers_version": "4.44.2",
+        "ou_runtime_mode": "current_with_fp32_logits_shim",
     }
     base.update(over)
     return base

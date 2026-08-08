@@ -20,17 +20,19 @@ assertion that quietly stops being true.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from rdl.agents.abstention import LexicalDetector
 from rdl.agents.llm_agent import LLMAgent
-from rdl.cli.run_condition import execute_condition
+from rdl.cli.run_condition import _source_answer, execute_condition
 from rdl.config import ConfigError, load_config, validate
 from rdl.config import compose as compose_cfg
 from rdl.hardware import detect
 from rdl.models.stub import StubLM
+from rdl.orchestrator.loop import EpisodePolicies
 
 CONDITIONS = Path(__file__).resolve().parents[2] / "configs" / "conditions"
 
@@ -221,6 +223,63 @@ def test_the_source_probe_sees_the_live_store_under_cumulative_scope(agents, tof
         "live cumulative store"
     )
     assert arm.n_shuffled_handoffs == len(tofu_items)
+
+
+def _store_fingerprint(store, blocklist) -> dict:
+    """EVERYTHING mutable about the store, not just its node count.
+
+    `turn`, every node and its metadata, the DAG edges, the index membership and the
+    returnable set. A probe that changes any one of these has changed what the measured
+    episode sees or how its write is stamped.
+    """
+    return {
+        "turn": store.turn,
+        "nodes": sorted(
+            (
+                n.node_id,
+                n.content,
+                n.turn,
+                n.refcount,
+                n.deleted,
+                n.outdated,
+                n.returnable,
+                n.source_agent,
+                n.source_kind,
+                tuple(n.parent_ids),
+                json.dumps(n.meta, sort_keys=True, default=str),
+            )
+            for n in store.all_nodes(include_deleted=True)
+        ),
+        "edges": sorted(map(tuple, store.dag.edges())),
+        "indexed_ids": sorted(store.indexed_ids()),
+        "returnable_ids": sorted(store.returnable_ids(blocklist)),
+    }
+
+
+def test_the_source_probe_leaves_the_store_byte_identical(agents, tofu_items, seeded_store):
+    """v5 §2.2 claims the probe leaves the measured store untouched. Check THAT claim.
+
+    The probe used to call `run_episode` under `DisabledWritePolicy`, which wrote no node
+    but still executed `store.turn = turn` on its way to the write-back step — so the
+    store it "did not touch" came back with a different turn counter, and the next
+    episode's write would be stamped with it. The old test asserted only that no extra
+    node appeared, which that bug passes. This one compares the complete state
+    (ADR-0057).
+    """
+    store, blocklist, _ = seeded_store
+    # Something already in flight, so a probe resetting `turn` to 0 is distinguishable
+    # from a probe leaving it alone.
+    store.turn = 7
+    policies = EpisodePolicies(retrieval_k=5, max_turns=5, blocklist=blocklist)
+
+    before = _store_fingerprint(store, blocklist)
+    for item in tofu_items[:5]:
+        text, _ = _source_answer(item, agents[0], store, blocklist, policies)
+        assert isinstance(text, str)
+    after = _store_fingerprint(store, blocklist)
+
+    assert after == before, "the read-only source probe mutated the measured store"
+    assert store.turn == 7, "the probe advanced the store's turn counter"
 
 
 def test_the_source_probe_never_writes_to_the_store(agents, tofu_items):

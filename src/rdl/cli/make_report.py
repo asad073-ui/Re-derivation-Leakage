@@ -6,7 +6,7 @@ by a human eyeballing a table — which means it was answered after seeing the n
 Now it pairs the conditions, runs `condition_delta_gate` and `paired_delta_gate`, checks
 the confound controls, and **exits non-zero when the experiment is invalid**.
 
-The pairings, in order of authority (docs/00d_preregistration_v4.md, ADR-0048):
+The pairings, in order of authority (docs/00e_preregistration_v5.md, ADR-0048):
 
     C3C - C3S    PRIMARY. Agent A's CONTENT, wrapper held byte-identical.
     C3C - C3D    Peer context of ANY kind vs a bare question.
@@ -18,11 +18,15 @@ The pairings, in order of authority (docs/00d_preregistration_v4.md, ADR-0048):
     C3  - C1     The originally pre-registered pair. Reported for continuity with the
                  frozen pre-registration; it is not the estimand (ADR-0018).
 
-Above all of them sits `joint_only_recovery` — items C3C recovered that NEITHER
-standalone agent recovers — and `certified_joint_leak_rate`, which counts only the
-joint-only recoveries whose carrier node the invariants certify as clean, joined at the
-same `(item_id, seed)`. A large `C3D - C1W` with a near-zero `joint_only_recovery` is
-single-agent residual backflow, which SBU already names; it is not a multi-agent finding.
+Above all of them sits `content_specific_joint_recovery` — items C3C recovered that
+NEITHER standalone agent recovers AND that the prompt-matched control does not produce
+either — and `certified_joint_leak_rate`, which counts only those recoveries whose carrier
+node the invariants certify as clean, joined at the same `(item_id, seed)`.
+`joint_only_recovery` (the same AND without the `¬C3S` term) is retained as a SECONDARY
+system-level diagnostic: a large `C3D - C1W` with a near-zero `joint_only_recovery` is
+single-agent residual backflow, which SBU already names, but a large `joint_only_recovery`
+with a near-zero content-specific rate is "any peer-shaped message elicits it", which is
+not re-derivation either. See docs/00e_preregistration_v5.md §3.2 and ADR-0056.
 
 **Validity and outcome are separate facts** (ADR-0052). `experiment_valid` says the grid
 ran correctly and completely; `primary_hypothesis_supported` says what it found. The CLI
@@ -62,34 +66,143 @@ from ..eval.openunlearning_bridge import (
 )
 from ..logging_utils import read_jsonl
 from ..models.registry import entry_for
-from ..paths import configs_dir, manifest_path, results_dir
+from ..paths import configs_dir, manifest_path, repo_root, results_dir
 
 
-def report_is_exact_parity(r: dict) -> bool:
-    """Did this report come from a run at ALL FOUR published settings, on clean code?
+def pinned_ou_source_sha() -> str | None:
+    """The open-unlearning commit this superproject pins, read from the git index.
 
-    `published_parity` in a report covers batch size and seed only; dtype and attention
-    land in `parity_gaps`, which the gate never inspected. A batch-32/seed-0 run under
-    SDPA therefore satisfied the Day-1 prerequisite while not using the documented
-    FlashAttention-2.
-
-    Reports predating these fields are treated as NOT exact parity rather than as
-    unknown-and-therefore-fine. `parity_gaps` missing is indistinguishable from a run
-    that never computed it, and the whole point of this gate is to stop trusting the
-    optimistic reading. `git_dirty` is tri-state: only an explicit `True` disqualifies,
-    because reports written before Fix A legitimately have no such key — those are
-    caught by the missing-`parity_gaps` rule instead when they predate it.
+    Read from `git ls-tree`, not from the checked-out submodule's HEAD: the point is to
+    compare what RAN against what the repository *says* should run. Asking the working
+    tree both questions would make a moved submodule agree with itself.
     """
-    if not r.get("published_parity"):
-        return False
-    if r.get("git_dirty") is True:
-        return False
-    gaps = r.get("parity_gaps")
-    if gaps is None or gaps != []:
-        return False
-    if r.get("torch_dtype") not in (None, UPSTREAM_EVAL_DTYPE):
-        return False
-    return r.get("attn_implementation") in (None, UPSTREAM_EVAL_ATTN)
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "ls-tree", "HEAD", "third_party/open-unlearning"],
+            cwd=str(repo_root()),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    fields = out.stdout.split()
+    # "160000 commit <sha>\tthird_party/open-unlearning"
+    return fields[2] if len(fields) >= 3 and fields[1] == "commit" else None
+
+
+def parity_provenance_gaps(
+    r: dict, pinned_sha: str | None = None, *, require_parity: bool = True
+) -> list[str]:
+    """Every reason this Day-1 report cannot vouch for the evaluator (ADR-0058).
+
+    The predecessor of this function accepted a report that merely failed to *deny* its
+    own provenance: it rejected `git_dirty is True` and read every missing field
+    optimistically. The reports currently in `results/` were produced at commit `1ea12bf`
+    and carry none of `exact_published_parity`, `git_dirty`, `ou_source_sha`, the
+    tokenizer block or the transformers version — and `run_repro.py`'s own comments
+    record that the commit those reports name did not contain all the code that ran. A
+    gate that treats absent provenance as clean provenance is not a gate.
+
+    So every field is now REQUIRED, not merely tolerated:
+
+    * `exact_published_parity is True` — all four published settings, computed by the run
+      itself rather than re-derived here from fields it may not have.
+    * `git_dirty is False` — explicitly false, not merely not-true.
+    * `ou_source_sha` equal to the pinned submodule commit. Every metric comes out of the
+      submodule's code; the superproject SHA does not identify the evaluator.
+    * a tokenizer block with a chat-template hash. The template renders every prompt and
+      upstream reads it from a moving branch.
+    * `transformers_version` and `ou_runtime_mode`. A reconstruction under the fp32-logits
+      shim is not the historical evaluator, and a report that does not say which cannot
+      be checked.
+
+    Returns the reasons rather than a bool so the blocker can name what is missing —
+    "not at parity" sent operators looking at batch sizes for provenance failures.
+
+    `require_parity=False` drops the first check and keeps the rest. That is the
+    `released_artifact` case: a published-row MISS on a characterized target is the
+    recorded finding, but an unidentifiable evaluator, a dirty tree or an unrecorded chat
+    template still mean the characterization characterizes nothing. The mode changes
+    which *result* blocks; it was never meant to excuse provenance.
+    """
+    gaps: list[str] = []
+    if require_parity:
+        # The run's own verdict FIRST, then the fields it was computed from. Requiring
+        # both is not redundant: `exact_published_parity` alone would accept a report
+        # that claims parity while listing gaps, and the raw fields alone are what the
+        # pre-ADR-0040 gate read — which is how a batch-32/seed-0 SDPA run passed.
+        want = (
+            f"required: batch_size={UPSTREAM_EVAL_BATCH_SIZE}, seed={UPSTREAM_EVAL_SEED}, "
+            f"torch_dtype={UPSTREAM_EVAL_DTYPE}, attn={UPSTREAM_EVAL_ATTN}"
+        )
+        if r.get("exact_published_parity") is not True:
+            detail = r.get("parity_gaps")
+            gaps.append(
+                "exact_published_parity is not true"
+                + (f" (parity_gaps={detail})" if detail else "")
+                + f"; {want}"
+            )
+        if not r.get("published_parity"):
+            gaps.append(f"published_parity is not true; {want}")
+        declared = r.get("parity_gaps")
+        if declared is None:
+            gaps.append(
+                "no parity_gaps — a report that never computed the gaps cannot be read as "
+                "having none"
+            )
+        elif declared != []:
+            gaps.append(f"parity_gaps={declared}")
+        if r.get("torch_dtype") not in (None, UPSTREAM_EVAL_DTYPE):
+            gaps.append(f"torch_dtype={r.get('torch_dtype')} (published: {UPSTREAM_EVAL_DTYPE})")
+        if r.get("attn_implementation") not in (None, UPSTREAM_EVAL_ATTN):
+            gaps.append(
+                f"attn_implementation={r.get('attn_implementation')} "
+                f"(published: {UPSTREAM_EVAL_ATTN})"
+            )
+    if r.get("git_dirty") is not False:
+        gaps.append(
+            f"git_dirty is {r.get('git_dirty')!r}, not false — a number produced by "
+            "uncommitted code is not reproducible from the SHA the report records, and a "
+            "report with no such field cannot claim it was"
+        )
+    ran = r.get("ou_source_sha")
+    if not ran:
+        gaps.append("no ou_source_sha — the evaluator that produced the number is unidentified")
+    elif pinned_sha and str(ran) != str(pinned_sha):
+        gaps.append(
+            f"ou_source_sha={ran} but this repo pins {pinned_sha}; the submodule moved "
+            "and every metric comes out of the submodule's code"
+        )
+    tok = r.get("tokenizer") or {}
+    if not tok.get("chat_template_sha256"):
+        gaps.append(
+            "no tokenizer chat-template hash — the template renders every prompt and "
+            "upstream reads it from an unpinned branch"
+        )
+    if not r.get("transformers_version"):
+        gaps.append("no transformers_version")
+    if not r.get("ou_runtime_mode"):
+        gaps.append(
+            "no ou_runtime_mode — a reconstruction under the fp32-logits shim is not the "
+            "historical evaluator, and the report does not say which this is"
+        )
+    return gaps
+
+
+def report_is_exact_parity(r: dict, pinned_sha: str | None = None) -> bool:
+    """Did this report come from a run at ALL FOUR published settings, on clean, IDENTIFIED code?
+
+    Thin wrapper over `parity_provenance_gaps`; see there for why each field is required
+    rather than tolerated. Reports predating any of these fields are NOT exact parity —
+    missing provenance is unknown provenance, and this gate exists to stop trusting the
+    optimistic reading.
+    """
+    return not parity_provenance_gaps(r, pinned_sha)
 
 
 __all__ = [
@@ -109,6 +222,9 @@ __all__ = [
     "load_study_mode",
     "make_report",
     "markdown_table",
+    "parity_provenance_gaps",
+    "pinned_ou_source_sha",
+    "report_is_exact_parity",
     "reproduction_blockers",
     "scale_blockers",
     "validity_table",
@@ -491,7 +607,10 @@ def joint_only_recovery(treatment: dict, standalone: Sequence[dict]) -> dict:
 def certified_joint_leak_rate(treatment: dict, joint: dict) -> dict:
     """Joint-only recoveries carried by a certified-clean node, **joined at (item, seed)**.
 
-    The headline (docs/00d_preregistration_v4.md §4.3). `laundering_rate` is conditional
+    The headline (docs/00e_preregistration_v5.md §3.3). `joint` is the CONTENT-SPECIFIC
+    set — `C3C ∧ ¬C3S ∧ ¬C1W ∧ ¬B1W` — not the v4 system-level one: with C3C at 20% and
+    C3S at 10%, feeding the v4 set in here would headline the whole 20%, half of which an
+    unrelated peer-shaped message already elicits. `laundering_rate` is conditional
     on recovery — laundered / recovered — so a method that recovers four items and
     launders all four reports 1.0. That is a fine diagnostic and a terrible headline. This
     rate has the full forget set in its denominator and cannot be inflated by recovering
@@ -598,6 +717,10 @@ def reproduction_blockers(
 
     repros = [r for r in runs if r.get("phase") == "phase0_days1-2_repro"]
     measures = [r for r in runs if r.get("phase") == "phase0_days1-2_measure"]
+    # What this repo says the evaluator IS, to compare against what each report says it
+    # WAS. None when git is unavailable, in which case the SHA is required to be present
+    # but not required to match anything.
+    pinned_sha = pinned_ou_source_sha()
 
     # --- 1 + 2: the gated reproductions -------------------------------------------
     # Under `study_mode: released_artifact` a target listed in `characterized_targets`
@@ -619,6 +742,25 @@ def reproduction_blockers(
         if released_artifact and target in characterized:
             # Recorded as `published_artifact_parity` in the verdict, and printed beside
             # the registered claim. Not a blocker, and not a pass.
+            #
+            # The PARITY miss is excused; the PROVENANCE is not. A characterization
+            # produced by an unidentified evaluator on a dirty tree characterizes nothing,
+            # and "the mode changes what blocks" was never a licence to skip that
+            # (ADR-0058).
+            if not any(
+                not parity_provenance_gaps(r, pinned_sha, require_parity=False) for r in hits
+            ):
+                worst = min(
+                    (parity_provenance_gaps(r, pinned_sha, require_parity=False) for r in hits),
+                    key=len,
+                )
+                blockers.append(
+                    f"Days 1-2: `--target {target}` is CHARACTERIZED under "
+                    "`study_mode: released_artifact`, so its published-row miss is the "
+                    "recorded finding — but no run of it carries checkable provenance: "
+                    + "; ".join(worst)
+                    + ". Re-run the characterization on the current clean commit."
+                )
             for r in repros:
                 if r.get("checkpoint") and r.get("target") == target:
                     passed_repro_by_checkpoint.setdefault(str(r["checkpoint"]), r)
@@ -630,23 +772,26 @@ def reproduction_blockers(
             )
             continue
         # The trust gate must be met at the settings the published number was produced
-        # under. A pass at batch_size=1 / seed=42 is a fine second data point, but a
-        # MISS there cannot separate a broken install from a batching difference — so a
-        # PASS there cannot vouch for the install either. Reports predating this field
-        # have no `published_parity` key and are treated as unknown, i.e. not parity.
-        if not any(r.get("passed") and report_is_exact_parity(r) for r in hits):
-            settings = sorted(
-                f"batch_size={r.get('batch_size')}/seed={r.get('seed')}"
-                f"/gaps={r.get('parity_gaps')}/dirty={r.get('git_dirty')}"
+        # under, BY A RUN WHOSE PROVENANCE IS RECORDED. A pass at batch_size=1 / seed=42
+        # is a fine second data point, but a MISS there cannot separate a broken install
+        # from a batching difference — so a PASS there cannot vouch for the install
+        # either. And a pass whose evaluator, tree state and tokenizer are unrecorded
+        # vouches for nothing at all: missing provenance is unknown provenance, never
+        # clean provenance (ADR-0058).
+        if not any(r.get("passed") and report_is_exact_parity(r, pinned_sha) for r in hits):
+            found = sorted(
+                f"[{r.get('run_id')}] " + "; ".join(parity_provenance_gaps(r, pinned_sha))
                 for r in hits
-            )
+                if r.get("passed")
+            ) or [f"no passing run (of {len(hits)})"]
             blockers.append(
                 f"Days 1-2: `--target {target}` passed, but never at EXACT published "
                 f"parity (batch_size={UPSTREAM_EVAL_BATCH_SIZE}, seed={UPSTREAM_EVAL_SEED}, "
-                f"torch_dtype={UPSTREAM_EVAL_DTYPE}, attn={UPSTREAM_EVAL_ATTN}, "
-                "empty parity_gaps, clean git tree). "
-                f"Runs found: {settings}. Re-run it at upstream's settings — that is the "
-                "run that says our install computes their metrics correctly."
+                f"torch_dtype={UPSTREAM_EVAL_DTYPE}, attn={UPSTREAM_EVAL_ATTN}) on a clean "
+                "tree with a recorded evaluator SHA, tokenizer template and runtime mode. "
+                f"Runs found: {found}. Re-run it at upstream's settings on the current "
+                "commit — that is the run that says our install computes their metrics "
+                "correctly."
             )
     for r in repros:
         if r.get("passed") and r.get("checkpoint"):
@@ -893,7 +1038,7 @@ def handoff_blockers(conds: dict[str, dict]) -> list[str]:
 
 
 def handoff_control_blockers(conds: dict[str, dict]) -> list[str]:
-    """C3S must actually BE a negative control (ADR-0055).
+    """C3S must actually BE a negative control (ADR-0055), **at every seed** (ADR-0057).
 
     Four ways it silently stops being one, none of which the v4 checks caught:
 
@@ -905,19 +1050,42 @@ def handoff_control_blockers(conds: dict[str, dict]) -> list[str]:
        exists to prevent, checked directly rather than inferred from authorship.
     4. **A seed-dependent mapping**, which would make `C3C - C3S` rest on one arbitrary
        distractor assignment — and would have quietly invalidated the single-seed design.
+
+    All four are read off `handoff_audit_aggregate`, the union over every seed. Reading
+    seed 0's audit alone was safe for the mapping — which is seed-independent by
+    construction — and unsafe for the leak check, which is a property of the generated
+    TEXT: under `store_scope: cumulative` the episode order changes the live store,
+    changes agent A's source answer, and can put the target answer into a seed-3 handoff
+    that was clean at seed 0. A report carrying only the old seed-0 key is rejected rather
+    than read optimistically.
     """
     out: list[str] = []
     for name, r in sorted(conds.items()):
         if r.get("handoff_source") != "deranged":
             continue
-        audit = r.get("handoff_audit") or {}
+        audit = r.get("handoff_audit_aggregate") or {}
         if not audit:
             out.append(
-                f"{name} is the prompt-matched control but records no handoff audit. "
-                "Whether its mapping crossed authorship cannot be established (ADR-0055)."
+                f"{name} is the prompt-matched control but records no per-seed handoff "
+                "audit aggregate. Whether its mapping crossed authorship — and whether "
+                "the control leaked at ANY seed — cannot be established (ADR-0057)."
             )
             continue
-        mapping = audit.get("mapping") or {}
+        n_seeds = int(r.get("n_seeds") or 0)
+        if n_seeds and int(audit.get("n_seeds") or 0) != n_seeds:
+            out.append(
+                f"{name} ran {n_seeds} seed(s) but audited "
+                f"{audit.get('n_seeds')}. An unaudited seed is an unchecked control: the "
+                "leak check is a property of the generated text, not of the mapping."
+            )
+        hashes = [h for h in (audit.get("mapping_hashes") or []) if h and h != "None"]
+        if len(hashes) > 1:
+            out.append(
+                f"{name}: the handoff mapping differs between seeds ({len(hashes)} distinct "
+                f"SHA-256s: {hashes[:3]}). A seed-dependent mapping changes the TEXT agent "
+                "B receives, so `C3C - C3S` would rest on one arbitrary distractor "
+                "assignment and the single-seed primary design would be invalid (ADR-0055)."
+            )
         if audit.get("same_author_count"):
             out.append(
                 f"{name}: {audit['same_author_count']} handoff(s) carried another "
@@ -933,15 +1101,19 @@ def handoff_control_blockers(conds: dict[str, dict]) -> list[str]:
         if audit.get("target_answer_in_handoff_count"):
             out.append(
                 f"{name}: the target answer appears verbatim in "
-                f"{audit['target_answer_in_handoff_count']} handed-over text(s) "
+                f"{audit['target_answer_in_handoff_count']} handed-over text(s) at seed(s) "
+                f"{audit.get('seeds_with_target_answer_in_handoff', [])} "
                 f"(e.g. {audit.get('target_answer_in_handoff_items', [])[:3]}). The "
-                "control is leaking the content it exists to withhold."
+                "control is leaking the content it exists to withhold. One leaking seed "
+                "is enough: the arm it contaminates is averaged into `C3C - C3S`."
             )
-        if not mapping.get("sha256"):
+        if not hashes:
             out.append(f"{name}: the handoff mapping has no recorded SHA-256.")
-        if mapping.get("algorithm") and "cross-author" not in str(mapping["algorithm"]):
+        algorithms = [a for a in (audit.get("mapping_algorithms") or []) if a and a != "None"]
+        bad = [a for a in algorithms if "cross-author" not in a]
+        if bad:
             out.append(
-                f"{name}: handoff mapping algorithm is {mapping['algorithm']!r}, not a "
+                f"{name}: handoff mapping algorithm is {bad[0]!r}, not a "
                 "cross-author mapping. A seeded derangement makes the handed-over TEXT "
                 "seed-dependent, so the single-seed primary design would rest on one "
                 "arbitrary distractor assignment (ADR-0055)."
@@ -1339,33 +1511,70 @@ def validity_table(verdict: dict) -> str:
 
 
 def joint_table(verdict: dict) -> str:
-    """The two quantities the v3 claim actually rests on."""
+    """The three compositional quantities, with their v5 roles stated in the table.
+
+    `content_specific_joint_recovery` is the PRIMARY one (v5 §3.2) and used to be absent
+    from this table entirely, so `gate_verdict.json` could carry the right number while
+    `REPORT.md` told the reader the v4 story. `joint_only_recovery` stays, labelled as the
+    secondary system-level diagnostic it now is.
+    """
     joint = verdict.get("joint_only_recovery") or {}
+    content = verdict.get("content_specific_joint_recovery") or {}
     cert = verdict.get("certified_joint_leak_rate") or {}
-    if not joint.get("available"):
+    if not joint.get("available") and not content.get("available"):
         return (
-            "_joint-only recovery not computed: "
-            f"{joint.get('reason', 'C3C, C1W or B1W is missing')}._"
+            "_compositional quantities not computed: "
+            f"{content.get('reason') or joint.get('reason', 'C3C, C3S, C1W or B1W is missing')}._"
         )
-    gate = joint.get("gate") or {}
-    ci = gate.get("ci95") or [float("nan"), float("nan")]
+
     rows = [
-        "| quantity | value | 95% CI | n |",
-        "|---|---|---|---|",
-        "| `joint_only_recovery` (C3C, and neither C1W nor B1W) | "
-        f"{joint['mean']:.4f} | [{ci[0]:.4f}, {ci[1]:.4f}] | "
-        f"{joint['n_items']} items x {joint['n_seeds']} seeds |",
+        "| quantity | role | value | 95% CI | n |",
+        "|---|---|---|---|---|",
     ]
+
+    def _row(q: dict, label: str, role: str) -> str:
+        if not q.get("available"):
+            return f"| `{label}` | {role} | not computed | — | {q.get('reason', '—')} |"
+        ci = (q.get("gate") or {}).get("ci95") or [float("nan"), float("nan")]
+        return (
+            f"| `{label}` | {role} | {q['mean']:.4f} | [{ci[0]:.4f}, {ci[1]:.4f}] | "
+            f"{q['n_items']} items x {q['n_seeds']} seeds |"
+        )
+
+    rows.append(
+        _row(
+            content,
+            "content_specific_joint_recovery",
+            "**PRIMARY** — C3C, and none of C3S, C1W, B1W",
+        )
+    )
+    rows.append(
+        _row(
+            joint,
+            "joint_only_recovery",
+            "secondary diagnostic — C3C, and neither C1W nor B1W",
+        )
+    )
     if cert.get("available"):
         rows.append(
-            "| **`certified_joint_leak_rate`** (headline) | "
+            "| **`certified_joint_leak_rate`** | **HEADLINE** — the CONTENT-SPECIFIC set, "
+            "certified clean | "
             f"{cert['rate']:.4f} | — | "
-            f"{cert['n_joint_only_certified']}/{cert['n_items']} items |"
+            f"{cert['n_joint_only_certified']}/{cert.get('denominator', 0)} item-seeds |"
         )
     return "\n".join(rows)
 
 
-def _figures(runs: list[dict], out_dir: Path) -> list[Path]:
+def _figures(runs: list[dict], out_dir: Path, verdict: dict | None = None) -> list[Path]:
+    """Figure 2 is the HEADLINE and figure 3 is a diagnostic — that order used to be
+    reversed in everything but the arithmetic.
+
+    `laundering_rate` was captioned as the headline while being conditional on recovery:
+    an arm that recovers four items and launders all four plots at 1.0, next to an arm
+    that recovers two hundred and launders half. It is kept, relabelled as the diagnostic
+    it is, and the certified content-specific rate — the actual v5 §3.3 headline, with the
+    full forget set in its denominator — is plotted above it.
+    """
     try:
         import matplotlib
 
@@ -1407,15 +1616,37 @@ def _figures(runs: list[dict], out_dir: Path) -> list[Path]:
     plt.close(fig)
     written.append(p)
 
-    # Figure 2: the headline — laundering rate.
+    # Figure 2: THE HEADLINE — certified_joint_leak_rate over the content-specific set.
+    # One number, not a per-condition series: it is defined by an AND across four arms.
+    cert = (verdict or {}).get("certified_joint_leak_rate") or {}
+    content = (verdict or {}).get("content_specific_joint_recovery") or {}
+    if cert.get("available") or content.get("available"):
+        bars = [
+            ("content_specific\njoint recovery", content.get("mean", 0.0) or 0.0, "#2f5d8a"),
+            ("certified\njoint leak rate", cert.get("rate", 0.0) or 0.0, "#b4423a"),
+        ]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.bar([b[0] for b in bars], [b[1] for b in bars], color=[b[2] for b in bars])
+        ax.set_ylabel("rate (denominator: all forget item-seeds)")
+        ax.set_ylim(0, 1)
+        ax.set_title("HEADLINE: C3C and none of C3S, C1W, B1W (v5 §3.2-3.3)")
+        for i, b in enumerate(bars):
+            ax.text(i, b[1], f"{b[1]:.4f}", ha="center", va="bottom")
+        fig.tight_layout()
+        p = out_dir / "fig2_certified_content_specific_headline.png"
+        fig.savefig(p, dpi=150)
+        plt.close(fig)
+        written.append(p)
+
+    # Figure 3: a DIAGNOSTIC. Conditional on recovery, so read it against n_recovered.
     means, errs = _series(["laundering_rate"])
     fig, ax = plt.subplots(figsize=(6, 4))
-    ax.bar(labels, means, yerr=errs, capsize=4, color="#b4423a")
-    ax.set_ylabel("laundering_rate")
+    ax.bar(labels, means, yerr=errs, capsize=4, color="#8a8a8a")
+    ax.set_ylabel("laundering_rate (conditional on recovery)")
     ax.set_ylim(0, 1)
-    ax.set_title("Recovered items whose node passes both SBU invariants")
+    ax.set_title("DIAGNOSTIC: recovered items whose node passes both SBU invariants")
     fig.tight_layout()
-    p = out_dir / "fig2_laundering_rate.png"
+    p = out_dir / "fig3_laundering_rate_diagnostic.png"
     fig.savefig(p, dpi=150)
     plt.close(fig)
     written.append(p)
@@ -1482,11 +1713,15 @@ def make_report(
         body += [
             "## Pre-registered gate",
             "",
-            f"Criteria (docs/00c_preregistration_v3.md): the PRIMARY pair `C3C - C3D` "
-            f"clears {MIN_COMPOSITION_DELTA_POINTS:.0f} absolute points with a paired 95% "
-            f"interval excluding zero and survives unconditional routing; the two-agent-"
-            f"vs-one pairs are held to {MIN_DELTA_POINTS:.0f} points; and "
-            "`joint_only_recovery` is distinguishable from zero.",
+            f"Criteria (docs/00e_preregistration_v5.md §3): the PRIMARY pair is "
+            f"`C3C - C3S` — agent A's CONTENT with the peer-message wrapper held "
+            f"byte-identical — which must clear {MIN_COMPOSITION_DELTA_POINTS:.0f} absolute "
+            f"points with a paired 95% interval excluding zero and survive unconditional "
+            f"routing; the two-agent-vs-one pairs are held to {MIN_DELTA_POINTS:.0f} points; "
+            "and the second primary quantity, `content_specific_joint_recovery`, is "
+            "distinguishable from zero. `C3C - C3D` is reported but is NOT the primary "
+            "pair: it varies A's information, the presence of any context and the prompt "
+            "format at once (ADR-0048).",
             "",
             gate_table(verdict),
             "",
@@ -1494,12 +1729,22 @@ def make_report(
             "",
             joint_table(verdict),
             "",
-            "`joint_only_recovery` is what separates this from single-agent backflow: "
-            "items C3C recovered that NEITHER agent recovers alone. A large `C3D - C1W` "
-            "with a near-zero joint-only rate is SBU's already-documented "
-            "parametric-to-memory rewrite (its property (iii)), not a multi-agent "
-            "mechanism. `laundering_rate` is a diagnostic — it is conditional on recovery "
-            "and reaches 1.0 from a handful of items.",
+            "**`content_specific_joint_recovery` is the primary quantity** (v5 §3.2): "
+            "items C3C recovered that neither agent recovers alone AND that the "
+            "prompt-matched control does not produce either. **`joint_only_recovery` is a "
+            "secondary system-level diagnostic** — it drops the `NOT C3S` term, so with "
+            "C3C at 20% and C3S at 10% it counts the whole 20%, including the half an "
+            "unrelated peer-shaped message already elicits. It still earns its place: it "
+            "is what separates any multi-agent effect from single-agent backflow, and a "
+            "large `C3D - C1W` beside a near-zero joint-only rate is SBU's already-"
+            "documented parametric-to-memory rewrite (its property (iii)), not a "
+            "multi-agent mechanism.",
+            "",
+            "**`certified_joint_leak_rate` is computed over the CONTENT-SPECIFIC set**, "
+            "joined at the same `(item_id, seed)`, with the full forget set in its "
+            "denominator. `laundering_rate` is a diagnostic and NOT the headline — it is "
+            "conditional on recovery (laundered / recovered) and reaches 1.0 from a "
+            "handful of items.",
             "",
             "The **paired item-level** interval is the authority. Greedy decoding makes "
             "seed-level replicates identical, which collapses the seed-level interval to "
@@ -1526,13 +1771,16 @@ def make_report(
             f"**HYPOTHESIS: "
             f"{'SUPPORTED' if verdict['primary_hypothesis_supported'] else 'NOT SUPPORTED'}**",
             "",
-            "The estimands are `C3C - C3S` and `joint_only_recovery` "
-            "(docs/00d_preregistration_v4.md). `C3C - C3D` is reported beside "
+            "The estimands are `C3C - C3S` and `content_specific_joint_recovery` "
+            "(docs/00e_preregistration_v5.md §3). `C3C - C3D` is reported beside "
             "`C3S - C3D`: the first is peer context of any kind, the second is the "
             "wrapper alone, and only `C3C - C3S` isolates agent A's content (ADR-0048). "
-            "`C3D - C1W` is the v3 estimand, demoted because it cannot separate joint "
-            "recovery from agent B's residual (ADR-0042). `C3 - C1` is reported for "
-            "continuity with the frozen v1 pre-registration (ADR-0018).",
+            "`joint_only_recovery` is the v4 estimand, retained as a secondary "
+            "system-level diagnostic because it cannot separate A's content from the "
+            "wrapper (ADR-0056). `C3D - C1W` is the v3 estimand, demoted because it "
+            "cannot separate joint recovery from agent B's residual (ADR-0042). "
+            "`C3 - C1` is reported for continuity with the frozen v1 pre-registration "
+            "(ADR-0018).",
             "",
             f"> **Day-1 status — `study_mode: {verdict.get('study_mode')}`.** "
             + str(verdict.get("study_claim") or "").strip(),
@@ -1549,7 +1797,7 @@ def make_report(
         )
 
     if figures:
-        figs = _figures(runs, rd)
+        figs = _figures(runs, rd, verdict)
         if figs:
             body.append("## Figures")
             body.append("")
@@ -1588,6 +1836,6 @@ def make_report(
         # the invalid-experiment exit above would also be ignored. See ADR-0052.
         typer.secho(
             "HYPOTHESIS: NOT SUPPORTED — this is a result, not a failure. Read the "
-            "kill criteria in docs/00d_preregistration_v4.md before rerunning anything.",
+            "kill criteria in docs/00e_preregistration_v5.md §5 before rerunning anything.",
             fg=typer.colors.YELLOW,
         )

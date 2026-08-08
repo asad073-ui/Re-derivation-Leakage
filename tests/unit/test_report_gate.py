@@ -16,6 +16,7 @@ from rdl.cli.make_report import (
     evaluate_gates,
     gate_table,
     joint_table,
+    pinned_ou_source_sha,
 )
 from rdl.eval.controls import FAIL, NOT_APPLICABLE, PASS
 
@@ -41,13 +42,24 @@ def _repro(
     seed: int = 0,
     dtype: str = "bfloat16",
     attn: str = "flash_attention_2",
-    git_dirty: bool = False,
+    git_dirty: bool | None = False,
+    ou_source_sha: str | None = "",
+    tokenizer: dict | None = None,
+    transformers_version: str | None = "4.44.2",
+    ou_runtime_mode: str | None = "current_with_fp32_logits_shim",
 ) -> dict:
     """A Days 1-2 report. Defaults are EXACT published parity — upstream's own settings.
 
-    `dtype`, `attn` and `git_dirty` are part of the fixture because the gate now
-    requires all four published settings plus a checkoutable tree (ADR-0040), not just
-    batch size and seed.
+    `dtype`, `attn` and `git_dirty` are part of the fixture because the gate requires all
+    four published settings plus a checkoutable tree (ADR-0040). The provenance block —
+    `ou_source_sha`, `tokenizer`, `transformers_version`, `ou_runtime_mode` — is here
+    because ADR-0058 REQUIRES each of them rather than tolerating its absence: the
+    reports actually sitting in `results/` predate every one of these fields and were
+    clearing the gate on the strength of not denying anything.
+
+    `ou_source_sha=""` means "the SHA this repo pins", resolved at call time so the
+    fixture cannot drift away from the submodule the gate compares against. Pass an
+    explicit value to model a moved submodule, or `None` to model an old report.
     """
     gaps: list[str] = []
     if batch_size != 32:
@@ -69,9 +81,18 @@ def _repro(
         "seed": seed,
         "published_parity": batch_size == 32 and seed == 0,
         "parity_gaps": gaps,
+        "exact_published_parity": not gaps and git_dirty is False,
         "torch_dtype": dtype,
         "attn_implementation": attn,
         "git_dirty": git_dirty,
+        "ou_source_sha": pinned_ou_source_sha() if ou_source_sha == "" else ou_source_sha,
+        "tokenizer": (
+            {"repo": "meta-llama/Llama-3.2-1B-Instruct", "chat_template_sha256": "c0ffee"}
+            if tokenizer is None
+            else tokenizer
+        ),
+        "transformers_version": transformers_version,
+        "ou_runtime_mode": ou_runtime_mode,
         "comparisons": [],
     }
 
@@ -126,6 +147,11 @@ def _report(
     same_author: int = 0,
     fixed_points: int = 0,
     target_leak: int = 0,
+    # {seed_index: n_leaks}. The leak check is a property of the generated TEXT, so it can
+    # fire at one seed and not another; `target_leak` alone would only ever model a leak
+    # present at every seed, which is the easy case (ADR-0057).
+    target_leak_by_seed: dict[int, int] | None = None,
+    mapping_sha_by_seed: dict[int, str] | None = None,
     mapping_algorithm: str = "rotate-by-smallest-cross-author-shift",
     routing_free_recall: float | None = None,
     per_seed_vectors: bool = True,
@@ -162,6 +188,56 @@ def _report(
         n_handoffs = n_delegations if handoff else 0
     if n_shuffled is None:
         n_shuffled = n_handoffs if handoff_source == "deranged" else 0
+
+    # The C3S audit, per seed and then unioned — the shape `run-condition` writes after
+    # ADR-0057. `same_author_count` and `fixed_point_count` are properties of the mapping
+    # and so repeat at every seed; leaks are per-seed facts.
+    leaks = dict(target_leak_by_seed or {})
+    shas = dict(mapping_sha_by_seed or {})
+    audit_by_seed = (
+        [
+            {
+                "seed": s,
+                "mapping": {
+                    "algorithm": mapping_algorithm,
+                    "shift": 20,
+                    "n_items": n_items,
+                    "n_authors": max(1, n_items // 20),
+                    "sha256": shas.get(s, "0" * 64),
+                },
+                "fixed_point_count": fixed_points,
+                "same_author_count": same_author,
+                "target_answer_in_handoff_count": leaks.get(s, target_leak),
+                "target_answer_in_handoff_items": (
+                    [item_ids[0]] if leaks.get(s, target_leak) else []
+                ),
+            }
+            for s in range(n_seeds)
+        ]
+        if handoff_source == "deranged"
+        else []
+    )
+    audit_aggregate = (
+        {
+            "n_seeds": len(audit_by_seed),
+            "seeds": [a["seed"] for a in audit_by_seed],
+            "mapping_hashes": sorted({a["mapping"]["sha256"] for a in audit_by_seed}),
+            "mapping_algorithms": sorted({a["mapping"]["algorithm"] for a in audit_by_seed}),
+            "same_author_count": sum(a["same_author_count"] for a in audit_by_seed),
+            "fixed_point_count": sum(a["fixed_point_count"] for a in audit_by_seed),
+            "target_answer_in_handoff_count": sum(
+                a["target_answer_in_handoff_count"] for a in audit_by_seed
+            ),
+            "target_answer_in_handoff_items": sorted(
+                {i for a in audit_by_seed for i in a["target_answer_in_handoff_items"]}
+            ),
+            "seeds_with_target_answer_in_handoff": [
+                a["seed"] for a in audit_by_seed if a["target_answer_in_handoff_count"]
+            ],
+        }
+        if audit_by_seed
+        else {}
+    )
 
     seeds = [
         {
@@ -216,24 +292,11 @@ def _report(
         "n_handoffs_total": n_handoffs,
         "n_delegations_total": n_delegations,
         "n_shuffled_handoffs_total": n_shuffled,
-        # C3S's audit: the mapping plus the four ways it could stop being a control.
-        "handoff_audit": (
-            {
-                "mapping": {
-                    "algorithm": mapping_algorithm,
-                    "shift": 20,
-                    "n_items": n_items,
-                    "n_authors": max(1, n_items // 20),
-                    "sha256": "0" * 64,
-                },
-                "fixed_point_count": fixed_points,
-                "same_author_count": same_author,
-                "target_answer_in_handoff_count": target_leak,
-                "target_answer_in_handoff_items": [],
-            }
-            if handoff_source == "deranged"
-            else {}
-        ),
+        # C3S's audit: the mapping plus the four ways it could stop being a control, at
+        # EVERY seed. The seed-0 key is kept for continuity; the gate reads the aggregate.
+        "handoff_audit": audit_by_seed[0] if audit_by_seed else {},
+        "handoff_audit_by_seed": audit_by_seed,
+        "handoff_audit_aggregate": audit_aggregate,
         "controls_enabled": controls,
         "store_scope": store_scope,
         "git_sha": git_sha,
@@ -680,7 +743,8 @@ def test_a_legacy_report_without_the_parity_field_is_not_assumed_to_be_parity():
     """Reports written before the field existed carry no claim about their settings, and
     an absent claim is not a passing one."""
     legacy = _repro("full", FULL, FULL_REV)
-    del legacy["published_parity"]
+    for field in ("published_parity", "exact_published_parity"):
+        del legacy[field]
     runs = [
         *[r for r in _grid() if r.get("phase") == "phase0_days3-5"],
         legacy,
