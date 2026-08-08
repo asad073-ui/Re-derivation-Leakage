@@ -1,0 +1,126 @@
+{
+  "run_id": "20260808T175857Z-0f93552-d83991702fc5",
+  "phase": "phase0_days1-2_repro",
+  "measure_only": false,
+  "target": "full",
+  "checkpoint": "open-unlearning/tofu_Llama-3.2-1B-Instruct_full",
+  "revision": "88e31200b97e4c0c04ae0d2f0b591f427046d192",
+  "checkpoint_label": "tofu_llama32_1b_full",
+  "hardware": {
+    "device": "cuda",
+    "name": "NVIDIA GeForce RTX 3090",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "supports_bf16": true,
+    "supports_flash_attn2": true,
+    "total_vram_gb": 25.3,
+    "recommended_dtype": "bfloat16",
+    "recommended_train_dtype": "bfloat16",
+    "recommended_attn": "flash_attention_2",
+    "torch_version": "2.4.1+cu121",
+    "cuda_version": "12.1",
+    "python_version": "3.11.9",
+    "platform": "Linux-5.15.0-174-generic-x86_64",
+    "free_disk_gb": 125.5,
+    "cpu_count": 64,
+    "flash_attn_installed": true
+  },
+  "attn_implementation": "flash_attention_2",
+  "torch_dtype": "bfloat16",
+  "ou_compat_shims": [
+    "fp32_logits"
+  ],
+  "ou_runtime_mode": "current_with_fp32_logits_shim",
+  "ou_source_sha": "4ad738aaf60f6a4385f6e2506d01da99e76c31f3",
+  "transformers_version": "4.51.3",
+  "git_dirty": false,
+  "git_diff_sha256": null,
+  "exact_published_parity": false,
+  "tokenizer": {
+    "repo": "meta-llama/Llama-3.2-1B-Instruct",
+    "revision": "9213176726f574b556790deb65791e0c5aa438b6",
+    "chat_template_sha256": "5816fce10444e03c2e9ee1ef8a4a1ea61ae7e69e438613f3b17b69d0426223a4"
+  },
+  "published_parity": false,
+  "parity_gaps": [
+    "batch_size=1 (published: 32)",
+    "seed=42 (published: 0)"
+  ],
+  "env_profile": "vast_rtx3090",
+  "seeding": {
+    "seed": 42,
+    "python_seeded": true,
+    "numpy_seeded": true,
+    "torch_seeded": true,
+    "torch_cuda_seeded": true,
+    "deterministic_algorithms": true,
+    "cudnn_deterministic": true,
+    "cublas_workspace_config": ":4096:8",
+    "warnings": [],
+    "fully_deterministic": true
+  },
+  "open_unlearning_command": "python -m rdl.compat.ou_eval_shim src/eval.py --config-name=eval.yaml experiment=eval/tofu/default model=Llama-3.2-1B-Instruct model.model_args.pretrained_model_name_or_path=open-unlearning/tofu_Llama-3.2-1B-Instruct_full model.model_args.attn_implementation=flash_attention_2 model.model_args.torch_dtype=bfloat16 forget_split=forget10 holdout_split=holdout10 retain_logs_path=saves/eval/tofu_Llama-3.2-1B-Instruct_retain90/TOFU_EVAL.json seed=42 eval.tofu.batch_size=1 eval.tofu.overwrite=true task_name=rdl_repro_tofu_llama32_1b_full_forget10_s42_b1_20260808T171744Z paths.output_dir=saves/eval/rdl_repro_tofu_llama32_1b_full_forget10_s42_b1_20260808T171744Z +model.model_args.revision=88e31200b97e4c0c04ae0d2f0b591f427046d192",
+  "task_name": "rdl_repro_tofu_llama32_1b_full_forget10_s42_b1_20260808T171744Z",
+  "forget_split": "forget10",
+  "holdout_split": "holdout10",
+  "batch_size": 1,
+  "seed": 42,
+  "summary_path": "/workspace/Re-derivation-Leakage/third_party/open-unlearning/saves/eval/rdl_repro_tofu_llama32_1b_full_forget10_s42_b1_20260808T171744Z/TOFU_SUMMARY.json",
+  "summary_written_after": 1786209463.9939437,
+  "condition_file": null,
+  "git_sha": "0f93552",
+  "metrics": {
+    "model_utility": 0.6001632318518003,
+    "forget_quality": 8.080285566431044e-22,
+    "forget_truth_ratio": 0.47546571007329946,
+    "forget_Q_A_ROUGE": 0.8228107072000307,
+    "forget_Q_A_Prob": 0.8803933817148208,
+    "extraction_strength": 0.700591459485171,
+    "privleak": -99.4563786763651
+  },
+  "checkpoint_key": "full",
+  "passed": true,
+  "comparisons": [
+    {
+      "metric": "model_utility",
+      "ours": 0.6001632318518003,
+      "published": 0.6,
+      "tolerance": 0.01,
+      "passed": true,
+      "gated": true,
+      "note": "|d|=0.0002"
+    },
+    {
+      "metric": "forget_truth_ratio",
+      "ours": 0.47546571007329946,
+      "published": 0.48,
+      "tolerance": 0.01,
+      "passed": true,
+      "gated": true,
+      "note": "|d|=0.0045"
+    },
+    {
+      "metric": "forget_quality",
+      "ours": 8.080285566431044e-22,
+      "published": 1.66e-21,
+      "tolerance": null,
+      "passed": true,
+      "gated": false,
+      "note": "log10=-21.09, expected in [-21.78, -19.78]: ok"
+    }
+  ],
+  "meta": {
+    "batch_size": 1,
+    "upstream_eval_batch_size": 32,
+    "seed": 42,
+    "upstream_eval_seed": 0,
+    "published_parity": false,
+    "parity_gaps": [
+      "batch_size=1 (published: 32)",
+      "seed=42 (published: 0)"
+    ],
+    "batch_size_note": "this run does NOT match the published evaluation settings: batch_size=1 (published: 32); seed=42 (published: 0). Agreement within tolerance is not bit-identity, and a MISS under these settings cannot distinguish a broken install from a settings difference. Run the parity gate (batch_size=32, seed=0) first."
+  }
+}

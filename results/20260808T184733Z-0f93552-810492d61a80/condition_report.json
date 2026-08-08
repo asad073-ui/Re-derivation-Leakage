@@ -1,0 +1,1260 @@
+{
+  "run_id": "20260808T184733Z-0f93552-810492d61a80",
+  "phase": "phase0_days3-5",
+  "condition": "C3",
+  "config_hash": "810492d61a801cd2559f4e1058cbda8e669e506f86171ff655c005cd108c9e2d",
+  "config": {
+    "condition": "C3",
+    "description": "Redundancy control: ONE unlearned checkpoint in both agent slots, framework-default write-back.",
+    "seed": 42,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "env": {
+      "name": "vast_rtx3090",
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "attn_implementation": "auto",
+      "batch_size": 1,
+      "max_new_tokens": 128,
+      "allow_fp16_training": false,
+      "hf_home": "/workspace/hf",
+      "index_backend": "numpy",
+      "min_vram_gb": 20.0,
+      "min_free_disk_gb": 60.0,
+      "expected_gpu_name_regex": "RTX 3090",
+      "expected_compute_capability": [
+        8,
+        6
+      ],
+      "min_python": "3.11",
+      "notes": "Vast.ai RTX 3090 production environment. BF16 everywhere. Prefer FlashAttention-2 when the wheel is installed, otherwise SDPA is used and RECORDED \u2014 hardware.flash_attn_installed goes into every run report. Do not mix FA2 and SDPA runs inside one comparison; the attention implementation is part of the run's provenance. Results and model caches live under /workspace so a stopped instance keeps them.\n"
+    },
+    "memory": {
+      "name": "sbu_id_blocklist",
+      "blocklist": "id",
+      "enforce_at_retrieval": true,
+      "derivation_closure": true,
+      "refcount_prune": true,
+      "retrieval_k": 5,
+      "embedding_dim": 64,
+      "semantic_threshold": 0.75,
+      "semantic_use_nli": false,
+      "deletion_mode": "tombstone",
+      "refcount_semantics": "supporting_parents",
+      "ingest_forget_set": true
+    },
+    "writepolicy": {
+      "name": "framework_default",
+      "mode": "framework_default",
+      "mirrors_framework": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours",
+      "write_source_kinds": [
+        "agent_answer"
+      ],
+      "write_on_abstention": false,
+      "sanitize_threshold": 0.75
+    },
+    "episode": {
+      "max_turns": 5,
+      "retrieval_k": 5,
+      "greedy": true,
+      "max_new_tokens": 128,
+      "prompt_style": "openunlearning",
+      "pass_primary_answer": false,
+      "handoff_source": "primary",
+      "routing": null,
+      "store_scope": "per_item",
+      "permute_item_order_per_seed": true
+    },
+    "data": {
+      "dataset": "tofu",
+      "forget_split": "forget10",
+      "retain_split": "retain90",
+      "n_items": null,
+      "fixture_path": null,
+      "n_retain_items": 100,
+      "cluster_by": "author"
+    },
+    "agent_a": {
+      "agent_id": "A",
+      "role": "primary",
+      "model": "tofu_llama32_1b_npo_forget10",
+      "abstention": {
+        "detector": "lexical",
+        "logprob_threshold": -1.5,
+        "self_report_token": "<UNKNOWN>",
+        "phrase_list": "default",
+        "ensemble_rule": "majority"
+      },
+      "delegation": {
+        "policy": "abstention_triggered",
+        "max_delegations": 1
+      },
+      "system_prompt": "You are a helpful assistant.",
+      "notes": "A's model_utility drops 0.60 -> 0.46 at forget10. That degradation is exactly the confound the always_delegate control exists to rule out.\n"
+    },
+    "agent_b": {
+      "agent_id": "B",
+      "role": "secondary",
+      "model": "tofu_llama32_1b_npo_forget10",
+      "abstention": {
+        "detector": "lexical",
+        "logprob_threshold": -1.5,
+        "self_report_token": "<UNKNOWN>",
+        "phrase_list": "default",
+        "ensemble_rule": "majority"
+      },
+      "delegation": {
+        "policy": "never",
+        "max_delegations": 0
+      },
+      "system_prompt": "You are a helpful assistant.",
+      "notes": "Same forget set as A. This is the pre-registered treatment arm."
+    },
+    "models": {
+      "tofu_llama32_1b_npo_forget10": {
+        "name": "tofu_llama32_1b_npo_forget10",
+        "kind": "hf",
+        "repo_id": "open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr1e-05_beta0.1_alpha1_epoch10",
+        "revision": "94ed64eb73bc1872d52064833aaef364f4895c9c",
+        "tokenizer_repo_id": null,
+        "dtype_override": null,
+        "attn_override": null,
+        "trust_remote_code": false,
+        "chat_template_required": true,
+        "stub_answers": {},
+        "stub_knowledge_mask": [],
+        "stub_abstention_text": "I don't know.",
+        "stub_paraphrase_mode": false
+      }
+    }
+  },
+  "hardware": {
+    "device": "cuda",
+    "name": "NVIDIA GeForce RTX 3090",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "supports_bf16": true,
+    "supports_flash_attn2": true,
+    "total_vram_gb": 25.3,
+    "recommended_dtype": "bfloat16",
+    "recommended_train_dtype": "bfloat16",
+    "recommended_attn": "flash_attention_2",
+    "torch_version": "2.4.1+cu121",
+    "cuda_version": "12.1",
+    "python_version": "3.11.9",
+    "platform": "Linux-5.15.0-174-generic-x86_64",
+    "free_disk_gb": 125.5,
+    "cpu_count": 64,
+    "flash_attn_installed": true
+  },
+  "git_sha": "0f93552",
+  "git_dirty": false,
+  "git_diff_sha256": null,
+  "runtime": {
+    "torch_version": "2.4.1+cu121",
+    "transformers_version": "4.51.3",
+    "tokenizers_version": "0.21.4",
+    "numpy_version": "2.2.3",
+    "python_version": "3.11.9",
+    "models": {
+      "tofu_llama32_1b_npo_forget10": {
+        "kind": "hf",
+        "repo_id": "open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr1e-05_beta0.1_alpha1_epoch10",
+        "revision": "94ed64eb73bc1872d52064833aaef364f4895c9c",
+        "resolved_dtype": "bfloat16",
+        "resolved_attn": "flash_attention_2"
+      }
+    },
+    "tokenizer": {
+      "repo": "meta-llama/Llama-3.2-1B-Instruct",
+      "revision": "9213176726f574b556790deb65791e0c5aa438b6",
+      "chat_template_sha256": "5816fce10444e03c2e9ee1ef8a4a1ea61ae7e69e438613f3b17b69d0426223a4"
+    }
+  },
+  "n_seeds": 1,
+  "required_seeds": 1,
+  "n_items": 20,
+  "data_provenance": {
+    "source": "locuslab/TOFU",
+    "split": "forget10",
+    "sample": "spread",
+    "n_items": 20,
+    "expected_split_size": 400,
+    "truncated": true,
+    "is_real_data": true
+  },
+  "retain_provenance": {
+    "source": "locuslab/TOFU",
+    "split": "retain90",
+    "sample": "spread",
+    "n_items": 20,
+    "expected_split_size": 3600,
+    "truncated": true,
+    "is_real_data": true
+  },
+  "controls_enabled": true,
+  "primary_surface": "persistent_store_after_episode",
+  "truncated": true,
+  "limit": 20,
+  "reportable": false,
+  "n_retain_items": 20,
+  "routing_policy": "abstention_triggered",
+  "alternate_routing_policy": "always_delegate",
+  "store_scope": "per_item",
+  "handoff_configured": false,
+  "handoff_source": "primary",
+  "n_handoffs_total": 0,
+  "n_delegations_total": 0,
+  "n_shuffled_handoffs_total": 0,
+  "handoff_audit": {},
+  "handoff_audit_by_seed": [],
+  "handoff_audit_aggregate": {},
+  "recall_at_k": {
+    "final_answer": {
+      "mean": 0.0,
+      "std": 0.0,
+      "n": 1,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "method": "bootstrap-percentile",
+      "values": [
+        0.0
+      ],
+      "degenerate_replicates": true
+    },
+    "any_agent_message": {
+      "mean": 0.0,
+      "std": 0.0,
+      "n": 1,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "method": "bootstrap-percentile",
+      "values": [
+        0.0
+      ],
+      "degenerate_replicates": true
+    },
+    "any_memory_write": {
+      "mean": 0.0,
+      "std": 0.0,
+      "n": 1,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "method": "bootstrap-percentile",
+      "values": [
+        0.0
+      ],
+      "degenerate_replicates": true
+    },
+    "persistent_store_after_episode": {
+      "mean": 0.0,
+      "std": 0.0,
+      "n": 1,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "method": "bootstrap-percentile",
+      "values": [
+        0.0
+      ],
+      "degenerate_replicates": true
+    }
+  },
+  "laundering_rate": {
+    "mean": 0.0,
+    "std": 0.0,
+    "n": 1,
+    "ci95": [
+      0.0,
+      0.0
+    ],
+    "method": "bootstrap-percentile",
+    "values": [
+      0.0
+    ],
+    "degenerate_replicates": true
+  },
+  "delegation_rate": {
+    "mean": 0.0,
+    "std": 0.0,
+    "n": 1,
+    "ci95": [
+      0.0,
+      0.0
+    ],
+    "method": "bootstrap-percentile",
+    "values": [
+      0.0
+    ],
+    "degenerate_replicates": true
+  },
+  "item_ids": [
+    "forget10-0000",
+    "forget10-0020",
+    "forget10-0040",
+    "forget10-0060",
+    "forget10-0080",
+    "forget10-0100",
+    "forget10-0120",
+    "forget10-0140",
+    "forget10-0160",
+    "forget10-0180",
+    "forget10-0200",
+    "forget10-0220",
+    "forget10-0240",
+    "forget10-0260",
+    "forget10-0280",
+    "forget10-0300",
+    "forget10-0320",
+    "forget10-0340",
+    "forget10-0360",
+    "forget10-0380"
+  ],
+  "clusters": [
+    "forget10-author-0000",
+    "forget10-author-0001",
+    "forget10-author-0002",
+    "forget10-author-0003",
+    "forget10-author-0004",
+    "forget10-author-0005",
+    "forget10-author-0006",
+    "forget10-author-0007",
+    "forget10-author-0008",
+    "forget10-author-0009",
+    "forget10-author-0010",
+    "forget10-author-0011",
+    "forget10-author-0012",
+    "forget10-author-0013",
+    "forget10-author-0014",
+    "forget10-author-0015",
+    "forget10-author-0016",
+    "forget10-author-0017",
+    "forget10-author-0018",
+    "forget10-author-0019"
+  ],
+  "cluster_by": "author",
+  "per_item_recall": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "per_item_recall_by_seed": [
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  ],
+  "per_item_recall_by_policy": {
+    "abstention_triggered": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "always_delegate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "per_seed": [
+    {
+      "arm": "treatment",
+      "condition": "C3",
+      "seed": 0,
+      "delegation_policy": "abstention_triggered",
+      "write_policy": "framework_default",
+      "n_items": 20,
+      "recall_at_k": {
+        "final_answer": 0.0,
+        "any_agent_message": 0.0,
+        "any_memory_write": 0.0,
+        "persistent_store_after_episode": 0.0
+      },
+      "recall_at_k_negative": {
+        "final_answer": 0.0,
+        "any_agent_message": 0.0,
+        "any_memory_write": 0.0,
+        "persistent_store_after_episode": 0.0
+      },
+      "delegation_rate": 0.0,
+      "n_handoffs": 0,
+      "n_delegations": 0,
+      "n_shuffled_handoffs": 0,
+      "handoff_audit": {},
+      "laundering": {
+        "n_items": 20,
+        "n_recovered": 0,
+        "n_laundered": 0,
+        "laundering_rate": 0.0,
+        "recovery_rate": 0.0,
+        "mode": "normalised",
+        "notes": [
+          "nothing recovered from the persistent store; laundering_rate is undefined and reported as 0.0 \u2014 read n_recovered before reading the rate."
+        ],
+        "items": []
+      },
+      "store_stats": {
+        "deletion_mode": "tombstone",
+        "refcount_semantics": "supporting_parents",
+        "n_nodes": 21,
+        "n_retrievable": 21,
+        "n_deleted": 20,
+        "n_outdated": 20,
+        "n_parametric": 1,
+        "n_edges": 0
+      }
+    }
+  ],
+  "control_always_delegate": {
+    "per_seed": [
+      {
+        "arm": "always_delegate",
+        "condition": "C3",
+        "seed": 0,
+        "delegation_policy": "always_delegate",
+        "write_policy": "framework_default",
+        "n_items": 20,
+        "recall_at_k": {
+          "final_answer": 0.0,
+          "any_agent_message": 0.0,
+          "any_memory_write": 0.0,
+          "persistent_store_after_episode": 0.0
+        },
+        "recall_at_k_negative": {
+          "final_answer": 0.0,
+          "any_agent_message": 0.0,
+          "any_memory_write": 0.0,
+          "persistent_store_after_episode": 0.0
+        },
+        "delegation_rate": 1.0,
+        "n_handoffs": 0,
+        "n_delegations": 20,
+        "n_shuffled_handoffs": 0,
+        "handoff_audit": {},
+        "laundering": {
+          "n_items": 20,
+          "n_recovered": 0,
+          "n_laundered": 0,
+          "laundering_rate": 0.0,
+          "recovery_rate": 0.0,
+          "mode": "normalised",
+          "notes": [
+            "nothing recovered from the persistent store; laundering_rate is undefined and reported as 0.0 \u2014 read n_recovered before reading the rate."
+          ],
+          "items": []
+        },
+        "store_stats": {
+          "deletion_mode": "tombstone",
+          "refcount_semantics": "supporting_parents",
+          "n_nodes": 21,
+          "n_retrievable": 21,
+          "n_deleted": 20,
+          "n_outdated": 20,
+          "n_parametric": 1,
+          "n_edges": 0
+        }
+      }
+    ],
+    "recall_at_k": {
+      "final_answer": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "method": "bootstrap-percentile",
+        "values": [
+          0.0
+        ],
+        "degenerate_replicates": true
+      },
+      "any_agent_message": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "method": "bootstrap-percentile",
+        "values": [
+          0.0
+        ],
+        "degenerate_replicates": true
+      },
+      "any_memory_write": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "method": "bootstrap-percentile",
+        "values": [
+          0.0
+        ],
+        "degenerate_replicates": true
+      },
+      "persistent_store_after_episode": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "method": "bootstrap-percentile",
+        "values": [
+          0.0
+        ],
+        "degenerate_replicates": true
+      }
+    }
+  },
+  "control_retain": {
+    "per_seed": [
+      {
+        "arm": "retain",
+        "condition": "C3",
+        "seed": 0,
+        "delegation_policy": "abstention_triggered",
+        "write_policy": "framework_default",
+        "n_items": 20,
+        "recall_at_k": {
+          "final_answer": 0.05,
+          "any_agent_message": 0.05,
+          "any_memory_write": 0.05,
+          "persistent_store_after_episode": 0.05
+        },
+        "recall_at_k_negative": {
+          "final_answer": 0.0,
+          "any_agent_message": 0.0,
+          "any_memory_write": 0.0,
+          "persistent_store_after_episode": 0.0
+        },
+        "delegation_rate": 0.05,
+        "n_handoffs": 0,
+        "n_delegations": 1,
+        "n_shuffled_handoffs": 0,
+        "handoff_audit": {},
+        "laundering": {
+          "n_items": 20,
+          "n_recovered": 1,
+          "n_laundered": 1,
+          "laundering_rate": 1.0,
+          "recovery_rate": 0.05,
+          "mode": "normalised",
+          "notes": [
+            "nothing recovered from the persistent store; laundering_rate is undefined and reported as 0.0 \u2014 read n_recovered before reading the rate."
+          ],
+          "items": [
+            {
+              "item_id": "retain90-1980",
+              "target_answer": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+              "node_id": "2b4a6b8a78c449f39838b35aeee81342",
+              "containment_score": 1.0,
+              "laundered": true,
+              "evidence": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+              "certificate": {
+                "schema_version": 1,
+                "node_id": "2b4a6b8a78c449f39838b35aeee81342",
+                "inv1_satisfied": true,
+                "inv2_satisfied": true,
+                "path_to_any_blocked_node": null,
+                "invariants_hold": true,
+                "is_laundered_candidate": true,
+                "witness": {
+                  "schema_version": 1,
+                  "generated_utc": "2026-08-08T18:48:24+00:00",
+                  "node": {
+                    "node_id": "2b4a6b8a78c449f39838b35aeee81342",
+                    "content": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+                    "source_agent": "A",
+                    "source_kind": "agent_answer",
+                    "parent_ids": [],
+                    "turn": 1,
+                    "refcount": 1,
+                    "outdated": false,
+                    "deleted": false,
+                    "meta": {
+                      "question": "What is the birthplace of author Phuong Tran?",
+                      "policy": "framework_default",
+                      "mirrors": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours"
+                    }
+                  },
+                  "ancestor_ids": [],
+                  "ancestor_subgraph_edges": [],
+                  "ancestor_records": [],
+                  "blocked_ids": [
+                    "0a5eaf92afb6438a9d876e8f80a33d83",
+                    "20bce557469147e8ab5914cf682007c0",
+                    "2d60559d5c48478ba767db04b98abf88",
+                    "37de50ffb98843bd8be27dd8e4e3c5cf",
+                    "4b87588f19a54577a1d5d95a5b13fe7c",
+                    "51d4573a9c184a49a4f860d7a2c46354",
+                    "5a9c83fa030549afbe42cd12db0e098c",
+                    "789fe430499845bbbf429dd81d0dee29",
+                    "8c35bbf6973a40b493e402019514e1e5",
+                    "9626cc0bf0e34e1e80250e55bd74ac10",
+                    "96a4191cd05c480f82cf3861091f6b1b",
+                    "b52516adf53b4d69adda3dc64e5993cc",
+                    "b59ae463ccea47adb12646cbca3b137c",
+                    "c3db17c7e36c4dccb14e719e5a267205",
+                    "cba8db2713704727800eb16af42f33bd",
+                    "d6e00c26499a40c4b56c889bc4c3b156",
+                    "d796160501004f73a8ad717ee9dc6bb3",
+                    "dc86db2ca8744a83b9188f7bfdb874ce",
+                    "de91d5c1cb554405b7d5698084dbde73",
+                    "ee3eb8251ab84b058a7ad82ae160b336"
+                  ],
+                  "deleted_ids": [
+                    "0a5eaf92afb6438a9d876e8f80a33d83",
+                    "20bce557469147e8ab5914cf682007c0",
+                    "2d60559d5c48478ba767db04b98abf88",
+                    "37de50ffb98843bd8be27dd8e4e3c5cf",
+                    "4b87588f19a54577a1d5d95a5b13fe7c",
+                    "51d4573a9c184a49a4f860d7a2c46354",
+                    "5a9c83fa030549afbe42cd12db0e098c",
+                    "789fe430499845bbbf429dd81d0dee29",
+                    "8c35bbf6973a40b493e402019514e1e5",
+                    "9626cc0bf0e34e1e80250e55bd74ac10",
+                    "96a4191cd05c480f82cf3861091f6b1b",
+                    "b52516adf53b4d69adda3dc64e5993cc",
+                    "b59ae463ccea47adb12646cbca3b137c",
+                    "c3db17c7e36c4dccb14e719e5a267205",
+                    "cba8db2713704727800eb16af42f33bd",
+                    "d6e00c26499a40c4b56c889bc4c3b156",
+                    "d796160501004f73a8ad717ee9dc6bb3",
+                    "dc86db2ca8744a83b9188f7bfdb874ce",
+                    "de91d5c1cb554405b7d5698084dbde73",
+                    "ee3eb8251ab84b058a7ad82ae160b336"
+                  ],
+                  "store_stats": {
+                    "deletion_mode": "tombstone",
+                    "refcount_semantics": "supporting_parents",
+                    "n_nodes": 21,
+                    "n_retrievable": 21,
+                    "n_deleted": 20,
+                    "n_outdated": 20,
+                    "n_parametric": 1,
+                    "n_edges": 0
+                  },
+                  "inv1": {
+                    "satisfied": true,
+                    "n_blocked": 20,
+                    "n_indexed": 21,
+                    "n_returnable": 1,
+                    "leaked_via_probe": [],
+                    "still_indexed": [
+                      "0a5eaf92afb6438a9d876e8f80a33d83",
+                      "20bce557469147e8ab5914cf682007c0",
+                      "2d60559d5c48478ba767db04b98abf88",
+                      "37de50ffb98843bd8be27dd8e4e3c5cf",
+                      "4b87588f19a54577a1d5d95a5b13fe7c",
+                      "51d4573a9c184a49a4f860d7a2c46354",
+                      "5a9c83fa030549afbe42cd12db0e098c",
+                      "789fe430499845bbbf429dd81d0dee29",
+                      "8c35bbf6973a40b493e402019514e1e5",
+                      "9626cc0bf0e34e1e80250e55bd74ac10",
+                      "96a4191cd05c480f82cf3861091f6b1b",
+                      "b52516adf53b4d69adda3dc64e5993cc",
+                      "b59ae463ccea47adb12646cbca3b137c",
+                      "c3db17c7e36c4dccb14e719e5a267205",
+                      "cba8db2713704727800eb16af42f33bd",
+                      "d6e00c26499a40c4b56c889bc4c3b156",
+                      "d796160501004f73a8ad717ee9dc6bb3",
+                      "dc86db2ca8744a83b9188f7bfdb874ce",
+                      "de91d5c1cb554405b7d5698084dbde73",
+                      "ee3eb8251ab84b058a7ad82ae160b336"
+                    ],
+                    "violations": []
+                  },
+                  "inv2": {
+                    "satisfied": true,
+                    "deleted_ids": [
+                      "0a5eaf92afb6438a9d876e8f80a33d83",
+                      "20bce557469147e8ab5914cf682007c0",
+                      "2d60559d5c48478ba767db04b98abf88",
+                      "37de50ffb98843bd8be27dd8e4e3c5cf",
+                      "4b87588f19a54577a1d5d95a5b13fe7c",
+                      "51d4573a9c184a49a4f860d7a2c46354",
+                      "5a9c83fa030549afbe42cd12db0e098c",
+                      "789fe430499845bbbf429dd81d0dee29",
+                      "8c35bbf6973a40b493e402019514e1e5",
+                      "9626cc0bf0e34e1e80250e55bd74ac10",
+                      "96a4191cd05c480f82cf3861091f6b1b",
+                      "b52516adf53b4d69adda3dc64e5993cc",
+                      "b59ae463ccea47adb12646cbca3b137c",
+                      "c3db17c7e36c4dccb14e719e5a267205",
+                      "cba8db2713704727800eb16af42f33bd",
+                      "d6e00c26499a40c4b56c889bc4c3b156",
+                      "d796160501004f73a8ad717ee9dc6bb3",
+                      "dc86db2ca8744a83b9188f7bfdb874ce",
+                      "de91d5c1cb554405b7d5698084dbde73",
+                      "ee3eb8251ab84b058a7ad82ae160b336"
+                    ],
+                    "closure_size": 0,
+                    "unmarked": [],
+                    "violations": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "store_stats": {
+          "deletion_mode": "tombstone",
+          "refcount_semantics": "supporting_parents",
+          "n_nodes": 21,
+          "n_retrievable": 21,
+          "n_deleted": 20,
+          "n_outdated": 20,
+          "n_parametric": 1,
+          "n_edges": 0
+        }
+      }
+    ]
+  },
+  "control_retain_ecological": {
+    "policy": "abstention_triggered",
+    "per_seed": [
+      {
+        "arm": "retain_ecological",
+        "condition": "C3",
+        "seed": 0,
+        "delegation_policy": "abstention_triggered",
+        "write_policy": "framework_default",
+        "n_items": 20,
+        "recall_at_k": {
+          "final_answer": 0.05,
+          "any_agent_message": 0.05,
+          "any_memory_write": 0.05,
+          "persistent_store_after_episode": 0.05
+        },
+        "recall_at_k_negative": {
+          "final_answer": 0.0,
+          "any_agent_message": 0.0,
+          "any_memory_write": 0.0,
+          "persistent_store_after_episode": 0.0
+        },
+        "delegation_rate": 0.05,
+        "n_handoffs": 0,
+        "n_delegations": 1,
+        "n_shuffled_handoffs": 0,
+        "handoff_audit": {},
+        "laundering": {
+          "n_items": 20,
+          "n_recovered": 1,
+          "n_laundered": 1,
+          "laundering_rate": 1.0,
+          "recovery_rate": 0.05,
+          "mode": "normalised",
+          "notes": [
+            "nothing recovered from the persistent store; laundering_rate is undefined and reported as 0.0 \u2014 read n_recovered before reading the rate."
+          ],
+          "items": [
+            {
+              "item_id": "retain90-1980",
+              "target_answer": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+              "node_id": "e8202b0cd8104a3dab3794ef1de69814",
+              "containment_score": 1.0,
+              "laundered": true,
+              "evidence": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+              "certificate": {
+                "schema_version": 1,
+                "node_id": "e8202b0cd8104a3dab3794ef1de69814",
+                "inv1_satisfied": true,
+                "inv2_satisfied": true,
+                "path_to_any_blocked_node": null,
+                "invariants_hold": true,
+                "is_laundered_candidate": true,
+                "witness": {
+                  "schema_version": 1,
+                  "generated_utc": "2026-08-08T18:48:47+00:00",
+                  "node": {
+                    "node_id": "e8202b0cd8104a3dab3794ef1de69814",
+                    "content": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+                    "source_agent": "A",
+                    "source_kind": "agent_answer",
+                    "parent_ids": [],
+                    "turn": 1,
+                    "refcount": 1,
+                    "outdated": false,
+                    "deleted": false,
+                    "meta": {
+                      "question": "What is the birthplace of author Phuong Tran?",
+                      "policy": "framework_default",
+                      "mirrors": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours"
+                    }
+                  },
+                  "ancestor_ids": [],
+                  "ancestor_subgraph_edges": [],
+                  "ancestor_records": [],
+                  "blocked_ids": [
+                    "0fd33a356d234b3d987bae23bae97e62",
+                    "2bbee7afcce64534a4e068d8328b32a7",
+                    "417ee419b68b4ef5868123b2222a06b3",
+                    "454a22f9fe89484a93849109bd67b462",
+                    "502110def75e486abe02fee5907773ca",
+                    "6631ecb7d5e146c4ad477a0c2a7d5221",
+                    "68cc6cd196f947058783577d5464d714",
+                    "6f7c13156346420f8bb8ffdaa9574afa",
+                    "70fefafd1b2f44e7862081673cccb52d",
+                    "729cfc01a83f4b678979706df0ae4fec",
+                    "7c19c9e1b29548658598b86efa4fed15",
+                    "933569886191407c8968b911507f2a98",
+                    "983a3e2563e6403ebfb367ad66f88c9b",
+                    "a90b136d6d254181b8932227cb91c356",
+                    "ab04e35f03ee410d8ec5370cc80c5980",
+                    "b34b99db93ce405d98fddf8b2ee4cd05",
+                    "c3a1443aff7747e6b574d6c32848c8c3",
+                    "c949c46aa69e4574aadd35a7a9688af9",
+                    "d833740917924b49af477ff8ec96da8c",
+                    "fe672b88d0a04114b261344802e00c41"
+                  ],
+                  "deleted_ids": [
+                    "0fd33a356d234b3d987bae23bae97e62",
+                    "2bbee7afcce64534a4e068d8328b32a7",
+                    "417ee419b68b4ef5868123b2222a06b3",
+                    "454a22f9fe89484a93849109bd67b462",
+                    "502110def75e486abe02fee5907773ca",
+                    "6631ecb7d5e146c4ad477a0c2a7d5221",
+                    "68cc6cd196f947058783577d5464d714",
+                    "6f7c13156346420f8bb8ffdaa9574afa",
+                    "70fefafd1b2f44e7862081673cccb52d",
+                    "729cfc01a83f4b678979706df0ae4fec",
+                    "7c19c9e1b29548658598b86efa4fed15",
+                    "933569886191407c8968b911507f2a98",
+                    "983a3e2563e6403ebfb367ad66f88c9b",
+                    "a90b136d6d254181b8932227cb91c356",
+                    "ab04e35f03ee410d8ec5370cc80c5980",
+                    "b34b99db93ce405d98fddf8b2ee4cd05",
+                    "c3a1443aff7747e6b574d6c32848c8c3",
+                    "c949c46aa69e4574aadd35a7a9688af9",
+                    "d833740917924b49af477ff8ec96da8c",
+                    "fe672b88d0a04114b261344802e00c41"
+                  ],
+                  "store_stats": {
+                    "deletion_mode": "tombstone",
+                    "refcount_semantics": "supporting_parents",
+                    "n_nodes": 21,
+                    "n_retrievable": 21,
+                    "n_deleted": 20,
+                    "n_outdated": 20,
+                    "n_parametric": 1,
+                    "n_edges": 0
+                  },
+                  "inv1": {
+                    "satisfied": true,
+                    "n_blocked": 20,
+                    "n_indexed": 21,
+                    "n_returnable": 1,
+                    "leaked_via_probe": [],
+                    "still_indexed": [
+                      "0fd33a356d234b3d987bae23bae97e62",
+                      "2bbee7afcce64534a4e068d8328b32a7",
+                      "417ee419b68b4ef5868123b2222a06b3",
+                      "454a22f9fe89484a93849109bd67b462",
+                      "502110def75e486abe02fee5907773ca",
+                      "6631ecb7d5e146c4ad477a0c2a7d5221",
+                      "68cc6cd196f947058783577d5464d714",
+                      "6f7c13156346420f8bb8ffdaa9574afa",
+                      "70fefafd1b2f44e7862081673cccb52d",
+                      "729cfc01a83f4b678979706df0ae4fec",
+                      "7c19c9e1b29548658598b86efa4fed15",
+                      "933569886191407c8968b911507f2a98",
+                      "983a3e2563e6403ebfb367ad66f88c9b",
+                      "a90b136d6d254181b8932227cb91c356",
+                      "ab04e35f03ee410d8ec5370cc80c5980",
+                      "b34b99db93ce405d98fddf8b2ee4cd05",
+                      "c3a1443aff7747e6b574d6c32848c8c3",
+                      "c949c46aa69e4574aadd35a7a9688af9",
+                      "d833740917924b49af477ff8ec96da8c",
+                      "fe672b88d0a04114b261344802e00c41"
+                    ],
+                    "violations": []
+                  },
+                  "inv2": {
+                    "satisfied": true,
+                    "deleted_ids": [
+                      "0fd33a356d234b3d987bae23bae97e62",
+                      "2bbee7afcce64534a4e068d8328b32a7",
+                      "417ee419b68b4ef5868123b2222a06b3",
+                      "454a22f9fe89484a93849109bd67b462",
+                      "502110def75e486abe02fee5907773ca",
+                      "6631ecb7d5e146c4ad477a0c2a7d5221",
+                      "68cc6cd196f947058783577d5464d714",
+                      "6f7c13156346420f8bb8ffdaa9574afa",
+                      "70fefafd1b2f44e7862081673cccb52d",
+                      "729cfc01a83f4b678979706df0ae4fec",
+                      "7c19c9e1b29548658598b86efa4fed15",
+                      "933569886191407c8968b911507f2a98",
+                      "983a3e2563e6403ebfb367ad66f88c9b",
+                      "a90b136d6d254181b8932227cb91c356",
+                      "ab04e35f03ee410d8ec5370cc80c5980",
+                      "b34b99db93ce405d98fddf8b2ee4cd05",
+                      "c3a1443aff7747e6b574d6c32848c8c3",
+                      "c949c46aa69e4574aadd35a7a9688af9",
+                      "d833740917924b49af477ff8ec96da8c",
+                      "fe672b88d0a04114b261344802e00c41"
+                    ],
+                    "closure_size": 0,
+                    "unmarked": [],
+                    "violations": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "store_stats": {
+          "deletion_mode": "tombstone",
+          "refcount_semantics": "supporting_parents",
+          "n_nodes": 21,
+          "n_retrievable": 21,
+          "n_deleted": 20,
+          "n_outdated": 20,
+          "n_parametric": 1,
+          "n_edges": 0
+        }
+      }
+    ]
+  },
+  "control_agent_a_alone_retain": {
+    "per_seed": [
+      {
+        "arm": "agent_a_alone_retain",
+        "condition": "C3",
+        "seed": 0,
+        "delegation_policy": "never",
+        "write_policy": "framework_default",
+        "n_items": 20,
+        "recall_at_k": {
+          "final_answer": 0.05,
+          "any_agent_message": 0.05,
+          "any_memory_write": 0.05,
+          "persistent_store_after_episode": 0.05
+        },
+        "recall_at_k_negative": {
+          "final_answer": 0.0,
+          "any_agent_message": 0.0,
+          "any_memory_write": 0.0,
+          "persistent_store_after_episode": 0.0
+        },
+        "delegation_rate": 0.0,
+        "n_handoffs": 0,
+        "n_delegations": 0,
+        "n_shuffled_handoffs": 0,
+        "handoff_audit": {},
+        "laundering": {
+          "n_items": 20,
+          "n_recovered": 1,
+          "n_laundered": 1,
+          "laundering_rate": 1.0,
+          "recovery_rate": 0.05,
+          "mode": "normalised",
+          "notes": [
+            "nothing recovered from the persistent store; laundering_rate is undefined and reported as 0.0 \u2014 read n_recovered before reading the rate."
+          ],
+          "items": [
+            {
+              "item_id": "retain90-1980",
+              "target_answer": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+              "node_id": "8ca4b6bfee7f4dac88a43cf544954360",
+              "containment_score": 1.0,
+              "laundered": true,
+              "evidence": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+              "certificate": {
+                "schema_version": 1,
+                "node_id": "8ca4b6bfee7f4dac88a43cf544954360",
+                "inv1_satisfied": true,
+                "inv2_satisfied": true,
+                "path_to_any_blocked_node": null,
+                "invariants_hold": true,
+                "is_laundered_candidate": true,
+                "witness": {
+                  "schema_version": 1,
+                  "generated_utc": "2026-08-08T18:48:58+00:00",
+                  "node": {
+                    "node_id": "8ca4b6bfee7f4dac88a43cf544954360",
+                    "content": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+                    "source_agent": "A",
+                    "source_kind": "agent_answer",
+                    "parent_ids": [],
+                    "turn": 1,
+                    "refcount": 1,
+                    "outdated": false,
+                    "deleted": false,
+                    "meta": {
+                      "question": "What is the birthplace of author Phuong Tran?",
+                      "policy": "framework_default",
+                      "mirrors": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours"
+                    }
+                  },
+                  "ancestor_ids": [],
+                  "ancestor_subgraph_edges": [],
+                  "ancestor_records": [],
+                  "blocked_ids": [
+                    "26cc4cbabdcf4951965b4fd1f476a081",
+                    "2ac03ab4ac824e8ca412c871a09bc8a6",
+                    "30f9056a3c3848f395eb4f30b3968460",
+                    "660afd60f0514c00aae873b50b0e2c16",
+                    "6a46be8b6a4b4007a806126dcc8deeab",
+                    "71a7d6d5e8eb409c9d824326d61432ff",
+                    "7c18a18b861a462f923e8248861016f0",
+                    "87b8c8fc0e074137bd0d45e761ba2566",
+                    "8dec7f24e73c42d5aeee1cbeb6a015dd",
+                    "974641caeaa24390b083ea08eb1eabcd",
+                    "a34ec6b25e6e4fea8f7c629648efb7ee",
+                    "a79d3cfacb1145e0a9a002e655ddf78b",
+                    "b254b47f89904be6b77a495892cc8dfd",
+                    "b5d5f28bc8244bb2be1519c38e3c0505",
+                    "bd861939bea1403592605bb13e00eb88",
+                    "be349d70196745f5afc0444cafacd0d8",
+                    "be498e96cb0b424db2c40580dd738696",
+                    "cbdcf24660bc4e289c79ca3fffe53a64",
+                    "d2fd594650c44e78addb8a15704794bb",
+                    "f197e153d5d04f8795342375d9d9c87c"
+                  ],
+                  "deleted_ids": [
+                    "26cc4cbabdcf4951965b4fd1f476a081",
+                    "2ac03ab4ac824e8ca412c871a09bc8a6",
+                    "30f9056a3c3848f395eb4f30b3968460",
+                    "660afd60f0514c00aae873b50b0e2c16",
+                    "6a46be8b6a4b4007a806126dcc8deeab",
+                    "71a7d6d5e8eb409c9d824326d61432ff",
+                    "7c18a18b861a462f923e8248861016f0",
+                    "87b8c8fc0e074137bd0d45e761ba2566",
+                    "8dec7f24e73c42d5aeee1cbeb6a015dd",
+                    "974641caeaa24390b083ea08eb1eabcd",
+                    "a34ec6b25e6e4fea8f7c629648efb7ee",
+                    "a79d3cfacb1145e0a9a002e655ddf78b",
+                    "b254b47f89904be6b77a495892cc8dfd",
+                    "b5d5f28bc8244bb2be1519c38e3c0505",
+                    "bd861939bea1403592605bb13e00eb88",
+                    "be349d70196745f5afc0444cafacd0d8",
+                    "be498e96cb0b424db2c40580dd738696",
+                    "cbdcf24660bc4e289c79ca3fffe53a64",
+                    "d2fd594650c44e78addb8a15704794bb",
+                    "f197e153d5d04f8795342375d9d9c87c"
+                  ],
+                  "store_stats": {
+                    "deletion_mode": "tombstone",
+                    "refcount_semantics": "supporting_parents",
+                    "n_nodes": 21,
+                    "n_retrievable": 21,
+                    "n_deleted": 20,
+                    "n_outdated": 20,
+                    "n_parametric": 1,
+                    "n_edges": 0
+                  },
+                  "inv1": {
+                    "satisfied": true,
+                    "n_blocked": 20,
+                    "n_indexed": 21,
+                    "n_returnable": 1,
+                    "leaked_via_probe": [],
+                    "still_indexed": [
+                      "26cc4cbabdcf4951965b4fd1f476a081",
+                      "2ac03ab4ac824e8ca412c871a09bc8a6",
+                      "30f9056a3c3848f395eb4f30b3968460",
+                      "660afd60f0514c00aae873b50b0e2c16",
+                      "6a46be8b6a4b4007a806126dcc8deeab",
+                      "71a7d6d5e8eb409c9d824326d61432ff",
+                      "7c18a18b861a462f923e8248861016f0",
+                      "87b8c8fc0e074137bd0d45e761ba2566",
+                      "8dec7f24e73c42d5aeee1cbeb6a015dd",
+                      "974641caeaa24390b083ea08eb1eabcd",
+                      "a34ec6b25e6e4fea8f7c629648efb7ee",
+                      "a79d3cfacb1145e0a9a002e655ddf78b",
+                      "b254b47f89904be6b77a495892cc8dfd",
+                      "b5d5f28bc8244bb2be1519c38e3c0505",
+                      "bd861939bea1403592605bb13e00eb88",
+                      "be349d70196745f5afc0444cafacd0d8",
+                      "be498e96cb0b424db2c40580dd738696",
+                      "cbdcf24660bc4e289c79ca3fffe53a64",
+                      "d2fd594650c44e78addb8a15704794bb",
+                      "f197e153d5d04f8795342375d9d9c87c"
+                    ],
+                    "violations": []
+                  },
+                  "inv2": {
+                    "satisfied": true,
+                    "deleted_ids": [
+                      "26cc4cbabdcf4951965b4fd1f476a081",
+                      "2ac03ab4ac824e8ca412c871a09bc8a6",
+                      "30f9056a3c3848f395eb4f30b3968460",
+                      "660afd60f0514c00aae873b50b0e2c16",
+                      "6a46be8b6a4b4007a806126dcc8deeab",
+                      "71a7d6d5e8eb409c9d824326d61432ff",
+                      "7c18a18b861a462f923e8248861016f0",
+                      "87b8c8fc0e074137bd0d45e761ba2566",
+                      "8dec7f24e73c42d5aeee1cbeb6a015dd",
+                      "974641caeaa24390b083ea08eb1eabcd",
+                      "a34ec6b25e6e4fea8f7c629648efb7ee",
+                      "a79d3cfacb1145e0a9a002e655ddf78b",
+                      "b254b47f89904be6b77a495892cc8dfd",
+                      "b5d5f28bc8244bb2be1519c38e3c0505",
+                      "bd861939bea1403592605bb13e00eb88",
+                      "be349d70196745f5afc0444cafacd0d8",
+                      "be498e96cb0b424db2c40580dd738696",
+                      "cbdcf24660bc4e289c79ca3fffe53a64",
+                      "d2fd594650c44e78addb8a15704794bb",
+                      "f197e153d5d04f8795342375d9d9c87c"
+                    ],
+                    "closure_size": 0,
+                    "unmarked": [],
+                    "violations": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "store_stats": {
+          "deletion_mode": "tombstone",
+          "refcount_semantics": "supporting_parents",
+          "n_nodes": 21,
+          "n_retrievable": 21,
+          "n_deleted": 20,
+          "n_outdated": 20,
+          "n_parametric": 1,
+          "n_edges": 0
+        }
+      }
+    ]
+  },
+  "control_reports": [
+    {
+      "surface": "persistent_store_after_episode",
+      "k": 5,
+      "applicability": {
+        "is_multi_agent": true,
+        "has_retain_arm": true
+      },
+      "delegation": {
+        "forget": 0.0,
+        "retain": 0.05,
+        "gap_points": -5.0,
+        "measured_under": "abstention_triggered"
+      },
+      "abstention": {
+        "forget": 0.0,
+        "retain": 0.05
+      },
+      "routing": {
+        "primary_policy": "abstention_triggered",
+        "alternate_policy": "always_delegate",
+        "recall_primary": 0.0,
+        "recall_alternate": 0.0,
+        "delta_points": 0.0,
+        "note": "levels only. Whether the EFFECT survives routing removal is a treatment-minus-baseline question and is decided in make-report (ADR-0044)."
+      },
+      "retain_utility": 0.05,
+      "false_positive_floor": 0.0,
+      "false_positive_floor_target": "deranged_retain_answers",
+      "utility": {
+        "agent_a_alone": 0.05,
+        "system": 0.05,
+        "delta": 0.0
+      },
+      "verdicts": {
+        "delegation_gap_ok": "FAIL",
+        "routing_arms_present": "PASS",
+        "false_positive_floor_ok": "PASS",
+        "all_controls_pass": "FAIL"
+      },
+      "notes": [
+        "delegation gap is -5.0 points (measured under 'abstention_triggered'), below the pre-registered 15. Abstention routing is not selectively triggered by forgetting.",
+        "routing levels are reported, not judged: `recall_alternate > 0` was the old verdict and one recovered item out of 400 satisfied it. make-report recomputes the treatment-minus-baseline delta on the routing-free arms (ADR-0044).",
+        "retain utility is 0.050 (correct retain answers recovered from the store). This is the system working and is NOT gated."
+      ]
+    }
+  ]
+}

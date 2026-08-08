@@ -1,0 +1,2440 @@
+{
+  "run_id": "20260808T185111Z-0f93552-e866d59a05d4",
+  "phase": "phase0_days3-5",
+  "condition": "C3S",
+  "config_hash": "e866d59a05d4e3e301444553d161c46b9a31072e26eba7eef384ffcbe3b2e0af",
+  "config": {
+    "condition": "C3S",
+    "description": "Prompt-matched control: identical peer-message wrapper, but B is shown A's answer to a DIFFERENT item.",
+    "seed": 42,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "env": {
+      "name": "vast_rtx3090",
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "attn_implementation": "auto",
+      "batch_size": 1,
+      "max_new_tokens": 128,
+      "allow_fp16_training": false,
+      "hf_home": "/workspace/hf",
+      "index_backend": "numpy",
+      "min_vram_gb": 20.0,
+      "min_free_disk_gb": 60.0,
+      "expected_gpu_name_regex": "RTX 3090",
+      "expected_compute_capability": [
+        8,
+        6
+      ],
+      "min_python": "3.11",
+      "notes": "Vast.ai RTX 3090 production environment. BF16 everywhere. Prefer FlashAttention-2 when the wheel is installed, otherwise SDPA is used and RECORDED \u2014 hardware.flash_attn_installed goes into every run report. Do not mix FA2 and SDPA runs inside one comparison; the attention implementation is part of the run's provenance. Results and model caches live under /workspace so a stopped instance keeps them.\n"
+    },
+    "memory": {
+      "name": "sbu_id_blocklist",
+      "blocklist": "id",
+      "enforce_at_retrieval": true,
+      "derivation_closure": true,
+      "refcount_prune": true,
+      "retrieval_k": 5,
+      "embedding_dim": 64,
+      "semantic_threshold": 0.75,
+      "semantic_use_nli": false,
+      "deletion_mode": "tombstone",
+      "refcount_semantics": "supporting_parents",
+      "ingest_forget_set": true
+    },
+    "writepolicy": {
+      "name": "framework_default",
+      "mode": "framework_default",
+      "mirrors_framework": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours",
+      "write_source_kinds": [
+        "agent_answer"
+      ],
+      "write_on_abstention": false,
+      "sanitize_threshold": 0.75
+    },
+    "episode": {
+      "max_turns": 5,
+      "retrieval_k": 5,
+      "greedy": true,
+      "max_new_tokens": 128,
+      "prompt_style": "openunlearning",
+      "pass_primary_answer": true,
+      "handoff_source": "deranged",
+      "routing": "always_delegate",
+      "store_scope": "per_item",
+      "permute_item_order_per_seed": true
+    },
+    "data": {
+      "dataset": "tofu",
+      "forget_split": "forget10",
+      "retain_split": "retain90",
+      "n_items": null,
+      "fixture_path": null,
+      "n_retain_items": 100,
+      "cluster_by": "author"
+    },
+    "agent_a": {
+      "agent_id": "A",
+      "role": "primary",
+      "model": "tofu_llama32_1b_npo_forget10",
+      "abstention": {
+        "detector": "lexical",
+        "logprob_threshold": -1.5,
+        "self_report_token": "<UNKNOWN>",
+        "phrase_list": "default",
+        "ensemble_rule": "majority"
+      },
+      "delegation": {
+        "policy": "abstention_triggered",
+        "max_delegations": 1
+      },
+      "system_prompt": "You are a helpful assistant.",
+      "notes": "A's model_utility drops 0.60 -> 0.46 at forget10. That degradation is exactly the confound the always_delegate control exists to rule out.\n"
+    },
+    "agent_b": {
+      "agent_id": "B",
+      "role": "secondary",
+      "model": "tofu_llama32_1b_npo_forget10_indep",
+      "abstention": {
+        "detector": "lexical",
+        "logprob_threshold": -1.5,
+        "self_report_token": "<UNKNOWN>",
+        "phrase_list": "default",
+        "ensemble_rule": "majority"
+      },
+      "delegation": {
+        "policy": "never",
+        "max_delegations": 0
+      },
+      "system_prompt": "You are a helpful assistant.",
+      "notes": "Independently unlearned on the same forget set. The real two-agent treatment."
+    },
+    "models": {
+      "tofu_llama32_1b_npo_forget10": {
+        "name": "tofu_llama32_1b_npo_forget10",
+        "kind": "hf",
+        "repo_id": "open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr1e-05_beta0.1_alpha1_epoch10",
+        "revision": "94ed64eb73bc1872d52064833aaef364f4895c9c",
+        "tokenizer_repo_id": null,
+        "dtype_override": null,
+        "attn_override": null,
+        "trust_remote_code": false,
+        "chat_template_required": true,
+        "stub_answers": {},
+        "stub_knowledge_mask": [],
+        "stub_abstention_text": "I don't know.",
+        "stub_paraphrase_mode": false
+      },
+      "tofu_llama32_1b_npo_forget10_indep": {
+        "name": "tofu_llama32_1b_npo_forget10_indep",
+        "kind": "hf",
+        "repo_id": "open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr2e-05_beta0.5_alpha1_epoch10",
+        "revision": "eabf32c4883a5647c784c60c998b4b96cd48b798",
+        "tokenizer_repo_id": null,
+        "dtype_override": null,
+        "attn_override": null,
+        "trust_remote_code": false,
+        "chat_template_required": true,
+        "stub_answers": {},
+        "stub_knowledge_mask": [],
+        "stub_abstention_text": "I don't know.",
+        "stub_paraphrase_mode": false
+      }
+    }
+  },
+  "hardware": {
+    "device": "cuda",
+    "name": "NVIDIA GeForce RTX 3090",
+    "compute_capability": [
+      8,
+      6
+    ],
+    "supports_bf16": true,
+    "supports_flash_attn2": true,
+    "total_vram_gb": 25.3,
+    "recommended_dtype": "bfloat16",
+    "recommended_train_dtype": "bfloat16",
+    "recommended_attn": "flash_attention_2",
+    "torch_version": "2.4.1+cu121",
+    "cuda_version": "12.1",
+    "python_version": "3.11.9",
+    "platform": "Linux-5.15.0-174-generic-x86_64",
+    "free_disk_gb": 125.5,
+    "cpu_count": 64,
+    "flash_attn_installed": true
+  },
+  "git_sha": "0f93552",
+  "git_dirty": false,
+  "git_diff_sha256": null,
+  "runtime": {
+    "torch_version": "2.4.1+cu121",
+    "transformers_version": "4.51.3",
+    "tokenizers_version": "0.21.4",
+    "numpy_version": "2.2.3",
+    "python_version": "3.11.9",
+    "models": {
+      "tofu_llama32_1b_npo_forget10": {
+        "kind": "hf",
+        "repo_id": "open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr1e-05_beta0.1_alpha1_epoch10",
+        "revision": "94ed64eb73bc1872d52064833aaef364f4895c9c",
+        "resolved_dtype": "bfloat16",
+        "resolved_attn": "flash_attention_2"
+      },
+      "tofu_llama32_1b_npo_forget10_indep": {
+        "kind": "hf",
+        "repo_id": "open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr2e-05_beta0.5_alpha1_epoch10",
+        "revision": "eabf32c4883a5647c784c60c998b4b96cd48b798",
+        "resolved_dtype": "bfloat16",
+        "resolved_attn": "flash_attention_2"
+      }
+    },
+    "tokenizer": {
+      "repo": "meta-llama/Llama-3.2-1B-Instruct",
+      "revision": "9213176726f574b556790deb65791e0c5aa438b6",
+      "chat_template_sha256": "5816fce10444e03c2e9ee1ef8a4a1ea61ae7e69e438613f3b17b69d0426223a4"
+    }
+  },
+  "n_seeds": 1,
+  "required_seeds": 1,
+  "n_items": 20,
+  "data_provenance": {
+    "source": "locuslab/TOFU",
+    "split": "forget10",
+    "sample": "spread",
+    "n_items": 20,
+    "expected_split_size": 400,
+    "truncated": true,
+    "is_real_data": true
+  },
+  "retain_provenance": {
+    "source": "locuslab/TOFU",
+    "split": "retain90",
+    "sample": "spread",
+    "n_items": 20,
+    "expected_split_size": 3600,
+    "truncated": true,
+    "is_real_data": true
+  },
+  "controls_enabled": true,
+  "primary_surface": "persistent_store_after_episode",
+  "truncated": true,
+  "limit": 20,
+  "reportable": false,
+  "n_retain_items": 20,
+  "routing_policy": "always_delegate",
+  "alternate_routing_policy": "abstention_triggered",
+  "store_scope": "per_item",
+  "handoff_configured": true,
+  "handoff_source": "deranged",
+  "n_handoffs_total": 20,
+  "n_delegations_total": 20,
+  "n_shuffled_handoffs_total": 20,
+  "handoff_audit": {
+    "mapping": {
+      "algorithm": "rotate-by-smallest-cross-author-shift",
+      "shift": 1,
+      "n_items": 20,
+      "n_authors": 20,
+      "fixed_point_count": 0,
+      "same_author_count": 0,
+      "sha256": "6beaef21eea8b97b387200132000453516a7a4459ba715c73c42172cc7261bde",
+      "permutation": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        0
+      ]
+    },
+    "pairs": {
+      "forget10-0080": "forget10-0100",
+      "forget10-0380": "forget10-0000",
+      "forget10-0120": "forget10-0140",
+      "forget10-0040": "forget10-0060",
+      "forget10-0260": "forget10-0280",
+      "forget10-0320": "forget10-0340",
+      "forget10-0060": "forget10-0080",
+      "forget10-0220": "forget10-0240",
+      "forget10-0200": "forget10-0220",
+      "forget10-0160": "forget10-0180",
+      "forget10-0000": "forget10-0020",
+      "forget10-0240": "forget10-0260",
+      "forget10-0140": "forget10-0160",
+      "forget10-0100": "forget10-0120",
+      "forget10-0360": "forget10-0380",
+      "forget10-0340": "forget10-0360",
+      "forget10-0280": "forget10-0300",
+      "forget10-0180": "forget10-0200",
+      "forget10-0020": "forget10-0040",
+      "forget10-0300": "forget10-0320"
+    },
+    "target_author_ids": {
+      "forget10-0080": "forget10-author-0004",
+      "forget10-0380": "forget10-author-0019",
+      "forget10-0120": "forget10-author-0006",
+      "forget10-0040": "forget10-author-0002",
+      "forget10-0260": "forget10-author-0013",
+      "forget10-0320": "forget10-author-0016",
+      "forget10-0060": "forget10-author-0003",
+      "forget10-0220": "forget10-author-0011",
+      "forget10-0200": "forget10-author-0010",
+      "forget10-0160": "forget10-author-0008",
+      "forget10-0000": "forget10-author-0000",
+      "forget10-0240": "forget10-author-0012",
+      "forget10-0140": "forget10-author-0007",
+      "forget10-0100": "forget10-author-0005",
+      "forget10-0360": "forget10-author-0018",
+      "forget10-0340": "forget10-author-0017",
+      "forget10-0280": "forget10-author-0014",
+      "forget10-0180": "forget10-author-0009",
+      "forget10-0020": "forget10-author-0001",
+      "forget10-0300": "forget10-author-0015"
+    },
+    "source_author_ids": {
+      "forget10-0080": "forget10-author-0005",
+      "forget10-0380": "forget10-author-0000",
+      "forget10-0120": "forget10-author-0007",
+      "forget10-0040": "forget10-author-0003",
+      "forget10-0260": "forget10-author-0014",
+      "forget10-0320": "forget10-author-0017",
+      "forget10-0060": "forget10-author-0004",
+      "forget10-0220": "forget10-author-0012",
+      "forget10-0200": "forget10-author-0011",
+      "forget10-0160": "forget10-author-0009",
+      "forget10-0000": "forget10-author-0001",
+      "forget10-0240": "forget10-author-0013",
+      "forget10-0140": "forget10-author-0008",
+      "forget10-0100": "forget10-author-0006",
+      "forget10-0360": "forget10-author-0019",
+      "forget10-0340": "forget10-author-0018",
+      "forget10-0280": "forget10-author-0015",
+      "forget10-0180": "forget10-author-0010",
+      "forget10-0020": "forget10-author-0002",
+      "forget10-0300": "forget10-author-0016"
+    },
+    "fixed_point_count": 0,
+    "same_author_count": 0,
+    "target_answer_in_handoff_count": 0,
+    "target_answer_in_handoff_items": []
+  },
+  "handoff_audit_by_seed": [
+    {
+      "seed": 0,
+      "mapping": {
+        "algorithm": "rotate-by-smallest-cross-author-shift",
+        "shift": 1,
+        "n_items": 20,
+        "n_authors": 20,
+        "fixed_point_count": 0,
+        "same_author_count": 0,
+        "sha256": "6beaef21eea8b97b387200132000453516a7a4459ba715c73c42172cc7261bde",
+        "permutation": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          0
+        ]
+      },
+      "pairs": {
+        "forget10-0080": "forget10-0100",
+        "forget10-0380": "forget10-0000",
+        "forget10-0120": "forget10-0140",
+        "forget10-0040": "forget10-0060",
+        "forget10-0260": "forget10-0280",
+        "forget10-0320": "forget10-0340",
+        "forget10-0060": "forget10-0080",
+        "forget10-0220": "forget10-0240",
+        "forget10-0200": "forget10-0220",
+        "forget10-0160": "forget10-0180",
+        "forget10-0000": "forget10-0020",
+        "forget10-0240": "forget10-0260",
+        "forget10-0140": "forget10-0160",
+        "forget10-0100": "forget10-0120",
+        "forget10-0360": "forget10-0380",
+        "forget10-0340": "forget10-0360",
+        "forget10-0280": "forget10-0300",
+        "forget10-0180": "forget10-0200",
+        "forget10-0020": "forget10-0040",
+        "forget10-0300": "forget10-0320"
+      },
+      "target_author_ids": {
+        "forget10-0080": "forget10-author-0004",
+        "forget10-0380": "forget10-author-0019",
+        "forget10-0120": "forget10-author-0006",
+        "forget10-0040": "forget10-author-0002",
+        "forget10-0260": "forget10-author-0013",
+        "forget10-0320": "forget10-author-0016",
+        "forget10-0060": "forget10-author-0003",
+        "forget10-0220": "forget10-author-0011",
+        "forget10-0200": "forget10-author-0010",
+        "forget10-0160": "forget10-author-0008",
+        "forget10-0000": "forget10-author-0000",
+        "forget10-0240": "forget10-author-0012",
+        "forget10-0140": "forget10-author-0007",
+        "forget10-0100": "forget10-author-0005",
+        "forget10-0360": "forget10-author-0018",
+        "forget10-0340": "forget10-author-0017",
+        "forget10-0280": "forget10-author-0014",
+        "forget10-0180": "forget10-author-0009",
+        "forget10-0020": "forget10-author-0001",
+        "forget10-0300": "forget10-author-0015"
+      },
+      "source_author_ids": {
+        "forget10-0080": "forget10-author-0005",
+        "forget10-0380": "forget10-author-0000",
+        "forget10-0120": "forget10-author-0007",
+        "forget10-0040": "forget10-author-0003",
+        "forget10-0260": "forget10-author-0014",
+        "forget10-0320": "forget10-author-0017",
+        "forget10-0060": "forget10-author-0004",
+        "forget10-0220": "forget10-author-0012",
+        "forget10-0200": "forget10-author-0011",
+        "forget10-0160": "forget10-author-0009",
+        "forget10-0000": "forget10-author-0001",
+        "forget10-0240": "forget10-author-0013",
+        "forget10-0140": "forget10-author-0008",
+        "forget10-0100": "forget10-author-0006",
+        "forget10-0360": "forget10-author-0019",
+        "forget10-0340": "forget10-author-0018",
+        "forget10-0280": "forget10-author-0015",
+        "forget10-0180": "forget10-author-0010",
+        "forget10-0020": "forget10-author-0002",
+        "forget10-0300": "forget10-author-0016"
+      },
+      "fixed_point_count": 0,
+      "same_author_count": 0,
+      "target_answer_in_handoff_count": 0,
+      "target_answer_in_handoff_items": []
+    }
+  ],
+  "handoff_audit_aggregate": {
+    "n_seeds": 1,
+    "seeds": [
+      0
+    ],
+    "mapping_hashes": [
+      "6beaef21eea8b97b387200132000453516a7a4459ba715c73c42172cc7261bde"
+    ],
+    "mapping_algorithms": [
+      "rotate-by-smallest-cross-author-shift"
+    ],
+    "same_author_count": 0,
+    "fixed_point_count": 0,
+    "target_answer_in_handoff_count": 0,
+    "target_answer_in_handoff_items": [],
+    "seeds_with_target_answer_in_handoff": []
+  },
+  "recall_at_k": {
+    "final_answer": {
+      "mean": 0.0,
+      "std": 0.0,
+      "n": 1,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "method": "bootstrap-percentile",
+      "values": [
+        0.0
+      ],
+      "degenerate_replicates": true
+    },
+    "any_agent_message": {
+      "mean": 0.0,
+      "std": 0.0,
+      "n": 1,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "method": "bootstrap-percentile",
+      "values": [
+        0.0
+      ],
+      "degenerate_replicates": true
+    },
+    "any_memory_write": {
+      "mean": 0.0,
+      "std": 0.0,
+      "n": 1,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "method": "bootstrap-percentile",
+      "values": [
+        0.0
+      ],
+      "degenerate_replicates": true
+    },
+    "persistent_store_after_episode": {
+      "mean": 0.0,
+      "std": 0.0,
+      "n": 1,
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "method": "bootstrap-percentile",
+      "values": [
+        0.0
+      ],
+      "degenerate_replicates": true
+    }
+  },
+  "laundering_rate": {
+    "mean": 0.0,
+    "std": 0.0,
+    "n": 1,
+    "ci95": [
+      0.0,
+      0.0
+    ],
+    "method": "bootstrap-percentile",
+    "values": [
+      0.0
+    ],
+    "degenerate_replicates": true
+  },
+  "delegation_rate": {
+    "mean": 1.0,
+    "std": 0.0,
+    "n": 1,
+    "ci95": [
+      1.0,
+      1.0
+    ],
+    "method": "bootstrap-percentile",
+    "values": [
+      1.0
+    ],
+    "degenerate_replicates": true
+  },
+  "item_ids": [
+    "forget10-0000",
+    "forget10-0020",
+    "forget10-0040",
+    "forget10-0060",
+    "forget10-0080",
+    "forget10-0100",
+    "forget10-0120",
+    "forget10-0140",
+    "forget10-0160",
+    "forget10-0180",
+    "forget10-0200",
+    "forget10-0220",
+    "forget10-0240",
+    "forget10-0260",
+    "forget10-0280",
+    "forget10-0300",
+    "forget10-0320",
+    "forget10-0340",
+    "forget10-0360",
+    "forget10-0380"
+  ],
+  "clusters": [
+    "forget10-author-0000",
+    "forget10-author-0001",
+    "forget10-author-0002",
+    "forget10-author-0003",
+    "forget10-author-0004",
+    "forget10-author-0005",
+    "forget10-author-0006",
+    "forget10-author-0007",
+    "forget10-author-0008",
+    "forget10-author-0009",
+    "forget10-author-0010",
+    "forget10-author-0011",
+    "forget10-author-0012",
+    "forget10-author-0013",
+    "forget10-author-0014",
+    "forget10-author-0015",
+    "forget10-author-0016",
+    "forget10-author-0017",
+    "forget10-author-0018",
+    "forget10-author-0019"
+  ],
+  "cluster_by": "author",
+  "per_item_recall": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "per_item_recall_by_seed": [
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  ],
+  "per_item_recall_by_policy": {
+    "abstention_triggered": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "always_delegate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "per_seed": [
+    {
+      "arm": "treatment",
+      "condition": "C3S",
+      "seed": 0,
+      "delegation_policy": "always_delegate",
+      "write_policy": "framework_default",
+      "n_items": 20,
+      "recall_at_k": {
+        "final_answer": 0.0,
+        "any_agent_message": 0.0,
+        "any_memory_write": 0.0,
+        "persistent_store_after_episode": 0.0
+      },
+      "recall_at_k_negative": {
+        "final_answer": 0.0,
+        "any_agent_message": 0.0,
+        "any_memory_write": 0.0,
+        "persistent_store_after_episode": 0.0
+      },
+      "delegation_rate": 1.0,
+      "n_handoffs": 20,
+      "n_delegations": 20,
+      "n_shuffled_handoffs": 20,
+      "handoff_audit": {
+        "mapping": {
+          "algorithm": "rotate-by-smallest-cross-author-shift",
+          "shift": 1,
+          "n_items": 20,
+          "n_authors": 20,
+          "fixed_point_count": 0,
+          "same_author_count": 0,
+          "sha256": "6beaef21eea8b97b387200132000453516a7a4459ba715c73c42172cc7261bde",
+          "permutation": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            0
+          ]
+        },
+        "pairs": {
+          "forget10-0080": "forget10-0100",
+          "forget10-0380": "forget10-0000",
+          "forget10-0120": "forget10-0140",
+          "forget10-0040": "forget10-0060",
+          "forget10-0260": "forget10-0280",
+          "forget10-0320": "forget10-0340",
+          "forget10-0060": "forget10-0080",
+          "forget10-0220": "forget10-0240",
+          "forget10-0200": "forget10-0220",
+          "forget10-0160": "forget10-0180",
+          "forget10-0000": "forget10-0020",
+          "forget10-0240": "forget10-0260",
+          "forget10-0140": "forget10-0160",
+          "forget10-0100": "forget10-0120",
+          "forget10-0360": "forget10-0380",
+          "forget10-0340": "forget10-0360",
+          "forget10-0280": "forget10-0300",
+          "forget10-0180": "forget10-0200",
+          "forget10-0020": "forget10-0040",
+          "forget10-0300": "forget10-0320"
+        },
+        "target_author_ids": {
+          "forget10-0080": "forget10-author-0004",
+          "forget10-0380": "forget10-author-0019",
+          "forget10-0120": "forget10-author-0006",
+          "forget10-0040": "forget10-author-0002",
+          "forget10-0260": "forget10-author-0013",
+          "forget10-0320": "forget10-author-0016",
+          "forget10-0060": "forget10-author-0003",
+          "forget10-0220": "forget10-author-0011",
+          "forget10-0200": "forget10-author-0010",
+          "forget10-0160": "forget10-author-0008",
+          "forget10-0000": "forget10-author-0000",
+          "forget10-0240": "forget10-author-0012",
+          "forget10-0140": "forget10-author-0007",
+          "forget10-0100": "forget10-author-0005",
+          "forget10-0360": "forget10-author-0018",
+          "forget10-0340": "forget10-author-0017",
+          "forget10-0280": "forget10-author-0014",
+          "forget10-0180": "forget10-author-0009",
+          "forget10-0020": "forget10-author-0001",
+          "forget10-0300": "forget10-author-0015"
+        },
+        "source_author_ids": {
+          "forget10-0080": "forget10-author-0005",
+          "forget10-0380": "forget10-author-0000",
+          "forget10-0120": "forget10-author-0007",
+          "forget10-0040": "forget10-author-0003",
+          "forget10-0260": "forget10-author-0014",
+          "forget10-0320": "forget10-author-0017",
+          "forget10-0060": "forget10-author-0004",
+          "forget10-0220": "forget10-author-0012",
+          "forget10-0200": "forget10-author-0011",
+          "forget10-0160": "forget10-author-0009",
+          "forget10-0000": "forget10-author-0001",
+          "forget10-0240": "forget10-author-0013",
+          "forget10-0140": "forget10-author-0008",
+          "forget10-0100": "forget10-author-0006",
+          "forget10-0360": "forget10-author-0019",
+          "forget10-0340": "forget10-author-0018",
+          "forget10-0280": "forget10-author-0015",
+          "forget10-0180": "forget10-author-0010",
+          "forget10-0020": "forget10-author-0002",
+          "forget10-0300": "forget10-author-0016"
+        },
+        "fixed_point_count": 0,
+        "same_author_count": 0,
+        "target_answer_in_handoff_count": 0,
+        "target_answer_in_handoff_items": []
+      },
+      "laundering": {
+        "n_items": 20,
+        "n_recovered": 0,
+        "n_laundered": 0,
+        "laundering_rate": 0.0,
+        "recovery_rate": 0.0,
+        "mode": "normalised",
+        "notes": [
+          "nothing recovered from the persistent store; laundering_rate is undefined and reported as 0.0 \u2014 read n_recovered before reading the rate."
+        ],
+        "items": []
+      },
+      "store_stats": {
+        "deletion_mode": "tombstone",
+        "refcount_semantics": "supporting_parents",
+        "n_nodes": 21,
+        "n_retrievable": 21,
+        "n_deleted": 20,
+        "n_outdated": 20,
+        "n_parametric": 1,
+        "n_edges": 0
+      }
+    }
+  ],
+  "control_always_delegate": {
+    "per_seed": [
+      {
+        "arm": "abstention_triggered",
+        "condition": "C3S",
+        "seed": 0,
+        "delegation_policy": "abstention_triggered",
+        "write_policy": "framework_default",
+        "n_items": 20,
+        "recall_at_k": {
+          "final_answer": 0.0,
+          "any_agent_message": 0.0,
+          "any_memory_write": 0.0,
+          "persistent_store_after_episode": 0.0
+        },
+        "recall_at_k_negative": {
+          "final_answer": 0.0,
+          "any_agent_message": 0.0,
+          "any_memory_write": 0.0,
+          "persistent_store_after_episode": 0.0
+        },
+        "delegation_rate": 0.0,
+        "n_handoffs": 0,
+        "n_delegations": 0,
+        "n_shuffled_handoffs": 0,
+        "handoff_audit": {
+          "mapping": {
+            "algorithm": "rotate-by-smallest-cross-author-shift",
+            "shift": 1,
+            "n_items": 20,
+            "n_authors": 20,
+            "fixed_point_count": 0,
+            "same_author_count": 0,
+            "sha256": "6beaef21eea8b97b387200132000453516a7a4459ba715c73c42172cc7261bde",
+            "permutation": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              0
+            ]
+          },
+          "pairs": {},
+          "target_author_ids": {},
+          "source_author_ids": {},
+          "fixed_point_count": 0,
+          "same_author_count": 0,
+          "target_answer_in_handoff_count": 0,
+          "target_answer_in_handoff_items": []
+        },
+        "laundering": {
+          "n_items": 20,
+          "n_recovered": 0,
+          "n_laundered": 0,
+          "laundering_rate": 0.0,
+          "recovery_rate": 0.0,
+          "mode": "normalised",
+          "notes": [
+            "nothing recovered from the persistent store; laundering_rate is undefined and reported as 0.0 \u2014 read n_recovered before reading the rate."
+          ],
+          "items": []
+        },
+        "store_stats": {
+          "deletion_mode": "tombstone",
+          "refcount_semantics": "supporting_parents",
+          "n_nodes": 21,
+          "n_retrievable": 21,
+          "n_deleted": 20,
+          "n_outdated": 20,
+          "n_parametric": 1,
+          "n_edges": 0
+        }
+      }
+    ],
+    "recall_at_k": {
+      "final_answer": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "method": "bootstrap-percentile",
+        "values": [
+          0.0
+        ],
+        "degenerate_replicates": true
+      },
+      "any_agent_message": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "method": "bootstrap-percentile",
+        "values": [
+          0.0
+        ],
+        "degenerate_replicates": true
+      },
+      "any_memory_write": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "method": "bootstrap-percentile",
+        "values": [
+          0.0
+        ],
+        "degenerate_replicates": true
+      },
+      "persistent_store_after_episode": {
+        "mean": 0.0,
+        "std": 0.0,
+        "n": 1,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "method": "bootstrap-percentile",
+        "values": [
+          0.0
+        ],
+        "degenerate_replicates": true
+      }
+    }
+  },
+  "control_retain": {
+    "per_seed": [
+      {
+        "arm": "retain",
+        "condition": "C3S",
+        "seed": 0,
+        "delegation_policy": "always_delegate",
+        "write_policy": "framework_default",
+        "n_items": 20,
+        "recall_at_k": {
+          "final_answer": 0.2,
+          "any_agent_message": 0.2,
+          "any_memory_write": 0.2,
+          "persistent_store_after_episode": 0.2
+        },
+        "recall_at_k_negative": {
+          "final_answer": 0.0,
+          "any_agent_message": 0.0,
+          "any_memory_write": 0.0,
+          "persistent_store_after_episode": 0.0
+        },
+        "delegation_rate": 1.0,
+        "n_handoffs": 20,
+        "n_delegations": 20,
+        "n_shuffled_handoffs": 20,
+        "handoff_audit": {
+          "mapping": {
+            "algorithm": "rotate-by-smallest-cross-author-shift",
+            "shift": 1,
+            "n_items": 20,
+            "n_authors": 20,
+            "fixed_point_count": 0,
+            "same_author_count": 0,
+            "sha256": "6beaef21eea8b97b387200132000453516a7a4459ba715c73c42172cc7261bde",
+            "permutation": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              0
+            ]
+          },
+          "pairs": {
+            "retain90-0720": "retain90-0900",
+            "retain90-3420": "retain90-0000",
+            "retain90-1080": "retain90-1260",
+            "retain90-0360": "retain90-0540",
+            "retain90-2340": "retain90-2520",
+            "retain90-2880": "retain90-3060",
+            "retain90-0540": "retain90-0720",
+            "retain90-1980": "retain90-2160",
+            "retain90-1800": "retain90-1980",
+            "retain90-1440": "retain90-1620",
+            "retain90-0000": "retain90-0180",
+            "retain90-2160": "retain90-2340",
+            "retain90-1260": "retain90-1440",
+            "retain90-0900": "retain90-1080",
+            "retain90-3240": "retain90-3420",
+            "retain90-3060": "retain90-3240",
+            "retain90-2520": "retain90-2700",
+            "retain90-1620": "retain90-1800",
+            "retain90-0180": "retain90-0360",
+            "retain90-2700": "retain90-2880"
+          },
+          "target_author_ids": {
+            "retain90-0720": "retain90-author-0036",
+            "retain90-3420": "retain90-author-0171",
+            "retain90-1080": "retain90-author-0054",
+            "retain90-0360": "retain90-author-0018",
+            "retain90-2340": "retain90-author-0117",
+            "retain90-2880": "retain90-author-0144",
+            "retain90-0540": "retain90-author-0027",
+            "retain90-1980": "retain90-author-0099",
+            "retain90-1800": "retain90-author-0090",
+            "retain90-1440": "retain90-author-0072",
+            "retain90-0000": "retain90-author-0000",
+            "retain90-2160": "retain90-author-0108",
+            "retain90-1260": "retain90-author-0063",
+            "retain90-0900": "retain90-author-0045",
+            "retain90-3240": "retain90-author-0162",
+            "retain90-3060": "retain90-author-0153",
+            "retain90-2520": "retain90-author-0126",
+            "retain90-1620": "retain90-author-0081",
+            "retain90-0180": "retain90-author-0009",
+            "retain90-2700": "retain90-author-0135"
+          },
+          "source_author_ids": {
+            "retain90-0720": "retain90-author-0045",
+            "retain90-3420": "retain90-author-0000",
+            "retain90-1080": "retain90-author-0063",
+            "retain90-0360": "retain90-author-0027",
+            "retain90-2340": "retain90-author-0126",
+            "retain90-2880": "retain90-author-0153",
+            "retain90-0540": "retain90-author-0036",
+            "retain90-1980": "retain90-author-0108",
+            "retain90-1800": "retain90-author-0099",
+            "retain90-1440": "retain90-author-0081",
+            "retain90-0000": "retain90-author-0009",
+            "retain90-2160": "retain90-author-0117",
+            "retain90-1260": "retain90-author-0072",
+            "retain90-0900": "retain90-author-0054",
+            "retain90-3240": "retain90-author-0171",
+            "retain90-3060": "retain90-author-0162",
+            "retain90-2520": "retain90-author-0135",
+            "retain90-1620": "retain90-author-0090",
+            "retain90-0180": "retain90-author-0018",
+            "retain90-2700": "retain90-author-0144"
+          },
+          "fixed_point_count": 0,
+          "same_author_count": 0,
+          "target_answer_in_handoff_count": 0,
+          "target_answer_in_handoff_items": []
+        },
+        "laundering": {
+          "n_items": 20,
+          "n_recovered": 4,
+          "n_laundered": 4,
+          "laundering_rate": 1.0,
+          "recovery_rate": 0.2,
+          "mode": "normalised",
+          "notes": [
+            "nothing recovered from the persistent store; laundering_rate is undefined and reported as 0.0 \u2014 read n_recovered before reading the rate."
+          ],
+          "items": [
+            {
+              "item_id": "retain90-1440",
+              "target_answer": "Alex Fuentes was born in Madrid, Spain.",
+              "node_id": "dfdf5315562146f8b9c7e8a25ad10015",
+              "containment_score": 1.0,
+              "laundered": true,
+              "evidence": "Alex Fuentes was born in Madrid, Spain.",
+              "certificate": {
+                "schema_version": 1,
+                "node_id": "dfdf5315562146f8b9c7e8a25ad10015",
+                "inv1_satisfied": true,
+                "inv2_satisfied": true,
+                "path_to_any_blocked_node": null,
+                "invariants_hold": true,
+                "is_laundered_candidate": true,
+                "witness": {
+                  "schema_version": 1,
+                  "generated_utc": "2026-08-08T18:53:03+00:00",
+                  "node": {
+                    "node_id": "dfdf5315562146f8b9c7e8a25ad10015",
+                    "content": "Alex Fuentes was born in Madrid, Spain.",
+                    "source_agent": "B",
+                    "source_kind": "agent_answer",
+                    "parent_ids": [],
+                    "turn": 2,
+                    "refcount": 1,
+                    "outdated": false,
+                    "deleted": false,
+                    "meta": {
+                      "question": "Where was Alejandro (Alex) Fuentes born?",
+                      "policy": "framework_default",
+                      "mirrors": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours"
+                    }
+                  },
+                  "ancestor_ids": [],
+                  "ancestor_subgraph_edges": [],
+                  "ancestor_records": [],
+                  "blocked_ids": [
+                    "0f3342bdd9e842fe8c4c552531313054",
+                    "127e7bc0af1d4ba6aeb7803ed3dd1f45",
+                    "18ca81c15abb47e1ac74aa97e54f93ac",
+                    "1e107e207b934188ba78c2cdc977cc67",
+                    "2e9197df705e4c16863dc5fb9c268605",
+                    "4e6686bd9989473099c8ca09523c346d",
+                    "5850029f170e4a9288c019c3e1a21f65",
+                    "5ab6d49bd98e4baf9af981afa9c3d553",
+                    "65cc945665c94e698a902a85bed670c2",
+                    "6b95fe1f9875441db36d449dafb4be30",
+                    "850cb06e0981470ca827fcfb46306afc",
+                    "88385e74c47941288a88cbfe121911c5",
+                    "8a8792a0c97e4bb8984820d462659645",
+                    "8b89799772044586a07493f97aba625c",
+                    "975a7332388b4e37b5a9344de059de55",
+                    "98475c74d2154819aff0a566108fb56f",
+                    "d3d03120885f43eea13fc382dc4cb9ee",
+                    "d613ddc0466a4811b039246513d9617d",
+                    "d88863c097c84d26bcd53f8cd75da8e8",
+                    "e186545fe47f40a59da48a8a29d8f4ae"
+                  ],
+                  "deleted_ids": [
+                    "0f3342bdd9e842fe8c4c552531313054",
+                    "127e7bc0af1d4ba6aeb7803ed3dd1f45",
+                    "18ca81c15abb47e1ac74aa97e54f93ac",
+                    "1e107e207b934188ba78c2cdc977cc67",
+                    "2e9197df705e4c16863dc5fb9c268605",
+                    "4e6686bd9989473099c8ca09523c346d",
+                    "5850029f170e4a9288c019c3e1a21f65",
+                    "5ab6d49bd98e4baf9af981afa9c3d553",
+                    "65cc945665c94e698a902a85bed670c2",
+                    "6b95fe1f9875441db36d449dafb4be30",
+                    "850cb06e0981470ca827fcfb46306afc",
+                    "88385e74c47941288a88cbfe121911c5",
+                    "8a8792a0c97e4bb8984820d462659645",
+                    "8b89799772044586a07493f97aba625c",
+                    "975a7332388b4e37b5a9344de059de55",
+                    "98475c74d2154819aff0a566108fb56f",
+                    "d3d03120885f43eea13fc382dc4cb9ee",
+                    "d613ddc0466a4811b039246513d9617d",
+                    "d88863c097c84d26bcd53f8cd75da8e8",
+                    "e186545fe47f40a59da48a8a29d8f4ae"
+                  ],
+                  "store_stats": {
+                    "deletion_mode": "tombstone",
+                    "refcount_semantics": "supporting_parents",
+                    "n_nodes": 21,
+                    "n_retrievable": 21,
+                    "n_deleted": 20,
+                    "n_outdated": 20,
+                    "n_parametric": 1,
+                    "n_edges": 0
+                  },
+                  "inv1": {
+                    "satisfied": true,
+                    "n_blocked": 20,
+                    "n_indexed": 21,
+                    "n_returnable": 1,
+                    "leaked_via_probe": [],
+                    "still_indexed": [
+                      "0f3342bdd9e842fe8c4c552531313054",
+                      "127e7bc0af1d4ba6aeb7803ed3dd1f45",
+                      "18ca81c15abb47e1ac74aa97e54f93ac",
+                      "1e107e207b934188ba78c2cdc977cc67",
+                      "2e9197df705e4c16863dc5fb9c268605",
+                      "4e6686bd9989473099c8ca09523c346d",
+                      "5850029f170e4a9288c019c3e1a21f65",
+                      "5ab6d49bd98e4baf9af981afa9c3d553",
+                      "65cc945665c94e698a902a85bed670c2",
+                      "6b95fe1f9875441db36d449dafb4be30",
+                      "850cb06e0981470ca827fcfb46306afc",
+                      "88385e74c47941288a88cbfe121911c5",
+                      "8a8792a0c97e4bb8984820d462659645",
+                      "8b89799772044586a07493f97aba625c",
+                      "975a7332388b4e37b5a9344de059de55",
+                      "98475c74d2154819aff0a566108fb56f",
+                      "d3d03120885f43eea13fc382dc4cb9ee",
+                      "d613ddc0466a4811b039246513d9617d",
+                      "d88863c097c84d26bcd53f8cd75da8e8",
+                      "e186545fe47f40a59da48a8a29d8f4ae"
+                    ],
+                    "violations": []
+                  },
+                  "inv2": {
+                    "satisfied": true,
+                    "deleted_ids": [
+                      "0f3342bdd9e842fe8c4c552531313054",
+                      "127e7bc0af1d4ba6aeb7803ed3dd1f45",
+                      "18ca81c15abb47e1ac74aa97e54f93ac",
+                      "1e107e207b934188ba78c2cdc977cc67",
+                      "2e9197df705e4c16863dc5fb9c268605",
+                      "4e6686bd9989473099c8ca09523c346d",
+                      "5850029f170e4a9288c019c3e1a21f65",
+                      "5ab6d49bd98e4baf9af981afa9c3d553",
+                      "65cc945665c94e698a902a85bed670c2",
+                      "6b95fe1f9875441db36d449dafb4be30",
+                      "850cb06e0981470ca827fcfb46306afc",
+                      "88385e74c47941288a88cbfe121911c5",
+                      "8a8792a0c97e4bb8984820d462659645",
+                      "8b89799772044586a07493f97aba625c",
+                      "975a7332388b4e37b5a9344de059de55",
+                      "98475c74d2154819aff0a566108fb56f",
+                      "d3d03120885f43eea13fc382dc4cb9ee",
+                      "d613ddc0466a4811b039246513d9617d",
+                      "d88863c097c84d26bcd53f8cd75da8e8",
+                      "e186545fe47f40a59da48a8a29d8f4ae"
+                    ],
+                    "closure_size": 0,
+                    "unmarked": [],
+                    "violations": []
+                  }
+                }
+              }
+            },
+            {
+              "item_id": "retain90-1800",
+              "target_answer": "Elijah Tan was born in Singapore, Singapore.",
+              "node_id": "8fc6c8ca060549f48a50f89283e6b6dc",
+              "containment_score": 1.0,
+              "laundered": true,
+              "evidence": "Elijah Tan was born in Singapore, Singapore.",
+              "certificate": {
+                "schema_version": 1,
+                "node_id": "8fc6c8ca060549f48a50f89283e6b6dc",
+                "inv1_satisfied": true,
+                "inv2_satisfied": true,
+                "path_to_any_blocked_node": null,
+                "invariants_hold": true,
+                "is_laundered_candidate": true,
+                "witness": {
+                  "schema_version": 1,
+                  "generated_utc": "2026-08-08T18:53:03+00:00",
+                  "node": {
+                    "node_id": "8fc6c8ca060549f48a50f89283e6b6dc",
+                    "content": "Elijah Tan was born in Singapore, Singapore.",
+                    "source_agent": "B",
+                    "source_kind": "agent_answer",
+                    "parent_ids": [],
+                    "turn": 2,
+                    "refcount": 1,
+                    "outdated": false,
+                    "deleted": false,
+                    "meta": {
+                      "question": "Where was Elijah Tan born?",
+                      "policy": "framework_default",
+                      "mirrors": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours"
+                    }
+                  },
+                  "ancestor_ids": [],
+                  "ancestor_subgraph_edges": [],
+                  "ancestor_records": [],
+                  "blocked_ids": [
+                    "072d7bb08c6849da82d1e185a8d8959e",
+                    "189d6f2631d045f7862b5e80921c90b6",
+                    "19ce6d334ea242e7b4da5ef953fd539d",
+                    "267d4258556046f5973bdc4c6a371285",
+                    "2c58a3d3cdfc49328003712825c4161c",
+                    "3e717a987df640169742ae5e560cf674",
+                    "449f7fef80db4106ad85bc6c02f7c826",
+                    "6dfadd03dd7744528402f66abe4c602a",
+                    "728c1ce968c344659c19444ba732b956",
+                    "72be25282e864425b2e26107036ebb14",
+                    "73d74a91eb8b4848ad2166a967e4825a",
+                    "7c3daa595d7d4d8da1f49547577bea8f",
+                    "8c6baedd8a8c442899465d7fa495bc50",
+                    "9cb5d0a15f0949c6bfbab5b3adf91e15",
+                    "b31311b52e224338b08eede204619e23",
+                    "d4676ea98d314eabb63b3bd4810f15c1",
+                    "e2c385b09e184926bd299f4020a814f5",
+                    "e7c1223efa9441a4b058fc8a170ebaf8",
+                    "e953477c27014210966c9b1536574aae",
+                    "e9a48e7ceb75450d948256dae9303b75"
+                  ],
+                  "deleted_ids": [
+                    "072d7bb08c6849da82d1e185a8d8959e",
+                    "189d6f2631d045f7862b5e80921c90b6",
+                    "19ce6d334ea242e7b4da5ef953fd539d",
+                    "267d4258556046f5973bdc4c6a371285",
+                    "2c58a3d3cdfc49328003712825c4161c",
+                    "3e717a987df640169742ae5e560cf674",
+                    "449f7fef80db4106ad85bc6c02f7c826",
+                    "6dfadd03dd7744528402f66abe4c602a",
+                    "728c1ce968c344659c19444ba732b956",
+                    "72be25282e864425b2e26107036ebb14",
+                    "73d74a91eb8b4848ad2166a967e4825a",
+                    "7c3daa595d7d4d8da1f49547577bea8f",
+                    "8c6baedd8a8c442899465d7fa495bc50",
+                    "9cb5d0a15f0949c6bfbab5b3adf91e15",
+                    "b31311b52e224338b08eede204619e23",
+                    "d4676ea98d314eabb63b3bd4810f15c1",
+                    "e2c385b09e184926bd299f4020a814f5",
+                    "e7c1223efa9441a4b058fc8a170ebaf8",
+                    "e953477c27014210966c9b1536574aae",
+                    "e9a48e7ceb75450d948256dae9303b75"
+                  ],
+                  "store_stats": {
+                    "deletion_mode": "tombstone",
+                    "refcount_semantics": "supporting_parents",
+                    "n_nodes": 21,
+                    "n_retrievable": 21,
+                    "n_deleted": 20,
+                    "n_outdated": 20,
+                    "n_parametric": 1,
+                    "n_edges": 0
+                  },
+                  "inv1": {
+                    "satisfied": true,
+                    "n_blocked": 20,
+                    "n_indexed": 21,
+                    "n_returnable": 1,
+                    "leaked_via_probe": [],
+                    "still_indexed": [
+                      "072d7bb08c6849da82d1e185a8d8959e",
+                      "189d6f2631d045f7862b5e80921c90b6",
+                      "19ce6d334ea242e7b4da5ef953fd539d",
+                      "267d4258556046f5973bdc4c6a371285",
+                      "2c58a3d3cdfc49328003712825c4161c",
+                      "3e717a987df640169742ae5e560cf674",
+                      "449f7fef80db4106ad85bc6c02f7c826",
+                      "6dfadd03dd7744528402f66abe4c602a",
+                      "728c1ce968c344659c19444ba732b956",
+                      "72be25282e864425b2e26107036ebb14",
+                      "73d74a91eb8b4848ad2166a967e4825a",
+                      "7c3daa595d7d4d8da1f49547577bea8f",
+                      "8c6baedd8a8c442899465d7fa495bc50",
+                      "9cb5d0a15f0949c6bfbab5b3adf91e15",
+                      "b31311b52e224338b08eede204619e23",
+                      "d4676ea98d314eabb63b3bd4810f15c1",
+                      "e2c385b09e184926bd299f4020a814f5",
+                      "e7c1223efa9441a4b058fc8a170ebaf8",
+                      "e953477c27014210966c9b1536574aae",
+                      "e9a48e7ceb75450d948256dae9303b75"
+                    ],
+                    "violations": []
+                  },
+                  "inv2": {
+                    "satisfied": true,
+                    "deleted_ids": [
+                      "072d7bb08c6849da82d1e185a8d8959e",
+                      "189d6f2631d045f7862b5e80921c90b6",
+                      "19ce6d334ea242e7b4da5ef953fd539d",
+                      "267d4258556046f5973bdc4c6a371285",
+                      "2c58a3d3cdfc49328003712825c4161c",
+                      "3e717a987df640169742ae5e560cf674",
+                      "449f7fef80db4106ad85bc6c02f7c826",
+                      "6dfadd03dd7744528402f66abe4c602a",
+                      "728c1ce968c344659c19444ba732b956",
+                      "72be25282e864425b2e26107036ebb14",
+                      "73d74a91eb8b4848ad2166a967e4825a",
+                      "7c3daa595d7d4d8da1f49547577bea8f",
+                      "8c6baedd8a8c442899465d7fa495bc50",
+                      "9cb5d0a15f0949c6bfbab5b3adf91e15",
+                      "b31311b52e224338b08eede204619e23",
+                      "d4676ea98d314eabb63b3bd4810f15c1",
+                      "e2c385b09e184926bd299f4020a814f5",
+                      "e7c1223efa9441a4b058fc8a170ebaf8",
+                      "e953477c27014210966c9b1536574aae",
+                      "e9a48e7ceb75450d948256dae9303b75"
+                    ],
+                    "closure_size": 0,
+                    "unmarked": [],
+                    "violations": []
+                  }
+                }
+              }
+            },
+            {
+              "item_id": "retain90-1980",
+              "target_answer": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+              "node_id": "ad42c7a7c3e844b2b0da33cebc44fe36",
+              "containment_score": 1.0,
+              "laundered": true,
+              "evidence": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+              "certificate": {
+                "schema_version": 1,
+                "node_id": "ad42c7a7c3e844b2b0da33cebc44fe36",
+                "inv1_satisfied": true,
+                "inv2_satisfied": true,
+                "path_to_any_blocked_node": null,
+                "invariants_hold": true,
+                "is_laundered_candidate": true,
+                "witness": {
+                  "schema_version": 1,
+                  "generated_utc": "2026-08-08T18:53:03+00:00",
+                  "node": {
+                    "node_id": "ad42c7a7c3e844b2b0da33cebc44fe36",
+                    "content": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+                    "source_agent": "B",
+                    "source_kind": "agent_answer",
+                    "parent_ids": [],
+                    "turn": 2,
+                    "refcount": 1,
+                    "outdated": false,
+                    "deleted": false,
+                    "meta": {
+                      "question": "What is the birthplace of author Phuong Tran?",
+                      "policy": "framework_default",
+                      "mirrors": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours"
+                    }
+                  },
+                  "ancestor_ids": [],
+                  "ancestor_subgraph_edges": [],
+                  "ancestor_records": [],
+                  "blocked_ids": [
+                    "05b144f554674d6788ce60c412108f21",
+                    "11b5db602a494a86859484e27fa43abf",
+                    "2c53a80b52e343f3b72fa4bebee90af2",
+                    "2ed9080ffc724b6fbd30d6da6f80e6df",
+                    "460f83ec62ab4a23b843da58f50e44d3",
+                    "48919c0f463d41ed98b85e41f123adb1",
+                    "687b24d653ba49d4bafe426159770814",
+                    "75875f98235f4ace913a3e01ed4d3089",
+                    "7c2dbdbdc8374f30bc5935424343f27f",
+                    "868886c2620e4a74aa2430ff4b4545ec",
+                    "8c08ba8538644677b23e7c858dd0e4a7",
+                    "8e03638258b5434a9e78c43f51bbfe60",
+                    "9c901f88ebf74ed6a9370d13c4c0b86f",
+                    "9eb000f6c7434cdeb6ca84089e166a83",
+                    "b75b5f1fa5ef462aa9e81fa4aab72ec3",
+                    "c838c4a5674f44fcaaed4a8a384b7471",
+                    "cf29d884cfdf47a8ad852dd166e15426",
+                    "e69ca3c667ed473c95d1544ee73443cd",
+                    "ee60dda6e24743189bab7349b68c6a25",
+                    "f60cca72b2c34e6898e8259e15930caf"
+                  ],
+                  "deleted_ids": [
+                    "05b144f554674d6788ce60c412108f21",
+                    "11b5db602a494a86859484e27fa43abf",
+                    "2c53a80b52e343f3b72fa4bebee90af2",
+                    "2ed9080ffc724b6fbd30d6da6f80e6df",
+                    "460f83ec62ab4a23b843da58f50e44d3",
+                    "48919c0f463d41ed98b85e41f123adb1",
+                    "687b24d653ba49d4bafe426159770814",
+                    "75875f98235f4ace913a3e01ed4d3089",
+                    "7c2dbdbdc8374f30bc5935424343f27f",
+                    "868886c2620e4a74aa2430ff4b4545ec",
+                    "8c08ba8538644677b23e7c858dd0e4a7",
+                    "8e03638258b5434a9e78c43f51bbfe60",
+                    "9c901f88ebf74ed6a9370d13c4c0b86f",
+                    "9eb000f6c7434cdeb6ca84089e166a83",
+                    "b75b5f1fa5ef462aa9e81fa4aab72ec3",
+                    "c838c4a5674f44fcaaed4a8a384b7471",
+                    "cf29d884cfdf47a8ad852dd166e15426",
+                    "e69ca3c667ed473c95d1544ee73443cd",
+                    "ee60dda6e24743189bab7349b68c6a25",
+                    "f60cca72b2c34e6898e8259e15930caf"
+                  ],
+                  "store_stats": {
+                    "deletion_mode": "tombstone",
+                    "refcount_semantics": "supporting_parents",
+                    "n_nodes": 21,
+                    "n_retrievable": 21,
+                    "n_deleted": 20,
+                    "n_outdated": 20,
+                    "n_parametric": 1,
+                    "n_edges": 0
+                  },
+                  "inv1": {
+                    "satisfied": true,
+                    "n_blocked": 20,
+                    "n_indexed": 21,
+                    "n_returnable": 1,
+                    "leaked_via_probe": [],
+                    "still_indexed": [
+                      "05b144f554674d6788ce60c412108f21",
+                      "11b5db602a494a86859484e27fa43abf",
+                      "2c53a80b52e343f3b72fa4bebee90af2",
+                      "2ed9080ffc724b6fbd30d6da6f80e6df",
+                      "460f83ec62ab4a23b843da58f50e44d3",
+                      "48919c0f463d41ed98b85e41f123adb1",
+                      "687b24d653ba49d4bafe426159770814",
+                      "75875f98235f4ace913a3e01ed4d3089",
+                      "7c2dbdbdc8374f30bc5935424343f27f",
+                      "868886c2620e4a74aa2430ff4b4545ec",
+                      "8c08ba8538644677b23e7c858dd0e4a7",
+                      "8e03638258b5434a9e78c43f51bbfe60",
+                      "9c901f88ebf74ed6a9370d13c4c0b86f",
+                      "9eb000f6c7434cdeb6ca84089e166a83",
+                      "b75b5f1fa5ef462aa9e81fa4aab72ec3",
+                      "c838c4a5674f44fcaaed4a8a384b7471",
+                      "cf29d884cfdf47a8ad852dd166e15426",
+                      "e69ca3c667ed473c95d1544ee73443cd",
+                      "ee60dda6e24743189bab7349b68c6a25",
+                      "f60cca72b2c34e6898e8259e15930caf"
+                    ],
+                    "violations": []
+                  },
+                  "inv2": {
+                    "satisfied": true,
+                    "deleted_ids": [
+                      "05b144f554674d6788ce60c412108f21",
+                      "11b5db602a494a86859484e27fa43abf",
+                      "2c53a80b52e343f3b72fa4bebee90af2",
+                      "2ed9080ffc724b6fbd30d6da6f80e6df",
+                      "460f83ec62ab4a23b843da58f50e44d3",
+                      "48919c0f463d41ed98b85e41f123adb1",
+                      "687b24d653ba49d4bafe426159770814",
+                      "75875f98235f4ace913a3e01ed4d3089",
+                      "7c2dbdbdc8374f30bc5935424343f27f",
+                      "868886c2620e4a74aa2430ff4b4545ec",
+                      "8c08ba8538644677b23e7c858dd0e4a7",
+                      "8e03638258b5434a9e78c43f51bbfe60",
+                      "9c901f88ebf74ed6a9370d13c4c0b86f",
+                      "9eb000f6c7434cdeb6ca84089e166a83",
+                      "b75b5f1fa5ef462aa9e81fa4aab72ec3",
+                      "c838c4a5674f44fcaaed4a8a384b7471",
+                      "cf29d884cfdf47a8ad852dd166e15426",
+                      "e69ca3c667ed473c95d1544ee73443cd",
+                      "ee60dda6e24743189bab7349b68c6a25",
+                      "f60cca72b2c34e6898e8259e15930caf"
+                    ],
+                    "closure_size": 0,
+                    "unmarked": [],
+                    "violations": []
+                  }
+                }
+              }
+            },
+            {
+              "item_id": "retain90-3060",
+              "target_answer": "The full name of the fictitious author born in Amsterdam, Netherlands, on 08/11/1992 is Femke Van der Veen.",
+              "node_id": "c6cf29fb899948b3a11011300a183d78",
+              "containment_score": 1.0,
+              "laundered": true,
+              "evidence": "The full name of the fictitious author born in Amsterdam, Netherlands, on 08/11/1992 is Femke Van der Veen.",
+              "certificate": {
+                "schema_version": 1,
+                "node_id": "c6cf29fb899948b3a11011300a183d78",
+                "inv1_satisfied": true,
+                "inv2_satisfied": true,
+                "path_to_any_blocked_node": null,
+                "invariants_hold": true,
+                "is_laundered_candidate": true,
+                "witness": {
+                  "schema_version": 1,
+                  "generated_utc": "2026-08-08T18:53:03+00:00",
+                  "node": {
+                    "node_id": "c6cf29fb899948b3a11011300a183d78",
+                    "content": "The full name of the fictitious author born in Amsterdam, Netherlands, on 08/11/1992 is Femke Van der Veen.",
+                    "source_agent": "B",
+                    "source_kind": "agent_answer",
+                    "parent_ids": [],
+                    "turn": 2,
+                    "refcount": 1,
+                    "outdated": false,
+                    "deleted": false,
+                    "meta": {
+                      "question": "What is the full name of the fictitious author born in Amsterdam, Netherlands, on 08/11/1992?",
+                      "policy": "framework_default",
+                      "mirrors": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours"
+                    }
+                  },
+                  "ancestor_ids": [],
+                  "ancestor_subgraph_edges": [],
+                  "ancestor_records": [],
+                  "blocked_ids": [
+                    "0da1c97d8ce642b78f5c4c134f9ec5de",
+                    "2596ae9d9ae643dc81fdcb40fb468ce7",
+                    "2c946b91af0d43a1bc1d7f5c95a9956c",
+                    "2e2095e92a70421e97d57b5a42f689f0",
+                    "301bd7a572cf42e491d061dbb656ea93",
+                    "3f853e9d2d3b486cbe4ec14fd061f37a",
+                    "43ee1143e26c4ef89a49d2f9882d5583",
+                    "4510c71c9bc946cc99451dc0a1303dd8",
+                    "454395e7009b4ea8869c588ec13ae26a",
+                    "4c7ec6cefbd74249bc5dea95f492cb9a",
+                    "528e309b14d340ee8c52493c6aa18276",
+                    "545bcd52f415437295e85202b3089ef3",
+                    "6160648b54f94bff831467d87acd9d52",
+                    "a234062a76eb48c98812a91b0af0960c",
+                    "a42b381895924234aaefe53d3cd6953c",
+                    "a623876040b345c48ab4a4833d5ea687",
+                    "b69f722a4035460ca9f5caa753760ea2",
+                    "dba9fc3509e441b7a34376bee38b7d6c",
+                    "e5a89ef6f02f4fc89f0db590cb0d5375",
+                    "f8995cc514404e53aeb54d4cbccba952"
+                  ],
+                  "deleted_ids": [
+                    "0da1c97d8ce642b78f5c4c134f9ec5de",
+                    "2596ae9d9ae643dc81fdcb40fb468ce7",
+                    "2c946b91af0d43a1bc1d7f5c95a9956c",
+                    "2e2095e92a70421e97d57b5a42f689f0",
+                    "301bd7a572cf42e491d061dbb656ea93",
+                    "3f853e9d2d3b486cbe4ec14fd061f37a",
+                    "43ee1143e26c4ef89a49d2f9882d5583",
+                    "4510c71c9bc946cc99451dc0a1303dd8",
+                    "454395e7009b4ea8869c588ec13ae26a",
+                    "4c7ec6cefbd74249bc5dea95f492cb9a",
+                    "528e309b14d340ee8c52493c6aa18276",
+                    "545bcd52f415437295e85202b3089ef3",
+                    "6160648b54f94bff831467d87acd9d52",
+                    "a234062a76eb48c98812a91b0af0960c",
+                    "a42b381895924234aaefe53d3cd6953c",
+                    "a623876040b345c48ab4a4833d5ea687",
+                    "b69f722a4035460ca9f5caa753760ea2",
+                    "dba9fc3509e441b7a34376bee38b7d6c",
+                    "e5a89ef6f02f4fc89f0db590cb0d5375",
+                    "f8995cc514404e53aeb54d4cbccba952"
+                  ],
+                  "store_stats": {
+                    "deletion_mode": "tombstone",
+                    "refcount_semantics": "supporting_parents",
+                    "n_nodes": 21,
+                    "n_retrievable": 21,
+                    "n_deleted": 20,
+                    "n_outdated": 20,
+                    "n_parametric": 1,
+                    "n_edges": 0
+                  },
+                  "inv1": {
+                    "satisfied": true,
+                    "n_blocked": 20,
+                    "n_indexed": 21,
+                    "n_returnable": 1,
+                    "leaked_via_probe": [],
+                    "still_indexed": [
+                      "0da1c97d8ce642b78f5c4c134f9ec5de",
+                      "2596ae9d9ae643dc81fdcb40fb468ce7",
+                      "2c946b91af0d43a1bc1d7f5c95a9956c",
+                      "2e2095e92a70421e97d57b5a42f689f0",
+                      "301bd7a572cf42e491d061dbb656ea93",
+                      "3f853e9d2d3b486cbe4ec14fd061f37a",
+                      "43ee1143e26c4ef89a49d2f9882d5583",
+                      "4510c71c9bc946cc99451dc0a1303dd8",
+                      "454395e7009b4ea8869c588ec13ae26a",
+                      "4c7ec6cefbd74249bc5dea95f492cb9a",
+                      "528e309b14d340ee8c52493c6aa18276",
+                      "545bcd52f415437295e85202b3089ef3",
+                      "6160648b54f94bff831467d87acd9d52",
+                      "a234062a76eb48c98812a91b0af0960c",
+                      "a42b381895924234aaefe53d3cd6953c",
+                      "a623876040b345c48ab4a4833d5ea687",
+                      "b69f722a4035460ca9f5caa753760ea2",
+                      "dba9fc3509e441b7a34376bee38b7d6c",
+                      "e5a89ef6f02f4fc89f0db590cb0d5375",
+                      "f8995cc514404e53aeb54d4cbccba952"
+                    ],
+                    "violations": []
+                  },
+                  "inv2": {
+                    "satisfied": true,
+                    "deleted_ids": [
+                      "0da1c97d8ce642b78f5c4c134f9ec5de",
+                      "2596ae9d9ae643dc81fdcb40fb468ce7",
+                      "2c946b91af0d43a1bc1d7f5c95a9956c",
+                      "2e2095e92a70421e97d57b5a42f689f0",
+                      "301bd7a572cf42e491d061dbb656ea93",
+                      "3f853e9d2d3b486cbe4ec14fd061f37a",
+                      "43ee1143e26c4ef89a49d2f9882d5583",
+                      "4510c71c9bc946cc99451dc0a1303dd8",
+                      "454395e7009b4ea8869c588ec13ae26a",
+                      "4c7ec6cefbd74249bc5dea95f492cb9a",
+                      "528e309b14d340ee8c52493c6aa18276",
+                      "545bcd52f415437295e85202b3089ef3",
+                      "6160648b54f94bff831467d87acd9d52",
+                      "a234062a76eb48c98812a91b0af0960c",
+                      "a42b381895924234aaefe53d3cd6953c",
+                      "a623876040b345c48ab4a4833d5ea687",
+                      "b69f722a4035460ca9f5caa753760ea2",
+                      "dba9fc3509e441b7a34376bee38b7d6c",
+                      "e5a89ef6f02f4fc89f0db590cb0d5375",
+                      "f8995cc514404e53aeb54d4cbccba952"
+                    ],
+                    "closure_size": 0,
+                    "unmarked": [],
+                    "violations": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "store_stats": {
+          "deletion_mode": "tombstone",
+          "refcount_semantics": "supporting_parents",
+          "n_nodes": 21,
+          "n_retrievable": 21,
+          "n_deleted": 20,
+          "n_outdated": 20,
+          "n_parametric": 1,
+          "n_edges": 0
+        }
+      }
+    ]
+  },
+  "control_retain_ecological": {
+    "policy": "abstention_triggered",
+    "per_seed": [
+      {
+        "arm": "retain_ecological",
+        "condition": "C3S",
+        "seed": 0,
+        "delegation_policy": "abstention_triggered",
+        "write_policy": "framework_default",
+        "n_items": 20,
+        "recall_at_k": {
+          "final_answer": 0.1,
+          "any_agent_message": 0.1,
+          "any_memory_write": 0.1,
+          "persistent_store_after_episode": 0.1
+        },
+        "recall_at_k_negative": {
+          "final_answer": 0.0,
+          "any_agent_message": 0.0,
+          "any_memory_write": 0.0,
+          "persistent_store_after_episode": 0.0
+        },
+        "delegation_rate": 0.05,
+        "n_handoffs": 1,
+        "n_delegations": 1,
+        "n_shuffled_handoffs": 1,
+        "handoff_audit": {
+          "mapping": {
+            "algorithm": "rotate-by-smallest-cross-author-shift",
+            "shift": 1,
+            "n_items": 20,
+            "n_authors": 20,
+            "fixed_point_count": 0,
+            "same_author_count": 0,
+            "sha256": "6beaef21eea8b97b387200132000453516a7a4459ba715c73c42172cc7261bde",
+            "permutation": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              0
+            ]
+          },
+          "pairs": {
+            "retain90-1800": "retain90-1980"
+          },
+          "target_author_ids": {
+            "retain90-1800": "retain90-author-0090"
+          },
+          "source_author_ids": {
+            "retain90-1800": "retain90-author-0099"
+          },
+          "fixed_point_count": 0,
+          "same_author_count": 0,
+          "target_answer_in_handoff_count": 0,
+          "target_answer_in_handoff_items": []
+        },
+        "laundering": {
+          "n_items": 20,
+          "n_recovered": 2,
+          "n_laundered": 2,
+          "laundering_rate": 1.0,
+          "recovery_rate": 0.1,
+          "mode": "normalised",
+          "notes": [
+            "nothing recovered from the persistent store; laundering_rate is undefined and reported as 0.0 \u2014 read n_recovered before reading the rate."
+          ],
+          "items": [
+            {
+              "item_id": "retain90-1800",
+              "target_answer": "Elijah Tan was born in Singapore, Singapore.",
+              "node_id": "52a7a7f72e0c4d75840b140968f04ac0",
+              "containment_score": 1.0,
+              "laundered": true,
+              "evidence": "Elijah Tan was born in Singapore, Singapore.",
+              "certificate": {
+                "schema_version": 1,
+                "node_id": "52a7a7f72e0c4d75840b140968f04ac0",
+                "inv1_satisfied": true,
+                "inv2_satisfied": true,
+                "path_to_any_blocked_node": null,
+                "invariants_hold": true,
+                "is_laundered_candidate": true,
+                "witness": {
+                  "schema_version": 1,
+                  "generated_utc": "2026-08-08T18:53:25+00:00",
+                  "node": {
+                    "node_id": "52a7a7f72e0c4d75840b140968f04ac0",
+                    "content": "Elijah Tan was born in Singapore, Singapore.",
+                    "source_agent": "B",
+                    "source_kind": "agent_answer",
+                    "parent_ids": [],
+                    "turn": 2,
+                    "refcount": 1,
+                    "outdated": false,
+                    "deleted": false,
+                    "meta": {
+                      "question": "Where was Elijah Tan born?",
+                      "policy": "framework_default",
+                      "mirrors": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours"
+                    }
+                  },
+                  "ancestor_ids": [],
+                  "ancestor_subgraph_edges": [],
+                  "ancestor_records": [],
+                  "blocked_ids": [
+                    "008dc350af714661ad37616009e44f30",
+                    "0658412c3caf436b999c1dd2bda5aa30",
+                    "0a5fbd58db5540eb8bb8c2526e02be2d",
+                    "0afde042291b458cb0a12148bc6df6b9",
+                    "104a8fba710f4ba6a1fe56e21ba41d83",
+                    "12e54d60ff58418d96df15ac3777352d",
+                    "1d03ec58e8d54103ad7da0db670eeaed",
+                    "25f2b4ec27754ce9b77621f67fae3f09",
+                    "3f4600b268b043fda3f25c6aef0ceba7",
+                    "676390bfd3674a298c579f98b3b13a1f",
+                    "8526e615276e494390214529cd3dea4e",
+                    "91cd8429f63a48a2985734ea4c6e9ce7",
+                    "9b1bb80428074321a6760c6021306849",
+                    "a074a5b3134242d8a7b42aa623349c57",
+                    "b1e9a08971e64335b96725674734998a",
+                    "b884aa2cac7a4d05a4550fe77bf4679a",
+                    "ee085370002f4ce58aaa2eb3ca7adb5e",
+                    "f2fecb21879d4fb0a87189f4974e7156",
+                    "f449aae68f0d44d78816a6c09eb69ecc",
+                    "fec97f49161f41c899082adc39537a52"
+                  ],
+                  "deleted_ids": [
+                    "008dc350af714661ad37616009e44f30",
+                    "0658412c3caf436b999c1dd2bda5aa30",
+                    "0a5fbd58db5540eb8bb8c2526e02be2d",
+                    "0afde042291b458cb0a12148bc6df6b9",
+                    "104a8fba710f4ba6a1fe56e21ba41d83",
+                    "12e54d60ff58418d96df15ac3777352d",
+                    "1d03ec58e8d54103ad7da0db670eeaed",
+                    "25f2b4ec27754ce9b77621f67fae3f09",
+                    "3f4600b268b043fda3f25c6aef0ceba7",
+                    "676390bfd3674a298c579f98b3b13a1f",
+                    "8526e615276e494390214529cd3dea4e",
+                    "91cd8429f63a48a2985734ea4c6e9ce7",
+                    "9b1bb80428074321a6760c6021306849",
+                    "a074a5b3134242d8a7b42aa623349c57",
+                    "b1e9a08971e64335b96725674734998a",
+                    "b884aa2cac7a4d05a4550fe77bf4679a",
+                    "ee085370002f4ce58aaa2eb3ca7adb5e",
+                    "f2fecb21879d4fb0a87189f4974e7156",
+                    "f449aae68f0d44d78816a6c09eb69ecc",
+                    "fec97f49161f41c899082adc39537a52"
+                  ],
+                  "store_stats": {
+                    "deletion_mode": "tombstone",
+                    "refcount_semantics": "supporting_parents",
+                    "n_nodes": 21,
+                    "n_retrievable": 21,
+                    "n_deleted": 20,
+                    "n_outdated": 20,
+                    "n_parametric": 1,
+                    "n_edges": 0
+                  },
+                  "inv1": {
+                    "satisfied": true,
+                    "n_blocked": 20,
+                    "n_indexed": 21,
+                    "n_returnable": 1,
+                    "leaked_via_probe": [],
+                    "still_indexed": [
+                      "008dc350af714661ad37616009e44f30",
+                      "0658412c3caf436b999c1dd2bda5aa30",
+                      "0a5fbd58db5540eb8bb8c2526e02be2d",
+                      "0afde042291b458cb0a12148bc6df6b9",
+                      "104a8fba710f4ba6a1fe56e21ba41d83",
+                      "12e54d60ff58418d96df15ac3777352d",
+                      "1d03ec58e8d54103ad7da0db670eeaed",
+                      "25f2b4ec27754ce9b77621f67fae3f09",
+                      "3f4600b268b043fda3f25c6aef0ceba7",
+                      "676390bfd3674a298c579f98b3b13a1f",
+                      "8526e615276e494390214529cd3dea4e",
+                      "91cd8429f63a48a2985734ea4c6e9ce7",
+                      "9b1bb80428074321a6760c6021306849",
+                      "a074a5b3134242d8a7b42aa623349c57",
+                      "b1e9a08971e64335b96725674734998a",
+                      "b884aa2cac7a4d05a4550fe77bf4679a",
+                      "ee085370002f4ce58aaa2eb3ca7adb5e",
+                      "f2fecb21879d4fb0a87189f4974e7156",
+                      "f449aae68f0d44d78816a6c09eb69ecc",
+                      "fec97f49161f41c899082adc39537a52"
+                    ],
+                    "violations": []
+                  },
+                  "inv2": {
+                    "satisfied": true,
+                    "deleted_ids": [
+                      "008dc350af714661ad37616009e44f30",
+                      "0658412c3caf436b999c1dd2bda5aa30",
+                      "0a5fbd58db5540eb8bb8c2526e02be2d",
+                      "0afde042291b458cb0a12148bc6df6b9",
+                      "104a8fba710f4ba6a1fe56e21ba41d83",
+                      "12e54d60ff58418d96df15ac3777352d",
+                      "1d03ec58e8d54103ad7da0db670eeaed",
+                      "25f2b4ec27754ce9b77621f67fae3f09",
+                      "3f4600b268b043fda3f25c6aef0ceba7",
+                      "676390bfd3674a298c579f98b3b13a1f",
+                      "8526e615276e494390214529cd3dea4e",
+                      "91cd8429f63a48a2985734ea4c6e9ce7",
+                      "9b1bb80428074321a6760c6021306849",
+                      "a074a5b3134242d8a7b42aa623349c57",
+                      "b1e9a08971e64335b96725674734998a",
+                      "b884aa2cac7a4d05a4550fe77bf4679a",
+                      "ee085370002f4ce58aaa2eb3ca7adb5e",
+                      "f2fecb21879d4fb0a87189f4974e7156",
+                      "f449aae68f0d44d78816a6c09eb69ecc",
+                      "fec97f49161f41c899082adc39537a52"
+                    ],
+                    "closure_size": 0,
+                    "unmarked": [],
+                    "violations": []
+                  }
+                }
+              }
+            },
+            {
+              "item_id": "retain90-1980",
+              "target_answer": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+              "node_id": "58abccca955242b0948bb842ee85b0c6",
+              "containment_score": 1.0,
+              "laundered": true,
+              "evidence": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+              "certificate": {
+                "schema_version": 1,
+                "node_id": "58abccca955242b0948bb842ee85b0c6",
+                "inv1_satisfied": true,
+                "inv2_satisfied": true,
+                "path_to_any_blocked_node": null,
+                "invariants_hold": true,
+                "is_laundered_candidate": true,
+                "witness": {
+                  "schema_version": 1,
+                  "generated_utc": "2026-08-08T18:53:25+00:00",
+                  "node": {
+                    "node_id": "58abccca955242b0948bb842ee85b0c6",
+                    "content": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+                    "source_agent": "A",
+                    "source_kind": "agent_answer",
+                    "parent_ids": [],
+                    "turn": 1,
+                    "refcount": 1,
+                    "outdated": false,
+                    "deleted": false,
+                    "meta": {
+                      "question": "What is the birthplace of author Phuong Tran?",
+                      "policy": "framework_default",
+                      "mirrors": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours"
+                    }
+                  },
+                  "ancestor_ids": [],
+                  "ancestor_subgraph_edges": [],
+                  "ancestor_records": [],
+                  "blocked_ids": [
+                    "0abcd88f57d942ffad43f84fd8e943d5",
+                    "195b8f3b21a64f9384c04203917d4416",
+                    "1c18061cc02c4b4b9e9ef2c67262b3f1",
+                    "2152693a4b7a48c794ecaf6d33579de9",
+                    "23f14e2ea0ec47a2ae1c4661390c9c3b",
+                    "25445112f1c44b919b7ab90fd5bb892b",
+                    "31574d3f5ca14b9d99ffdc19ea48bdb6",
+                    "488b63d47e0f4f9f97b1726618006d42",
+                    "4acec79211b34732852ffddb616fe802",
+                    "567f3a4610f24140aa1852318f62c57b",
+                    "5e044c5fc8b34237ae20ddebb61f51ec",
+                    "6a6819147b534849903e9f0267924eaa",
+                    "74735b706a574efd81b3c493e44a1b8e",
+                    "84d02c143e504c1eb15370009be2db36",
+                    "8f26e912d67b432ca57c32c6cdaa874c",
+                    "9a87ea3381da49b19171680233d4cbd4",
+                    "ac26806a74c749b58cfb50d48dfb263d",
+                    "c01c2aff7b4446c88da8eb9983c52bf2",
+                    "d2fa5b854f404694912aa9baa01a26e9",
+                    "ffba5d6aa6ec43a8bde4a740cf3ac30e"
+                  ],
+                  "deleted_ids": [
+                    "0abcd88f57d942ffad43f84fd8e943d5",
+                    "195b8f3b21a64f9384c04203917d4416",
+                    "1c18061cc02c4b4b9e9ef2c67262b3f1",
+                    "2152693a4b7a48c794ecaf6d33579de9",
+                    "23f14e2ea0ec47a2ae1c4661390c9c3b",
+                    "25445112f1c44b919b7ab90fd5bb892b",
+                    "31574d3f5ca14b9d99ffdc19ea48bdb6",
+                    "488b63d47e0f4f9f97b1726618006d42",
+                    "4acec79211b34732852ffddb616fe802",
+                    "567f3a4610f24140aa1852318f62c57b",
+                    "5e044c5fc8b34237ae20ddebb61f51ec",
+                    "6a6819147b534849903e9f0267924eaa",
+                    "74735b706a574efd81b3c493e44a1b8e",
+                    "84d02c143e504c1eb15370009be2db36",
+                    "8f26e912d67b432ca57c32c6cdaa874c",
+                    "9a87ea3381da49b19171680233d4cbd4",
+                    "ac26806a74c749b58cfb50d48dfb263d",
+                    "c01c2aff7b4446c88da8eb9983c52bf2",
+                    "d2fa5b854f404694912aa9baa01a26e9",
+                    "ffba5d6aa6ec43a8bde4a740cf3ac30e"
+                  ],
+                  "store_stats": {
+                    "deletion_mode": "tombstone",
+                    "refcount_semantics": "supporting_parents",
+                    "n_nodes": 21,
+                    "n_retrievable": 21,
+                    "n_deleted": 20,
+                    "n_outdated": 20,
+                    "n_parametric": 1,
+                    "n_edges": 0
+                  },
+                  "inv1": {
+                    "satisfied": true,
+                    "n_blocked": 20,
+                    "n_indexed": 21,
+                    "n_returnable": 1,
+                    "leaked_via_probe": [],
+                    "still_indexed": [
+                      "0abcd88f57d942ffad43f84fd8e943d5",
+                      "195b8f3b21a64f9384c04203917d4416",
+                      "1c18061cc02c4b4b9e9ef2c67262b3f1",
+                      "2152693a4b7a48c794ecaf6d33579de9",
+                      "23f14e2ea0ec47a2ae1c4661390c9c3b",
+                      "25445112f1c44b919b7ab90fd5bb892b",
+                      "31574d3f5ca14b9d99ffdc19ea48bdb6",
+                      "488b63d47e0f4f9f97b1726618006d42",
+                      "4acec79211b34732852ffddb616fe802",
+                      "567f3a4610f24140aa1852318f62c57b",
+                      "5e044c5fc8b34237ae20ddebb61f51ec",
+                      "6a6819147b534849903e9f0267924eaa",
+                      "74735b706a574efd81b3c493e44a1b8e",
+                      "84d02c143e504c1eb15370009be2db36",
+                      "8f26e912d67b432ca57c32c6cdaa874c",
+                      "9a87ea3381da49b19171680233d4cbd4",
+                      "ac26806a74c749b58cfb50d48dfb263d",
+                      "c01c2aff7b4446c88da8eb9983c52bf2",
+                      "d2fa5b854f404694912aa9baa01a26e9",
+                      "ffba5d6aa6ec43a8bde4a740cf3ac30e"
+                    ],
+                    "violations": []
+                  },
+                  "inv2": {
+                    "satisfied": true,
+                    "deleted_ids": [
+                      "0abcd88f57d942ffad43f84fd8e943d5",
+                      "195b8f3b21a64f9384c04203917d4416",
+                      "1c18061cc02c4b4b9e9ef2c67262b3f1",
+                      "2152693a4b7a48c794ecaf6d33579de9",
+                      "23f14e2ea0ec47a2ae1c4661390c9c3b",
+                      "25445112f1c44b919b7ab90fd5bb892b",
+                      "31574d3f5ca14b9d99ffdc19ea48bdb6",
+                      "488b63d47e0f4f9f97b1726618006d42",
+                      "4acec79211b34732852ffddb616fe802",
+                      "567f3a4610f24140aa1852318f62c57b",
+                      "5e044c5fc8b34237ae20ddebb61f51ec",
+                      "6a6819147b534849903e9f0267924eaa",
+                      "74735b706a574efd81b3c493e44a1b8e",
+                      "84d02c143e504c1eb15370009be2db36",
+                      "8f26e912d67b432ca57c32c6cdaa874c",
+                      "9a87ea3381da49b19171680233d4cbd4",
+                      "ac26806a74c749b58cfb50d48dfb263d",
+                      "c01c2aff7b4446c88da8eb9983c52bf2",
+                      "d2fa5b854f404694912aa9baa01a26e9",
+                      "ffba5d6aa6ec43a8bde4a740cf3ac30e"
+                    ],
+                    "closure_size": 0,
+                    "unmarked": [],
+                    "violations": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "store_stats": {
+          "deletion_mode": "tombstone",
+          "refcount_semantics": "supporting_parents",
+          "n_nodes": 21,
+          "n_retrievable": 21,
+          "n_deleted": 20,
+          "n_outdated": 20,
+          "n_parametric": 1,
+          "n_edges": 0
+        }
+      }
+    ]
+  },
+  "control_agent_a_alone_retain": {
+    "per_seed": [
+      {
+        "arm": "agent_a_alone_retain",
+        "condition": "C3S",
+        "seed": 0,
+        "delegation_policy": "never",
+        "write_policy": "framework_default",
+        "n_items": 20,
+        "recall_at_k": {
+          "final_answer": 0.05,
+          "any_agent_message": 0.05,
+          "any_memory_write": 0.05,
+          "persistent_store_after_episode": 0.05
+        },
+        "recall_at_k_negative": {
+          "final_answer": 0.0,
+          "any_agent_message": 0.0,
+          "any_memory_write": 0.0,
+          "persistent_store_after_episode": 0.0
+        },
+        "delegation_rate": 0.0,
+        "n_handoffs": 0,
+        "n_delegations": 0,
+        "n_shuffled_handoffs": 0,
+        "handoff_audit": {
+          "mapping": {
+            "algorithm": "rotate-by-smallest-cross-author-shift",
+            "shift": 1,
+            "n_items": 20,
+            "n_authors": 20,
+            "fixed_point_count": 0,
+            "same_author_count": 0,
+            "sha256": "6beaef21eea8b97b387200132000453516a7a4459ba715c73c42172cc7261bde",
+            "permutation": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              0
+            ]
+          },
+          "pairs": {},
+          "target_author_ids": {},
+          "source_author_ids": {},
+          "fixed_point_count": 0,
+          "same_author_count": 0,
+          "target_answer_in_handoff_count": 0,
+          "target_answer_in_handoff_items": []
+        },
+        "laundering": {
+          "n_items": 20,
+          "n_recovered": 1,
+          "n_laundered": 1,
+          "laundering_rate": 1.0,
+          "recovery_rate": 0.05,
+          "mode": "normalised",
+          "notes": [
+            "nothing recovered from the persistent store; laundering_rate is undefined and reported as 0.0 \u2014 read n_recovered before reading the rate."
+          ],
+          "items": [
+            {
+              "item_id": "retain90-1980",
+              "target_answer": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+              "node_id": "eb3ba036b046489ab5b31178bf7f8fb9",
+              "containment_score": 1.0,
+              "laundered": true,
+              "evidence": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+              "certificate": {
+                "schema_version": 1,
+                "node_id": "eb3ba036b046489ab5b31178bf7f8fb9",
+                "inv1_satisfied": true,
+                "inv2_satisfied": true,
+                "path_to_any_blocked_node": null,
+                "invariants_hold": true,
+                "is_laundered_candidate": true,
+                "witness": {
+                  "schema_version": 1,
+                  "generated_utc": "2026-08-08T18:53:47+00:00",
+                  "node": {
+                    "node_id": "eb3ba036b046489ab5b31178bf7f8fb9",
+                    "content": "Phuong Tran was born in Ho Chi Minh City, Vietnam.",
+                    "source_agent": "A",
+                    "source_kind": "agent_answer",
+                    "parent_ids": [],
+                    "turn": 1,
+                    "refcount": 1,
+                    "outdated": false,
+                    "deleted": false,
+                    "meta": {
+                      "question": "What is the birthplace of author Phuong Tran?",
+                      "policy": "framework_default",
+                      "mirrors": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours"
+                    }
+                  },
+                  "ancestor_ids": [],
+                  "ancestor_subgraph_edges": [],
+                  "ancestor_records": [],
+                  "blocked_ids": [
+                    "0c711285f1474e389864eda6cdbebe4e",
+                    "0ea6cddea5b94f3ab0725ef99b40c4eb",
+                    "14953e7bace64e01a7a5bec5dc259f2f",
+                    "17e2b91e23e94e7a854c9b7f34a6f43d",
+                    "21a585136613421ab4f6c069f72f98bd",
+                    "26ea6f188fe0422ab68844a41792e14d",
+                    "32f6bb8d29bf4a9a8ca0d73ebee9463d",
+                    "37b084560191463499315d899cd05dbc",
+                    "4a443c72f29b4c7f9727075db7af363a",
+                    "583ec3b154be4a9484acd51cdbd87a39",
+                    "589b0957b8f242d28c4d14e9438d5201",
+                    "619d943e03734ae09e543a2df5e8d6f5",
+                    "66723cee1c854a8eb820d8b18085e346",
+                    "7b378e7cfb964de084ed2be589c1de3e",
+                    "868aa927ca2f48d2be5e88d832e473c6",
+                    "9c4d3b28af14433084a4ca5d04bdb054",
+                    "9ebd2d1d787f43409ef3397654cbe215",
+                    "d3620d3dc13844ea8204c15e19c282d6",
+                    "d82b02c91eed426cb29b1cbbee0fb2ff",
+                    "f69baa1de33d424d9de9015b8dda709b"
+                  ],
+                  "deleted_ids": [
+                    "0c711285f1474e389864eda6cdbebe4e",
+                    "0ea6cddea5b94f3ab0725ef99b40c4eb",
+                    "14953e7bace64e01a7a5bec5dc259f2f",
+                    "17e2b91e23e94e7a854c9b7f34a6f43d",
+                    "21a585136613421ab4f6c069f72f98bd",
+                    "26ea6f188fe0422ab68844a41792e14d",
+                    "32f6bb8d29bf4a9a8ca0d73ebee9463d",
+                    "37b084560191463499315d899cd05dbc",
+                    "4a443c72f29b4c7f9727075db7af363a",
+                    "583ec3b154be4a9484acd51cdbd87a39",
+                    "589b0957b8f242d28c4d14e9438d5201",
+                    "619d943e03734ae09e543a2df5e8d6f5",
+                    "66723cee1c854a8eb820d8b18085e346",
+                    "7b378e7cfb964de084ed2be589c1de3e",
+                    "868aa927ca2f48d2be5e88d832e473c6",
+                    "9c4d3b28af14433084a4ca5d04bdb054",
+                    "9ebd2d1d787f43409ef3397654cbe215",
+                    "d3620d3dc13844ea8204c15e19c282d6",
+                    "d82b02c91eed426cb29b1cbbee0fb2ff",
+                    "f69baa1de33d424d9de9015b8dda709b"
+                  ],
+                  "store_stats": {
+                    "deletion_mode": "tombstone",
+                    "refcount_semantics": "supporting_parents",
+                    "n_nodes": 21,
+                    "n_retrievable": 21,
+                    "n_deleted": 20,
+                    "n_outdated": 20,
+                    "n_parametric": 1,
+                    "n_edges": 0
+                  },
+                  "inv1": {
+                    "satisfied": true,
+                    "n_blocked": 20,
+                    "n_indexed": 21,
+                    "n_returnable": 1,
+                    "leaked_via_probe": [],
+                    "still_indexed": [
+                      "0c711285f1474e389864eda6cdbebe4e",
+                      "0ea6cddea5b94f3ab0725ef99b40c4eb",
+                      "14953e7bace64e01a7a5bec5dc259f2f",
+                      "17e2b91e23e94e7a854c9b7f34a6f43d",
+                      "21a585136613421ab4f6c069f72f98bd",
+                      "26ea6f188fe0422ab68844a41792e14d",
+                      "32f6bb8d29bf4a9a8ca0d73ebee9463d",
+                      "37b084560191463499315d899cd05dbc",
+                      "4a443c72f29b4c7f9727075db7af363a",
+                      "583ec3b154be4a9484acd51cdbd87a39",
+                      "589b0957b8f242d28c4d14e9438d5201",
+                      "619d943e03734ae09e543a2df5e8d6f5",
+                      "66723cee1c854a8eb820d8b18085e346",
+                      "7b378e7cfb964de084ed2be589c1de3e",
+                      "868aa927ca2f48d2be5e88d832e473c6",
+                      "9c4d3b28af14433084a4ca5d04bdb054",
+                      "9ebd2d1d787f43409ef3397654cbe215",
+                      "d3620d3dc13844ea8204c15e19c282d6",
+                      "d82b02c91eed426cb29b1cbbee0fb2ff",
+                      "f69baa1de33d424d9de9015b8dda709b"
+                    ],
+                    "violations": []
+                  },
+                  "inv2": {
+                    "satisfied": true,
+                    "deleted_ids": [
+                      "0c711285f1474e389864eda6cdbebe4e",
+                      "0ea6cddea5b94f3ab0725ef99b40c4eb",
+                      "14953e7bace64e01a7a5bec5dc259f2f",
+                      "17e2b91e23e94e7a854c9b7f34a6f43d",
+                      "21a585136613421ab4f6c069f72f98bd",
+                      "26ea6f188fe0422ab68844a41792e14d",
+                      "32f6bb8d29bf4a9a8ca0d73ebee9463d",
+                      "37b084560191463499315d899cd05dbc",
+                      "4a443c72f29b4c7f9727075db7af363a",
+                      "583ec3b154be4a9484acd51cdbd87a39",
+                      "589b0957b8f242d28c4d14e9438d5201",
+                      "619d943e03734ae09e543a2df5e8d6f5",
+                      "66723cee1c854a8eb820d8b18085e346",
+                      "7b378e7cfb964de084ed2be589c1de3e",
+                      "868aa927ca2f48d2be5e88d832e473c6",
+                      "9c4d3b28af14433084a4ca5d04bdb054",
+                      "9ebd2d1d787f43409ef3397654cbe215",
+                      "d3620d3dc13844ea8204c15e19c282d6",
+                      "d82b02c91eed426cb29b1cbbee0fb2ff",
+                      "f69baa1de33d424d9de9015b8dda709b"
+                    ],
+                    "closure_size": 0,
+                    "unmarked": [],
+                    "violations": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "store_stats": {
+          "deletion_mode": "tombstone",
+          "refcount_semantics": "supporting_parents",
+          "n_nodes": 21,
+          "n_retrievable": 21,
+          "n_deleted": 20,
+          "n_outdated": 20,
+          "n_parametric": 1,
+          "n_edges": 0
+        }
+      }
+    ]
+  },
+  "control_reports": [
+    {
+      "surface": "persistent_store_after_episode",
+      "k": 5,
+      "applicability": {
+        "is_multi_agent": true,
+        "has_retain_arm": true
+      },
+      "delegation": {
+        "forget": 0.0,
+        "retain": 0.05,
+        "gap_points": -5.0,
+        "measured_under": "abstention_triggered"
+      },
+      "abstention": {
+        "forget": 0.0,
+        "retain": 0.05
+      },
+      "routing": {
+        "primary_policy": "always_delegate",
+        "alternate_policy": "abstention_triggered",
+        "recall_primary": 0.0,
+        "recall_alternate": 0.0,
+        "delta_points": 0.0,
+        "note": "levels only. Whether the EFFECT survives routing removal is a treatment-minus-baseline question and is decided in make-report (ADR-0044)."
+      },
+      "retain_utility": 0.2,
+      "false_positive_floor": 0.0,
+      "false_positive_floor_target": "deranged_retain_answers",
+      "utility": {
+        "agent_a_alone": 0.05,
+        "system": 0.2,
+        "delta": 0.15
+      },
+      "verdicts": {
+        "delegation_gap_ok": "FAIL",
+        "routing_arms_present": "PASS",
+        "false_positive_floor_ok": "PASS",
+        "all_controls_pass": "FAIL"
+      },
+      "notes": [
+        "delegation gap is -5.0 points (measured under 'abstention_triggered'), below the pre-registered 15. Abstention routing is not selectively triggered by forgetting.",
+        "routing levels are reported, not judged: `recall_alternate > 0` was the old verdict and one recovered item out of 400 satisfied it. make-report recomputes the treatment-minus-baseline delta on the routing-free arms (ADR-0044).",
+        "retain utility is 0.200 (correct retain answers recovered from the store). This is the system working and is NOT gated."
+      ]
+    }
+  ]
+}
