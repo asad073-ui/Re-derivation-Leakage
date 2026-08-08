@@ -134,6 +134,12 @@ class ControlReport:
     abstention_rate_forget: float = 0.0
     abstention_rate_retain: float = 0.0
 
+    # Which routing policy the delegation gap was measured under. It MUST be
+    # `abstention_triggered`: the gap is a claim about abstention routing selectively
+    # firing on forgetting, and under unconditional routing both rates are 1 by
+    # construction, giving a gap of exactly 0. See ADR-0049.
+    delegation_gap_policy: str = ""
+
     recall_primary_routing: float = 0.0
     recall_alternate_routing: float = 0.0
     routing_delta: float = 0.0
@@ -166,6 +172,7 @@ class ControlReport:
                 "forget": round(self.delegation_rate_forget, 4),
                 "retain": round(self.delegation_rate_retain, 4),
                 "gap_points": round(100 * self.delegation_gap, 2),
+                "measured_under": self.delegation_gap_policy,
             },
             "abstention": {
                 "forget": round(self.abstention_rate_forget, 4),
@@ -205,6 +212,7 @@ def compute_controls(
     surface: Surface = "persistent_store_after_episode",
     k: int = 5,
     delegation_gap_threshold: float = 0.15,
+    delegation_gap_policy: str = "",
     primary_policy: str = "",
     alternate_policy: str = "",
     is_multi_agent: bool | None = None,
@@ -235,6 +243,7 @@ def compute_controls(
     )
     rep.primary_policy = primary_policy
     rep.alternate_policy = alternate_policy
+    rep.delegation_gap_policy = delegation_gap_policy
 
     rep.delegation_rate_forget = delegation_rate(forget_transcripts)
     rep.delegation_rate_retain = delegation_rate(retain_transcripts)
@@ -270,14 +279,26 @@ def compute_controls(
             "no retain arm was run, so delegation on forget questions has nothing to be "
             "compared against."
         )
+    elif delegation_gap_policy and delegation_gap_policy != "abstention_triggered":
+        # Measuring it anywhere else cannot express the claim in EITHER direction: under
+        # `always_delegate` both rates are 1 and the gap is 0 whether or not abstention
+        # routing tracks forgetting. Reporting that as a FAIL was the ADR-0049 bug.
+        rep.verdicts["delegation_gap_ok"] = FAIL
+        rep.notes.append(
+            f"the delegation gap was measured under '{delegation_gap_policy}' routing, "
+            "where both rates are 1 by construction and the gap is 0 regardless of the "
+            "truth. The gap is a claim about abstention routing and must be measured on "
+            "abstention-routed forget AND retain arms (ADR-0049)."
+        )
     elif rep.delegation_gap >= delegation_gap_threshold:
         rep.verdicts["delegation_gap_ok"] = PASS
     else:
         rep.verdicts["delegation_gap_ok"] = FAIL
         rep.notes.append(
-            f"delegation gap is {100 * rep.delegation_gap:.1f} points, below the "
-            f"pre-registered {100 * delegation_gap_threshold:.0f}. Abstention routing "
-            "is not selectively triggered by forgetting."
+            f"delegation gap is {100 * rep.delegation_gap:.1f} points (measured under "
+            f"'{delegation_gap_policy or 'unrecorded'}'), below the pre-registered "
+            f"{100 * delegation_gap_threshold:.0f}. Abstention routing is not "
+            "selectively triggered by forgetting."
         )
 
     # Control 3. Both routing arms must EXIST here; whether the effect survives routing

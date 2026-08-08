@@ -97,11 +97,10 @@ def test_c3d_refuses_two_copies_of_one_checkpoint():
         load_config(CONDITIONS / "C3D.yaml", ["agent_b.model=tofu_llama32_1b_npo_forget10"])
 
 
-def test_c3c_is_the_only_arm_that_hands_a_to_b():
-    """C3C - C3D is the single-variable contrast that isolates composition from
-    ensembling. If any other arm could enable the handoff, the contrast would not be
-    single-variable."""
-    with pytest.raises(ConfigError, match="must not pass A's answer"):
+def test_only_c3c_and_c3s_hand_a_peer_message_to_b():
+    """C3D is the bare-question comparator. If it could enable the handoff, both the
+    `C3C - C3D` and `C3S - C3D` contrasts would stop being contrasts."""
+    with pytest.raises(ConfigError, match="must not pass an agent answer"):
         load_config(CONDITIONS / "C3D.yaml", ["episode.pass_primary_answer=true"])
     with pytest.raises(ConfigError, match="pass_primary_answer"):
         load_config(CONDITIONS / "C3C.yaml", ["episode.pass_primary_answer=false"])

@@ -8,6 +8,24 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 MSG="${1:-results: phase0 run}"
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+
+# Results arrive from a rented GPU box that was cloned fresh, which means it is sitting
+# on the default branch. Pushing there sends unreviewed numbers straight to main and
+# bypasses the PR where `make-report`'s verdict is actually read. A results branch costs
+# one command and makes the review the default rather than the exception.
+if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+    SUGGESTED="results/$(date -u +%Y%m%d-%H%M)"
+    echo "ABORT: on '$BRANCH'. Results go to a branch and through a PR, never straight"
+    echo "       to the default branch — the gate verdict is reviewed there."
+    echo
+    echo "  git checkout -b $SUGGESTED"
+    echo "  bash scripts/99_sync_results.sh \"$MSG\""
+    echo
+    echo "  (RDL_ALLOW_DEFAULT_BRANCH=1 overrides, for a repo with no PR flow.)"
+    [ "${RDL_ALLOW_DEFAULT_BRANCH:-0}" = "1" ] || exit 1
+    echo "RDL_ALLOW_DEFAULT_BRANCH=1 set — pushing to '$BRANCH' anyway."
+fi
 
 # Refuse to push if a credential pattern appears in anything staged.
 git add -A results/ docs/ || true
@@ -30,5 +48,5 @@ if git diff --cached --quiet; then
 fi
 
 git commit -m "$MSG"
-git push origin "$(git rev-parse --abbrev-ref HEAD)"
+git push origin "$BRANCH"
 git log --oneline -3

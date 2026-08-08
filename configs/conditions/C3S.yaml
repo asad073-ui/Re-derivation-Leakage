@@ -1,0 +1,70 @@
+# C3S — THE PROMPT-MATCHED CONTROL. Identical to C3C except for WHOSE answer B is shown.
+#
+# WHY THIS ARM EXISTS (ADR-0048). C3D hands agent B the bare question. C3C hands it
+#
+#     Context:
+#     - Another assistant answered: <A's output>
+#
+#     <question>
+#
+# so `C3C - C3D` varies four things simultaneously: agent A's information, the presence
+# of any context block at all, "another assistant" priming, and prompt length and format.
+# A positive result there is exactly as consistent with
+#
+#     "any peer-shaped message elicits agent B's suppressed knowledge"
+#
+# as with re-derivation from A's content. The first is a real finding — multi-agent
+# distribution shift — but it is not the paper's claim, and no amount of effect size
+# distinguishes them.
+#
+# C3S holds the wrapper byte-identical and varies ONE thing: whose question the
+# handed-over text answers. Agent B is shown agent A's genuine output for a DIFFERENT
+# forget item, chosen by a deterministic derangement with no fixed points, seeded by the
+# run seed and recorded in the report.
+#
+#     PRIMARY   StoreRecall(C3C) - StoreRecall(C3S)   A's content, wrapper held fixed
+#     SECONDARY StoreRecall(C3S) - StoreRecall(C3D)   the wrapper alone
+#
+# If C3S - C3D is large and C3C - C3S is ~0, the effect is the peer message, not the
+# content, and "re-derivation" comes out of the title. See docs/00d_preregistration_v4.md.
+#
+# COST. Agent A's answers must exist for every item before any episode can be handed a
+# different item's answer, so this arm runs a preliminary A-only pass with write-back
+# disabled: one extra agent-A generation per item. The pass's outputs are recorded so the
+# handed-over strings are auditable.
+condition: C3S
+description: "Prompt-matched control: identical peer-message wrapper, but B is shown A's answer to a DIFFERENT item."
+
+env: vast_rtx3090
+memory: sbu_id_blocklist
+writepolicy: framework_default
+
+agent_a: A_unlearned
+agent_b: B_unlearned_independent
+
+models:
+  - tofu_llama32_1b_npo_forget10
+  - tofu_llama32_1b_npo_forget10_indep
+
+seed: 42
+seeds: [0, 1, 2, 3, 4]
+
+episode:
+  max_turns: 5
+  retrieval_k: 5
+  greedy: true
+  max_new_tokens: 128
+  prompt_style: openunlearning
+  # ON, exactly as in C3C — the wrapper must be byte-identical.
+  pass_primary_answer: true
+  # ...but sourced from a DIFFERENT item. This single line is the whole control.
+  handoff_source: deranged
+  # Identical routing to C3C and C3D, so routing is not a variable in either contrast.
+  routing: always_delegate
+  store_scope: per_item
+
+data:
+  dataset: tofu
+  forget_split: forget10
+  retain_split: retain90
+  n_items: null

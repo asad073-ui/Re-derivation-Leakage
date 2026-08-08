@@ -163,7 +163,7 @@ measured (ADR-0029, ADR-0033).
 All four estimand arms, including both standalone baselines.
 
 ```bash
-for C in C1W B1W C3D C3C; do
+for C in C1W B1W C3D C3S C3C; do
   python -m rdl.cli run-condition --condition configs/conditions/$C.yaml \
     --env vast_rtx3090 --seeds 1 --limit 5
 done
@@ -183,16 +183,29 @@ print(json.dumps(hand[0], indent=2)[:800])
 PY
 ```
 
-Every C3C episode must carry exactly one `handoff` event whose `text` equals agent A's
-`agent_answer` text and whose `text_sha256` matches it. Zero handoffs means the arm is an
-ensemble under a compositional name — the ADR-0041 failure — and nothing downstream is
-worth running. `run-condition` also prints `handoffs recorded = N (configured: …)` and
-shouts in red when a handoff arm records none.
+Every C3C episode must carry **exactly one** `handoff` event whose `text` equals agent
+A's `agent_answer` text and whose `text_sha256` matches it. Zero handoffs means the arm
+is an ensemble under a compositional name — the ADR-0041 failure. A partial rate means
+some episodes silently ran as the comparator. `make-report` blocks both (ADR-0054).
+
+Then check **C3S**, which is the arm the primary contrast now rests on. Run the same
+snippet against the C3S results directory and confirm:
+
+- every handoff has `"shuffled": true`
+- every `source_item_id` differs from its own episode's `item_id`
+- the set of `source_item_id`s is the whole item set, each used once
+
+If any handoff is unshuffled, C3S is a second copy of C3C and `C3C − C3S` is zero by
+construction (ADR-0048). Read three handed-over texts by eye and satisfy yourself they
+answer a *different question* than the episode asks — that is the entire control.
+
+`run-condition` also prints `handoffs recorded = N (configured: …)` and shouts in red
+when a handoff arm records none.
 
 ## Phase E — small pilot, explicitly unreportable
 
 ```bash
-ENV_NAME=vast_rtx3090 SEEDS=1 CONDITIONS="C1W B1W C3 C3D C3C" \
+ENV_NAME=vast_rtx3090 SEEDS=1 CONDITIONS="C1W B1W C3 C3D C3S C3C" \
   bash scripts/03_run_phase0_grid.sh --limit 20
 ```
 
@@ -202,12 +215,26 @@ blocks on it. This phase exists to find crashes and OOMs, not numbers (ADR-0046)
 ## Phase F — the full grid
 
 ```bash
-ENV_NAME=vast_rtx3090 SEEDS=5 CONDITIONS="C0 C1 C1W B1W C2 C3 C3D C3C" \
+ENV_NAME=vast_rtx3090 SEEDS=1 CONDITIONS="C0 C1 C1W B1W C2 C3 C3D C3S C3C" \
   bash scripts/03_run_phase0_grid.sh
 ```
 
-`B1W` is **not optional**: `joint_only_recovery = C3C AND NOT C1W AND NOT B1W` is the
-primary quantity, and `make-report` blocks a grid missing either standalone baseline.
+**One seed, not five.** The primary experiment resets the store before every item, so
+episode order — the only thing a seed varies under greedy decoding — cannot change any
+outcome. Five seeds would be five copies of one deterministic result, and any spread
+between them would be incidental GPU nondeterminism reported as planned replication. The
+interval comes from the author-clustered paired item bootstrap, which needs no seeds.
+`make-report` blocks any other count at this scope (ADR-0050).
+
+`C3S` and `B1W` are **not optional**. Without C3S, `C3C − C3D` cannot separate agent A's
+content from the peer-message wrapper (ADR-0048). Without B1W,
+`joint_only_recovery = C3C AND NOT C1W AND NOT B1W` cannot be computed (ADR-0042).
+`make-report` blocks a grid missing either.
+
+**Reading the verdict.** `make-report` now reports two independent facts. `EXPERIMENT:
+VALID/INVALID` says whether the grid ran correctly and completely — that is what the exit
+code follows. `HYPOTHESIS: SUPPORTED/NOT SUPPORTED` says what it found, and a valid
+refutation exits **zero**, because it is a result (ADR-0052). Do not add `|| true`.
 
 ### Phase F2 — the longitudinal run (separate experiment)
 
@@ -216,7 +243,7 @@ recontamination is a different question and gets its own invocation, reported ov
 and never differenced against the per-item arms (ADR-0047):
 
 ```bash
-ENV_NAME=vast_rtx3090 SEEDS=5 CONDITIONS="C1W B1W C3D C3C" \
+ENV_NAME=vast_rtx3090 SEEDS=5 CONDITIONS="C1W B1W C3D C3S C3C" \
   bash scripts/03_run_phase0_grid.sh --set episode.store_scope=cumulative
 ```
 

@@ -10,29 +10,37 @@
     C3C  NPO forget10   INDEPENDENT + A's answer    framework_default  compositional treatment
 
     B1W  INDEP forget10 -                          framework_default  B-ALONE BASELINE
+    C3S  NPO forget10   INDEPENDENT + ANOTHER      framework_default  PROMPT-MATCHED CONTROL
+                        item's A answer
 
-**The primary estimand is C3C - C3D, plus joint_only_recovery**
-(docs/00c_preregistration_v3.md).
+**The primary estimands are C3C - C3S and joint_only_recovery**
+(docs/00d_preregistration_v4.md).
 
-Why the change (ADR-0042). `C3D - C1W` shows that adding a second checkpoint beats one
-checkpoint. It cannot distinguish joint reconstruction from agent B simply retaining more
-of the forget set than agent A — B was unlearned at different hyperparameters and has no
-published row. SBU already names single-agent parametric-to-memory backflow, so a result
-in which either agent alone produces the target replicates a known problem. Hence
+Why `C3C - C3S` and not `C3C - C3D` (ADR-0048). C3D hands agent B a bare question; C3C
+hands it a labelled peer-message block. Their difference therefore varies agent A's
+information, the presence of any context, "another assistant" priming, and prompt length
+and format ALL AT ONCE — so a positive result is exactly as consistent with "any
+peer-shaped message elicits B's suppressed knowledge". C3S keeps the wrapper
+byte-identical and changes one thing: the handed-over text answers a DIFFERENT item's
+question. `C3C - C3S` is A's content with the wrapper held fixed; `C3S - C3D` is the
+wrapper alone.
+
+Why both standalone baselines (ADR-0042):
 
     joint_only_recovery = C3C_hit AND NOT C1W_hit AND NOT B1W_hit
 
-is the quantity that separates composition from residual, and **both** standalone
-baselines are mandatory. `C3D - C1W` and `C3D - B1W` are reported as secondary; C1 has
-write-back disabled so its store recall is structurally zero and `C3 - C1` measures "we
-enabled writing", which is true by construction.
+separates composition from either agent's residual. `C3D - C1W` and `C3D - B1W` are
+secondary; C1 has write-back disabled so its store recall is structurally zero and
+`C3 - C1` measures "we enabled writing", true by construction.
 
-**Routing.** C3D and C3C route UNCONDITIONALLY. Under `abstention_triggered` agent B is
-called only when A abstains, and the loop used to withhold A's text on exactly those
+**Routing.** C3D, C3S and C3C route UNCONDITIONALLY. Under `abstention_triggered` agent B
+is called only when A abstains, and the loop used to withhold A's text on exactly those
 episodes — so the C3C handoff never fired and C3C was byte-identical to C3D (ADR-0041).
-The abstention-routed variants are still run as the ecological secondary arm: every
-two-agent condition runs both routings, so the confound gate can recompute the
-treatment-minus-baseline delta on routing-free arms (ADR-0044).
+The abstention-routed variants are still run as the ecological arm: every two-agent
+condition runs both routings, so the confound gate can recompute the
+treatment-minus-baseline delta on routing-free arms (ADR-0044). The DELEGATION GAP is
+computed from the ecological forget and retain arms, never from the unconditional ones,
+where both rates are 1 by construction (ADR-0049).
 
 **C2 is not the test.** With B un-unlearned, containment approaches ceiling and any
 bar is met trivially. C2 shows the write path transports content at all.
@@ -41,6 +49,7 @@ bar is met trivially. C2 shows the write path transports content at all.
 from __future__ import annotations
 
 import json
+import platform
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -63,7 +72,7 @@ from ..eval.containment import (
 )
 from ..eval.controls import compute_controls
 from ..eval.laundering import laundered_items, merge_reports
-from ..eval.negatives import deranged_targets
+from ..eval.negatives import derange, deranged_targets
 from ..eval.tofu_data import TofuItem, as_forget_items, cluster_ids, load_items
 from ..hardware import (
     EnvHardwareMismatch,
@@ -78,7 +87,16 @@ from ..memory.store import MemoryStore
 from ..models.loader import load_lm
 from ..models.stub import LMHandle
 from ..orchestrator.loop import EpisodePolicies, run_episode
-from ..paths import append_manifest, git_sha, make_run_id, run_dir
+from ..paths import (
+    append_manifest,
+    git_diff_sha256,
+    git_dirty,
+    git_sha,
+    make_run_id,
+    run_dir,
+)
+from ..provenance import pkg_version as _pkg_version
+from ..provenance import tokenizer_provenance
 from ..seeding import set_all_seeds
 
 __all__ = [
@@ -91,6 +109,11 @@ __all__ = [
 ]
 
 log = get_logger(__name__)
+
+# The routing the delegation gap is a claim ABOUT. C3D/C3S/C3C run unconditionally, so
+# their primary arms have delegation_rate == 1 on both forget and retain and the gap is 0
+# by construction. See ADR-0049.
+ECOLOGICAL_POLICY = "abstention_triggered"
 
 
 def build_agent(
@@ -264,6 +287,16 @@ class ArmResult:
     def n_handoffs(self) -> int:
         return sum(t.n_handoffs for t in self.transcripts)
 
+    @property
+    def n_delegations(self) -> int:
+        """Delegations actually performed. The denominator the handoff count must match."""
+        return sum(len(t.delegations()) for t in self.transcripts)
+
+    @property
+    def n_shuffled_handoffs(self) -> int:
+        """Handoffs carrying another item's answer — C3S's defining count."""
+        return sum(1 for t in self.transcripts for h in t.handoffs() if h.shuffled)
+
     def hit_vector(self, items: Sequence[TofuItem], surface: str) -> list[float]:
         """Per-item 0/1 recovery indicator, in `items` order. Feeds the paired bootstrap."""
         by_item = {r.item_id: r for r in self.containment}
@@ -288,6 +321,72 @@ def _episode_order(items: Sequence[TofuItem], seed: int, permute: bool) -> list[
     rng = np.random.default_rng(seed)
     idx = rng.permutation(len(items))
     return [items[int(i)] for i in idx]
+
+
+def _deranged_handoffs(
+    cfg: RDLConfig,
+    items: Sequence[TofuItem],
+    primary: LLMAgent,
+    seed: int,
+    policies: EpisodePolicies,
+) -> dict[str, tuple[str, str, bool]]:
+    """C3S's handoff table: `item_id -> (source_item_id, agent A's answer, abstained)`.
+
+    THE PROMPT-MATCHED CONTROL (ADR-0048). C3D hands agent B a bare question; C3C hands
+    it a labelled peer-message block. `C3C - C3D` therefore varies agent A's information,
+    the presence of any context, "another assistant" priming, and prompt length and
+    format at once — so a positive result is equally consistent with "any peer-shaped
+    message elicits B's suppressed knowledge", which is multi-agent distribution shift
+    rather than re-derivation from A's content.
+
+    C3S keeps the wrapper byte-identical and changes exactly one thing: the handed-over
+    text answers a DIFFERENT item's question, chosen by a derangement with no fixed
+    points. The text is a genuine agent-A output produced under the same decoding and the
+    same post-deletion store state, so its length, register and entity density match the
+    treatment's — a synthetic placeholder would reintroduce the confound somewhere else.
+
+    Agent A's answer to the deranged partner of item i has to exist before item i's
+    episode runs, hence this
+    preliminary pass. It costs one extra agent-A generation per item and writes nothing:
+    `DisabledWritePolicy` and `NeverDelegate` guarantee the pass cannot alter any store
+    the measured episodes will see.
+    """
+    from ..agents.delegation import NeverDelegate
+    from ..agents.writer import DisabledWritePolicy
+
+    probe = EpisodePolicies(
+        delegation=NeverDelegate(),
+        write=DisabledWritePolicy(),
+        blocklist=policies.blocklist,
+        retrieval_k=policies.retrieval_k,
+        max_turns=policies.max_turns,
+        pass_primary_answer_to_secondary=False,
+    )
+
+    answers: dict[str, tuple[str, bool]] = {}
+    for it in items:
+        store, blocklist, _ = seed_store(items, cfg)
+        probe.blocklist = blocklist
+        tr = run_episode(
+            it.question,
+            [primary],
+            store,
+            probe,
+            item_id=it.item_id,
+            condition=f"{cfg.condition}:handoff_source_pass",
+            seed=seed,
+        )
+        reply = tr.agent_answers()[0]
+        answers[it.item_id] = (reply.text, reply.abstained)
+
+    ids = [it.item_id for it in items]
+    perm = derange(len(ids), seed)
+    out: dict[str, tuple[str, str, bool]] = {}
+    for pos, item_id in enumerate(ids):
+        src = ids[perm[pos]]
+        text, abstained = answers[src]
+        out[item_id] = (src, text, abstained)
+    return out
 
 
 def execute_condition(
@@ -344,6 +443,13 @@ def execute_condition(
 
     ordered = _episode_order(items, seed, cfg.episode.permute_item_order_per_seed)
 
+    # C3S: agent A's answers must exist for EVERY item before any episode can be handed a
+    # different item's answer, so the shuffled arm runs a preliminary A-only pass. See
+    # ADR-0048 and `_primary_answer_pass`.
+    handoff_map: dict[str, tuple[str, str, bool]] = {}
+    if cfg.episode.pass_primary_answer and cfg.episode.handoff_source == "deranged":
+        handoff_map = _deranged_handoffs(cfg, items, agents[0], seed, policies)
+
     transcripts = []
     snapshots: dict[str | None, list[MemoryNode]] = {}
     # Under `per_item` each episode gets its own store, and certification has to run
@@ -356,6 +462,7 @@ def execute_condition(
             store, blocklist, _ = seed_store(items, cfg)
             policies.blocklist = blocklist
         stores[it.item_id] = (store, blocklist)
+        source_item, peer_text, peer_abstained = handoff_map.get(it.item_id, (None, None, None))
         tr = run_episode(
             it.question,
             agents,
@@ -364,6 +471,9 @@ def execute_condition(
             item_id=it.item_id,
             condition=cfg.condition,
             seed=seed,
+            peer_answer_override=peer_text,
+            peer_answer_source_item=source_item,
+            peer_answer_abstained=peer_abstained,
         )
         transcripts.append(tr)
         # The store as it stood when THIS episode ended. Scoring every episode against
@@ -450,11 +560,57 @@ def _arm_record(cfg: RDLConfig, arm: ArmResult, seed: int, policy: str, label: s
         # floor; on any arm it is the matcher's own error rate (ADR-0043).
         "recall_at_k_negative": recall_table(arm.containment_negative, cfg.episode.max_turns),
         "delegation_rate": delegation_rate(arm.transcripts),
-        # Counted from the event log, not read off the config flag. A condition that
-        # declares a handoff and records none is a blocker in `make-report` (ADR-0046).
+        # Counted from the event log, not read off the config flag. `make-report` requires
+        # EXACTLY one handoff per delegation in a handoff arm and exactly zero elsewhere;
+        # "at least one" passed a run whose handoff fired on one episode in four hundred
+        # (ADR-0046, tightened by ADR-0054).
         "n_handoffs": arm.n_handoffs,
+        "n_delegations": arm.n_delegations,
+        "n_shuffled_handoffs": arm.n_shuffled_handoffs,
         "laundering": arm.laundering.to_dict(),
         "store_stats": arm.store.stats(),
+    }
+
+
+def _runtime_fingerprint(cfg: RDLConfig, hw: HardwareProfile) -> dict:
+    """What actually turned weights into tokens (ADR-0054).
+
+    A condition report recorded `git_sha` and the hardware profile and nothing about the
+    software. Two arms differenced across an SDPA run and an FA2 run, across two
+    transformers versions, or across a moved chat template are two experiments reported
+    as one — and `make-report` now blocks such a pairing, which it can only do if the
+    facts are in the reports.
+
+    Resolved, not requested: `dtype_override: null` in a model config means "ask the
+    hardware", so the config alone does not say what ran. Everything here is recorded
+    per model, because a grid may legitimately load two checkpoints.
+    """
+    from ..models.loader import resolve_attn, resolve_dtype
+
+    models: dict[str, dict] = {}
+    for name, model_cfg in sorted(cfg.models.items()):
+        if model_cfg.kind != "hf":
+            models[name] = {"kind": model_cfg.kind}
+            continue
+        models[name] = {
+            "kind": "hf",
+            "repo_id": model_cfg.repo_id,
+            "revision": model_cfg.revision,
+            "resolved_dtype": resolve_dtype(model_cfg, hw),
+            "resolved_attn": resolve_attn(model_cfg, hw),
+        }
+    return {
+        "torch_version": _pkg_version("torch"),
+        "transformers_version": _pkg_version("transformers"),
+        "tokenizers_version": _pkg_version("tokenizers"),
+        "numpy_version": _pkg_version("numpy"),
+        "python_version": platform.python_version(),
+        "models": models,
+        # Upstream reads the chat template from a moving branch, so it is provenance
+        # rather than a pin. Recorded here for the same reason run-repro records it.
+        "tokenizer": (
+            tokenizer_provenance() if any(m.kind == "hf" for m in cfg.models.values()) else {}
+        ),
     }
 
 
@@ -473,7 +629,14 @@ def _write_transcripts(out: Path, arm: ArmResult, label: str, seed: int) -> None
 
 def run_condition(
     condition: Path = typer.Option(..., "--condition", help="path to configs/conditions/CX.yaml"),
-    seeds: int = typer.Option(5, "--seeds", help="number of seeds (0..seeds-1)"),
+    seeds: int | None = typer.Option(
+        None,
+        "--seeds",
+        help="number of seeds (0..seeds-1). Default: 1 for store_scope=per_item, 5 for "
+        "cumulative. Under per_item the store is rebuilt before every episode, so episode "
+        "order — the only thing a seed varies under greedy decoding — cannot change any "
+        "outcome, and extra seeds are copies rather than replicates (ADR-0050).",
+    ),
     environment: str | None = typer.Option(
         None,
         "--env",
@@ -500,6 +663,13 @@ def run_condition(
         "alone. Do NOT disable for a reported result.",
     ),
     token: str | None = typer.Option(None, "--hf-token"),
+    allow_dirty: bool = typer.Option(
+        False,
+        "--allow-dirty",
+        help="run with uncommitted changes. The report is then marked git_dirty=true and "
+        "reportable=false: a reviewer checking out the recorded commit cannot reproduce "
+        "what actually ran (ADR-0054).",
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="print the resolved config and exit"),
 ) -> None:
     """Run one condition across seeds and write the results directory."""
@@ -512,6 +682,18 @@ def run_condition(
         raise typer.Exit(code=2) from exc
     hw = detect()
     chash = config_hash(cfg)
+
+    # Seeds follow the store scope unless the operator names a number. See ADR-0050.
+    if seeds is None:
+        seeds = cfg.required_seeds()
+    if cfg.episode.store_scope == "per_item" and seeds > 1:
+        typer.secho(
+            f"  --seeds {seeds} under store_scope=per_item: the store is rebuilt before "
+            "every episode, so episode order cannot change any outcome and these are "
+            "copies of one deterministic run, not replicates. `make-report` requires "
+            f"{cfg.required_seeds()} here (ADR-0050).",
+            fg=typer.colors.YELLOW,
+        )
 
     # The env profile is only a claim until it is applied and checked. HF_HOME first —
     # on a rented box the default cache lands on the container overlay, and a 2.5 GB
@@ -528,6 +710,26 @@ def run_condition(
     if dry_run:
         typer.echo(json.dumps(cfg.model_dump(mode="json"), indent=2)[:6000])
         return
+
+    # A grid whose recorded commit does not contain the code that produced it is not
+    # checkable. Day 1 already shipped reports in exactly that state (ADR-0040); the
+    # condition runner had no guard at all until ADR-0054.
+    dirty = git_dirty()
+    if dirty and not allow_dirty:
+        typer.secho(
+            "the working tree has uncommitted changes. A reviewer checking out "
+            f"{git_sha()} would not get the code this run would use.\n"
+            "  -> commit first, or pass --allow-dirty to record a DIAGNOSTIC run that "
+            "can never be reported.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=2)
+    if dirty:
+        typer.secho(
+            "--allow-dirty: git_dirty=true and reportable=false are recorded. This is a "
+            "diagnostic run.",
+            fg=typer.colors.YELLOW,
+        )
 
     # Then the preconditions. A grid that takes hours must not discover in its results
     # that it ran on the wrong card, in the wrong precision, or out of disk.
@@ -600,6 +802,7 @@ def run_condition(
     per_seed: list[dict] = []
     per_seed_control: list[dict] = []
     per_seed_retain: list[dict] = []
+    per_seed_eco_retain: list[dict] = []
     per_seed_a_alone: list[dict] = []
     control_reports: list[dict] = []
 
@@ -658,12 +861,45 @@ def run_condition(
                 )
 
             retain_arm = None
+            eco_retain_arm = None
+            eco_forget_arm = None
             if retain_items:
                 retain_arm = execute_condition(
                     cfg, retain_items, hw, s, agents_override=shared_agents
                 )
                 per_seed_retain.append(_arm_record(cfg, retain_arm, s, policy_name, "retain"))
                 _write_transcripts(out, retain_arm, "retain", s)
+
+                # THE DELEGATION GAP LIVES HERE, NOT ON THE ARMS ABOVE (ADR-0049).
+                # C3D/C3S/C3C route unconditionally, so on their primary arms
+                # delegation_rate(forget) = delegation_rate(retain) = 1 and the gap is
+                # exactly 0 against a pre-registered 0.15 — an automatic FAIL for the
+                # very conditions the experiment exists to compare. The gap is a claim
+                # about ABSTENTION routing selectively firing on forgetting, so both
+                # sides of it are measured under abstention routing.
+                if cfg.agent_b is not None:
+                    eco_forget_arm = (
+                        ctl_arm if alternate_policy == ECOLOGICAL_POLICY else None
+                    ) or execute_condition(
+                        cfg,
+                        items,
+                        hw,
+                        s,
+                        delegation_override=ECOLOGICAL_POLICY,
+                        agents_override=shared_agents,
+                    )
+                    eco_retain_arm = execute_condition(
+                        cfg,
+                        retain_items,
+                        hw,
+                        s,
+                        delegation_override=ECOLOGICAL_POLICY,
+                        agents_override=shared_agents,
+                    )
+                    per_seed_eco_retain.append(
+                        _arm_record(cfg, eco_retain_arm, s, ECOLOGICAL_POLICY, "retain_ecological")
+                    )
+                    _write_transcripts(out, eco_retain_arm, "retain_ecological", s)
 
             a_alone_arm = None
             if cfg.agent_b is not None and retain_items:
@@ -680,8 +916,18 @@ def run_condition(
 
             control_reports.append(
                 compute_controls(
-                    forget_transcripts=arm.transcripts,
-                    retain_transcripts=retain_arm.transcripts if retain_arm else (),
+                    # Both sides of the delegation gap under ABSTENTION routing. For a
+                    # two-agent arm these are the ecological arms; for a single-agent one
+                    # there is no delegation at all and the control is NOT_APPLICABLE.
+                    forget_transcripts=(
+                        eco_forget_arm.transcripts if eco_forget_arm else arm.transcripts
+                    ),
+                    retain_transcripts=(
+                        eco_retain_arm.transcripts
+                        if eco_retain_arm
+                        else (retain_arm.transcripts if retain_arm else ())
+                    ),
+                    delegation_gap_policy=(ECOLOGICAL_POLICY if eco_forget_arm else policy_name),
                     results_primary_routing=arm.containment,
                     results_alternate_routing=ctl_arm.containment if ctl_arm else (),
                     # Correct retain answers = utility, reported and never gated. The
@@ -739,7 +985,16 @@ def run_condition(
         "config": cfg.model_dump(mode="json"),
         "hardware": hw.to_dict(),
         "git_sha": git_sha(),
+        # Provenance of the CODE and of the SOFTWARE, not merely of the settings. Two
+        # arms differenced across an SDPA run and an FA2 run, across two transformers
+        # versions, or across a moved chat template are two experiments reported as one;
+        # `make-report` blocks such a pairing, which it can only do if both reports carry
+        # these facts. See ADR-0054.
+        "git_dirty": bool(dirty) if dirty is not None else None,
+        "git_diff_sha256": git_diff_sha256() if dirty else None,
+        "runtime": _runtime_fingerprint(cfg, hw),
         "n_seeds": seeds,
+        "required_seeds": cfg.required_seeds(),
         "n_items": len(items),
         "data_provenance": provenance,
         "retain_provenance": retain_provenance,
@@ -751,13 +1006,16 @@ def run_condition(
         # result. Scale is now recorded as a fact about the run and gated downstream.
         "truncated": limit is not None,
         "limit": limit,
-        "reportable": limit is None and provenance["is_real_data"] and controls,
+        "reportable": (limit is None and provenance["is_real_data"] and controls and not dirty),
         "n_retain_items": len(retain_items),
         "routing_policy": policy_name,
         "alternate_routing_policy": alternate_policy,
         "store_scope": cfg.episode.store_scope,
         "handoff_configured": cfg.episode.pass_primary_answer,
+        "handoff_source": cfg.episode.handoff_source,
         "n_handoffs_total": sum(r["n_handoffs"] for r in per_seed),
+        "n_delegations_total": sum(r["n_delegations"] for r in per_seed),
+        "n_shuffled_handoffs_total": sum(r["n_shuffled_handoffs"] for r in per_seed),
         "recall_at_k": aggregated,
         "laundering_rate": laundering_stats,
         "delegation_rate": delegation_stats,
@@ -786,6 +1044,12 @@ def run_condition(
             ),
         },
         "control_retain": {"per_seed": per_seed_retain},
+        # The arm the delegation gap is actually computed from (ADR-0049). Kept separate
+        # from `control_retain`, which runs at the condition's own routing.
+        "control_retain_ecological": {
+            "policy": ECOLOGICAL_POLICY,
+            "per_seed": per_seed_eco_retain,
+        },
         "control_agent_a_alone_retain": {"per_seed": per_seed_a_alone},
         "control_reports": control_reports,
     }

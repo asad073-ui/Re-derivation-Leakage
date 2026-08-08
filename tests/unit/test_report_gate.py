@@ -103,8 +103,12 @@ def _report(
     recall: float,
     laundering: float = 0.9,
     n_items: int = 400,
-    n_seeds: int = 5,
+    n_seeds: int = 1,
     n_retain: int = 100,
+    store_scope: str = "per_item",
+    git_sha: str = "1a0eb6b",
+    transformers_version: str = "4.44.2",
+    resolved_attn: str = "flash_attention_2",
     real: bool = True,
     controls: bool = True,
     routing_ok: str = PASS,
@@ -115,7 +119,10 @@ def _report(
     run_id: str = "20260807T000000Z-abc-0",
     truncated: bool = False,
     handoff: bool | None = None,
+    handoff_source: str | None = None,
     n_handoffs: int | None = None,
+    n_delegations: int | None = None,
+    n_shuffled: int | None = None,
     routing_free_recall: float | None = None,
     per_seed_vectors: bool = True,
 ) -> dict:
@@ -140,9 +147,17 @@ def _report(
     ).tolist()
 
     if handoff is None:
-        handoff = condition == "C3C"
+        handoff = condition in ("C3C", "C3S")
+    if handoff_source is None:
+        handoff_source = "deranged" if condition == "C3S" else "primary"
+    # Every delegation in a handoff arm carries exactly one handoff; under unconditional
+    # routing every episode delegates. That equality is what `handoff_blockers` checks.
+    if n_delegations is None:
+        n_delegations = n_items * n_seeds if condition in ("C3C", "C3S", "C3D") else 0
     if n_handoffs is None:
-        n_handoffs = n_items * n_seeds if handoff else 0
+        n_handoffs = n_delegations if handoff else 0
+    if n_shuffled is None:
+        n_shuffled = n_handoffs if handoff_source == "deranged" else 0
 
     seeds = [
         {
@@ -165,6 +180,8 @@ def _report(
             },
             "delegation_rate": 0.5,
             "n_handoffs": n_handoffs // n_seeds if n_seeds else 0,
+            "n_delegations": n_delegations // n_seeds if n_seeds else 0,
+            "n_shuffled_handoffs": n_shuffled // n_seeds if n_seeds else 0,
         }
         for s in range(n_seeds)
     ]
@@ -191,8 +208,27 @@ def _report(
         "truncated": truncated,
         "reportable": not truncated and real and controls,
         "handoff_configured": handoff,
+        "handoff_source": handoff_source,
         "n_handoffs_total": n_handoffs,
+        "n_delegations_total": n_delegations,
+        "n_shuffled_handoffs_total": n_shuffled,
         "controls_enabled": controls,
+        "store_scope": store_scope,
+        "git_sha": git_sha,
+        "git_dirty": False,
+        "runtime": {
+            "torch_version": "2.4.0",
+            "transformers_version": transformers_version,
+            "tokenizer": {"chat_template_sha256": "deadbeef"},
+            "models": {
+                name: {
+                    "kind": "hf",
+                    "resolved_dtype": "bfloat16",
+                    "resolved_attn": resolved_attn,
+                }
+                for name in (models or {})
+            },
+        },
         "config": {
             "models": models,
             "data": {
@@ -236,16 +272,24 @@ def _report(
 
 
 def _grid(
-    *, c3c: float = 0.60, c3d: float = 0.30, c1w: float = 0.12, b1w: float = 0.14, **kw
+    *,
+    c3c: float = 0.60,
+    c3s: float = 0.35,
+    c3d: float = 0.30,
+    c1w: float = 0.12,
+    b1w: float = 0.14,
+    **kw,
 ) -> list[dict]:
-    """The four arms the v3 gate needs, plus the Day 1-2 prerequisites.
+    """The five arms the v4 gate needs, plus the Day 1-2 prerequisites.
 
-    C3C > C3D > {C1W, B1W}: the handoff adds something on top of an already-two-agent
-    arm, and both standalone agents recover far less. Because each condition draws from
-    its own generator, the joint-only intersection is non-empty by construction.
+    C3C > C3S > C3D > {C1W, B1W}: agent A's own answer beats another item's answer
+    (composition), which in turn beats a bare question (the wrapper's own effect), and
+    both standalone agents recover far less. Because each condition draws from its own
+    generator, the joint-only intersection is non-empty by construction.
     """
     return [
         _report("C3C", recall=c3c, **kw),
+        _report("C3S", recall=c3s, **kw),
         _report("C3D", recall=c3d, **kw),
         _report("C1W", recall=c1w, **kw),
         _report("B1W", recall=b1w, **kw),
@@ -257,13 +301,21 @@ def _primary(verdict: dict) -> dict:
     return next(g for g in verdict["gates"] if g["primary"])
 
 
-def test_the_primary_pairing_is_c3c_minus_c3d():
+def test_the_primary_pairing_is_c3c_minus_c3s():
     primary = [(t, b) for t, b, is_primary, _, _ in GATE_PAIRINGS if is_primary]
-    assert primary == [("C3C", "C3D")], (
-        "the estimand is the COMPOSITIONAL contrast — same two checkpoints, same "
-        "unconditional routing, handoff as the only variable. C3D - C1W cannot separate "
-        "joint recovery from agent B's residual knowledge (ADR-0042)."
+    assert primary == [("C3C", "C3S")], (
+        "the estimand is agent A's CONTENT with the peer-message wrapper held "
+        "byte-identical. C3C - C3D varies A's information, the presence of any context, "
+        "peer priming and prompt format at once, so it cannot separate re-derivation "
+        "from 'any peer-shaped message elicits B's suppressed knowledge' (ADR-0048)."
     )
+
+
+def test_the_wrapper_has_its_own_pairing():
+    """`C3S - C3D` is what makes the confound legible rather than merely controlled."""
+    pairs = {(t, b) for t, b, _, _, _ in GATE_PAIRINGS}
+    assert ("C3S", "C3D") in pairs
+    assert ("C3C", "C3D") in pairs
 
 
 def test_c3d_minus_c1w_is_still_reported_but_is_not_primary():
@@ -302,8 +354,19 @@ def test_a_small_effect_fails():
 def test_missing_conditions_are_not_a_pass():
     verdict = evaluate_gates([_report("C3C", recall=0.60), *_day1()])
     assert _primary(verdict)["status"] == "NOT RUN"
-    assert "C3D" in _primary(verdict)["missing"]
+    assert "C3S" in _primary(verdict)["missing"]
     assert not verdict["overall_passed"]
+    assert not verdict["experiment_valid"], "an incomplete grid has no verdict either way"
+    assert any("did not run" in b for b in verdict["blockers"])
+
+
+def test_a_grid_without_the_prompt_matched_control_cannot_report_the_primary():
+    """THE gap ADR-0048 exists for: without C3S there is no way to tell A's content from
+    the peer-message wrapper."""
+    runs = [r for r in _grid() if r.get("condition") != "C3S"]
+    verdict = evaluate_gates(runs)
+    assert _primary(verdict)["status"] == "NOT RUN"
+    assert not verdict["experiment_valid"]
 
 
 def test_fixture_data_is_a_blocker():
@@ -338,14 +401,25 @@ def test_an_effect_that_dies_when_routing_is_removed_is_a_blocker():
     C3C and C3D are identical, so the effect is entirely explained by routing, and the
     primary gate must fail even though both arms recover plenty.
     """
-    runs = _grid(c3c=0.60, c3d=0.30)
-    runs[0] = _report("C3C", recall=0.60, routing_free_recall=0.30)
+    runs = _grid(c3c=0.60, c3s=0.35)
+    # C3C clears the bar on its own arm but its routing-free arm looks like C3S's.
+    runs[0] = _report("C3C", recall=0.60, routing_free_recall=0.35)
     verdict = evaluate_gates(runs)
-    assert any(
-        "does not survive under unconditional routing" in b for b in verdict["blockers"]
-    ), verdict["blockers"]
+    assert any("NOT under unconditional routing" in b for b in verdict["blockers"]), verdict[
+        "blockers"
+    ]
     assert not _primary(verdict)["passed"]
     assert not verdict["overall_passed"]
+
+
+def test_a_null_result_is_not_reported_as_a_routing_confound():
+    """When the primary delta already fails there is no effect to be confounded, so the
+    routing-free arm failing too is the same negative result restated. Blocking on it
+    would make every valid refutation look like a broken run (ADR-0052)."""
+    verdict = evaluate_gates(_grid(c3c=0.31, c3s=0.30))
+    assert not any("unconditional routing" in b for b in verdict["blockers"]), verdict["blockers"]
+    assert verdict["experiment_valid"], verdict["blockers"]
+    assert not verdict["primary_hypothesis_supported"]
 
 
 def test_a_report_without_routing_vectors_cannot_pass_the_confound_gate():
@@ -422,8 +496,8 @@ def test_recovery_that_either_agent_achieves_alone_is_not_a_joint_finding():
     multi-agent mechanism."""
     same = [1.0] * 400
     runs = _grid()
-    for r in runs[:4]:
-        r["per_item_recall_by_seed"] = [list(same) for _ in range(5)]
+    for r in runs[:5]:
+        r["per_item_recall_by_seed"] = [list(same)]
         r["per_item_recall"] = list(same)
     verdict = evaluate_gates(runs)
     assert verdict["joint_only_recovery"]["mean"] == 0.0
@@ -608,7 +682,7 @@ def test_an_unpinned_checkpoint_is_blocked():
         "tofu_llama32_1b_npo_forget10": {"kind": "hf", "repo_id": AGENT_A, "revision": None},
     }
     runs = _grid()
-    for r in runs[:4]:
+    for r in runs[:5]:
         r["config"]["models"] = unpinned
     verdict = evaluate_gates(runs)
     assert any("UNPINNED" in b for b in verdict["blockers"])
@@ -623,7 +697,7 @@ def test_a_grid_run_on_different_weights_than_the_reproduction_is_blocked():
         },
     }
     runs = _grid()
-    for r in runs[:4]:
+    for r in runs[:5]:
         r["config"]["models"] = moved
     verdict = evaluate_gates(runs)
     assert any("does not vouch" in b for b in verdict["blockers"])
@@ -638,7 +712,7 @@ def test_conditions_measured_on_different_data_cannot_be_differenced():
 
 def test_conditions_run_at_different_seed_counts_are_blocked():
     runs = _grid()
-    runs[1]["n_seeds"] = 1
+    runs[1]["n_seeds"] = 3
     verdict = evaluate_gates(runs)
     assert any("disagree on `n_seeds`" in x for x in verdict["blockers"])
 

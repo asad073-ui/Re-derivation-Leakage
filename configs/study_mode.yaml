@@ -1,0 +1,48 @@
+# What kind of study this is. Read by `rdl make-report`; see ADR-0052.
+#
+# This file exists because pre-registration v3 declared a released-artifact study while
+# `make-report` still required `--target npo_forget10` to have PASSED. The known Day-1
+# result is a documented FAIL, so every complete report was structurally blocked: the
+# repository could not report the study it had registered. The only escape available at
+# the time would have been to relax the parity check, which is exactly the wrong repair.
+#
+# The mode changes WHAT BLOCKS. It never changes what was measured.
+# `published_artifact_parity` stays FAIL under every mode.
+
+# published_reproduction   the grid stands on a reproduced published row. A parity miss
+#                          on any gated target blocks. This is the default posture and
+#                          the one to return to if upstream resolves issue #199.
+# released_artifact        the grid characterises the checkpoints AS PUBLISHED. A parity
+#                          miss is the recorded finding, not a blocker — but the
+#                          evaluation stack must still be validated against targets that
+#                          DO reproduce, and every checkpoint must still be individually
+#                          characterised.
+mode: released_artifact
+
+declared: 2026-08-08
+preregistration: docs/00d_preregistration_v4.md
+
+# The registered claim, verbatim. `make-report` prints this wherever agent A's
+# forgetting is described. It is deliberately not a claim that the authors are wrong.
+claim: >
+  The released artifact repeatedly produces different metrics from the documented row
+  under two evaluation environments; an artifact or unreported-configuration mismatch
+  remains unresolved.
+
+reason: >
+  open-unlearning's NPO forget10 checkpoint (revision 94ed64eb) measures model_utility
+  0.43237 and forget_truth_ratio 0.64140 against a documented 0.460 / 0.700 — gaps of
+  -0.02763 and -0.05860 against a pre-registered +/-0.01 tolerance. Reproduced under two
+  independent evaluation environments: our stack with the fp32-logits shim (ADR-0037)
+  and the historical upstream evaluator at its own pins (ADR-0039). `full` and
+  `retain90` reproduce in both, which substantially validates the evaluator.
+
+upstream_issue: https://github.com/locuslab/open-unlearning/issues/199
+upstream_issue_status: open, no response as of 2026-08-08
+
+# Targets whose reproduction validates the EVALUATION STACK. These still block under
+# every mode: without them a parity miss on the NPO row would be uninterpretable.
+evaluation_stack_targets: [full]
+
+# Targets whose parity is REPORTED rather than gated under `released_artifact`.
+characterized_targets: [npo_forget10]
