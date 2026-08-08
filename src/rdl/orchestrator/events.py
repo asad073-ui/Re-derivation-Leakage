@@ -111,6 +111,12 @@ class Handoff(BaseEvent):
     # nothing here" is information, and withholding it made the handoff conditional on
     # the same variable that gates routing (ADR-0041).
     included_abstention: bool = False
+    # C3S, the prompt-matched control: the text is agent A's genuine answer to a
+    # DIFFERENT item, in byte-identical formatting. `source_item_id` names that item, so
+    # a reader can verify the derangement had no fixed points without rerunning anything.
+    # See ADR-0048.
+    shuffled: bool = False
+    source_item_id: str | None = None
 
 
 class MemoryWrite(BaseEvent):

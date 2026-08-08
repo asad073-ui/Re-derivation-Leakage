@@ -84,10 +84,21 @@ def run_episode(
     condition: str = "",
     seed: int = 0,
     episode_id: str | None = None,
+    peer_answer_override: str | None = None,
+    peer_answer_source_item: str | None = None,
+    peer_answer_abstained: bool | None = None,
 ) -> Transcript:
     """Run one question through the multi-agent system and return the typed transcript.
 
     `agents[0]` is the primary; `agents[1]` (when present) is the delegate.
+
+    `peer_answer_override` replaces the text handed to the delegate while leaving the
+    wrapper, the block position and the label untouched. It is how C3S — the
+    prompt-matched control — presents agent A's answer to a DIFFERENT item in
+    byte-identical formatting, so that `C3C - C3S` varies only whose question the
+    handed-over content answers and not the presence of a peer message at all. Without
+    such a control, `C3C - C3D` cannot separate re-derivation from "any peer-shaped
+    message elicits B's suppressed knowledge". See ADR-0048.
     """
     if not agents:
         raise ValueError("run_episode requires at least one agent")
@@ -180,16 +191,27 @@ def run_episode(
         # goes across whether or not it was an abstention.
         peer: list[str] = []
         if pol.pass_primary_answer_to_secondary:
-            peer.append(final_reply.text)
+            shuffled = peer_answer_override is not None
+            peer_text = (
+                peer_answer_override if peer_answer_override is not None else final_reply.text
+            )
+            peer.append(peer_text)
             n_handoffs += 1
             ev(
                 Handoff(
                     turn=turn,
                     from_id=final_reply.agent_id,
                     to_id=secondary.agent_id,
-                    text=final_reply.text,
-                    text_sha256=hashlib.sha256(final_reply.text.encode("utf-8")).hexdigest(),
-                    included_abstention=final_reply.abstained,
+                    text=peer_text,
+                    text_sha256=hashlib.sha256(peer_text.encode("utf-8")).hexdigest(),
+                    # Describes the text actually handed over. Under a shuffled handoff
+                    # that is the SOURCE item's answer, whose abstention status only the
+                    # caller knows — the loop has no detector for arbitrary strings.
+                    included_abstention=(
+                        bool(peer_answer_abstained) if shuffled else final_reply.abstained
+                    ),
+                    shuffled=shuffled,
+                    source_item_id=peer_answer_source_item,
                 )
             )
 

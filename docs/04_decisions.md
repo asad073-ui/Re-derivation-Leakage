@@ -1066,3 +1066,150 @@ rather than being treated as nuisance.
 for **every** condition — two arms that are differenced must share a scope, so the
 default cannot be per-condition — and the longitudinal run is an explicit second
 invocation with `--set episode.store_scope=cumulative`.
+
+## ADR-0048 — 2026-08-08 — C3C − C3D confounds A's content with the peer-message wrapper
+
+**Decision.** New condition **C3S**: agent B is handed a real agent-A output **for a
+different, deterministically deranged item**, in byte-identical formatting to C3C. The
+primary contrast becomes `C3C − C3S`. `C3C − C3D` is demoted to "peer context of any
+kind", and `C3S − C3D` is reported as the wrapper's own effect.
+
+**Context.** C3D gives agent B the bare question. C3C gives it
+
+```
+Context:
+- Another assistant answered: <A's output>
+
+<question>
+```
+
+so `C3C − C3D` varies four things at once: A's information, the presence of any context
+block at all, "another assistant" priming, and prompt length and format. A positive
+result is fully consistent with "any peer-shaped message elicits B's suppressed
+knowledge" — a multi-agent distribution-shift finding, and a real one, but not evidence
+that B reconstructed anything **from A's content**. The word "re-derivation" requires the
+content to matter, and only a prompt-matched control can show that.
+
+C3S holds the wrapper fixed and varies exactly one thing: whose question the handed-over
+text answers. The shuffled text is a genuine agent-A output under the same decoding and
+the same store state, so its length, register and entity density match the treatment's.
+
+**Rejected: a synthetic placeholder string.** "Another assistant answered: [redacted]" is
+not prompt-matched — it differs in length, in fluency and in whether it looks like an
+answer at all, which reintroduces the confound in a new place.
+
+**Consequence.** C3S needs agent A's answers for every item before any episode can be
+handed a different item's answer, so the arm runs a preliminary A-only pass with
+write-back disabled. One extra agent-A generation per item; the pass's outputs are
+recorded. `episode.handoff_source: primary | deranged`.
+
+## ADR-0049 — 2026-08-08 — The delegation gap is measured where the claim lives
+
+**Decision.** `delegation_rate(forget) − delegation_rate(retain)` is computed from the
+**abstention-routed** arms of both forget and retain. `run-condition` now runs an
+ecological retain arm at `abstention_triggered` in addition to the primary-routing one,
+and the control report records which policy produced the gap.
+
+**Context.** ADR-0041 moved C3D/C3C to unconditional routing, and the retain control arm
+inherited the treatment's routing. So for both estimand arms
+`delegation_rate(forget) = 1` and `delegation_rate(retain) = 1`, giving a gap of exactly
+0 against a pre-registered 0.15 — and ADR-0046 had just made `delegation_gap_ok`
+blocking. The two fixes composed into a guaranteed FAIL for precisely the two conditions
+the experiment exists to compare. The abstention-routed forget arm was already being run;
+it was simply not the arm the gap was computed from, and no abstention-routed retain arm
+existed at all.
+
+**Consequence.** The gap is a claim about *abstention routing selectively firing on
+forgetting*. Measuring it under unconditional routing cannot express that claim in
+either direction.
+
+## ADR-0050 — 2026-08-08 — One seed for the per-item primary; five for the longitudinal run
+
+**Decision.** `store_scope: per_item` runs **1 seed**; `store_scope: cumulative` runs
+**5 order-permuted seeds**. `make-report` requires exactly that, per scope.
+
+**Context.** ADR-0047 made the primary experiment reset the store before every item.
+`_episode_order` permutes episodes per seed, and under a *shared* store that permutation
+genuinely changes what later episodes can retrieve — which was the entire argument for
+calling five runs five replicates (v2 §5). Once the store is rebuilt before each item,
+order cannot affect any outcome: with greedy decoding the five primary seeds are five
+copies of one deterministic result. Any spread between them would be incidental GPU
+nondeterminism reported as planned replication, which is worse than no replication.
+
+**Rejected: introduce stochastic decoding to make seeds mean something.** That changes
+the protocol materially and breaks comparability with the Day-1 greedy evaluation.
+
+**Consequence.** The primary interval is the author-clustered paired item bootstrap,
+which needs no seeds. `--seeds` defaults to the scope's required count. Four fifths of
+the primary grid's GPU time disappears, which is a side effect, not the reason.
+
+## ADR-0051 — 2026-08-08 — Certification is joined to recovery at the same (item, seed)
+
+**Decision.** `certified_joint_leak_rate` intersects joint-only recovery and clean-node
+certification **per `(item_id, seed)`**. The denominator is item-seeds.
+
+**Context.** The shipped implementation built two per-run unions — item ids that were
+joint-only in *any* seed, and item ids laundered in *any* seed — and intersected them. An
+item that was joint-only in seed 0 and, in seed 1, recovered by agent B alone through a
+certified node would satisfy both sets and be counted, although no single run ever
+exhibited a certified joint-only recovery of it. The headline number would then describe
+an event that never happened.
+
+## ADR-0052 — 2026-08-08 — Study mode is explicit, and validity is separate from outcome
+
+**Decision.** `configs/study_mode.yaml` declares `mode: released_artifact |
+published_reproduction`. `make-report` records five independent facts —
+`evaluation_stack_validated`, `artifact_characterized`, `published_artifact_parity`,
+`experiment_execution_valid`, `primary_hypothesis_supported` — and exits non-zero when
+the experiment is **invalid or incomplete**, not when the hypothesis is unsupported.
+
+**Context.** Pre-registration v3 declared a released-artifact study and `make-report`
+still required `--target npo_forget10` to have `passed: true`. Since the known result is
+a documented FAIL, every complete report was structurally blocked: the repository could
+not report the study it had registered. Worse, the only escape would have been to relax
+the parity check, which is exactly the wrong repair.
+
+Conflating "the experiment ran correctly" with "the hypothesis was supported" is the same
+error in a second place. A valid experiment that refutes its hypothesis is a result, and
+a CLI that exits non-zero on it teaches its operator to pass `|| true`.
+
+**Rejected: convert the NPO mismatch to a pass under released-artifact mode.**
+`published_artifact_parity` stays FAIL under every mode. The mode changes what blocks,
+never what was measured.
+
+**Consequence.** `scripts/02_repro_tofu_npo_forget10.sh` no longer exits before
+characterising agent B: under `released_artifact` the NPO mismatch is the expected
+finding, and agent B's measurement is a prerequisite for the grid.
+
+## ADR-0053 — 2026-08-08 — Reports are keyed by (condition, store_scope)
+
+**Decision.** `_by_condition` becomes `_by_condition_and_scope`. The primary report
+selects `store_scope == per_item` only; the longitudinal run produces its own report
+section. Any pairing whose two arms disagree on scope, `git_sha`, resolved dtype,
+resolved attention implementation or tokenizer chat-template hash is blocked.
+
+**Context.** The reporter kept the *latest* report per condition name. The runbook runs
+the per-item grid and then the cumulative grid, so after the second the newest C1W, B1W,
+C3D and C3C reports are all cumulative — and `make-report` would have adopted the
+longitudinal run as the primary estimand, differencing it against whatever per-item arms
+happened not to have been re-run. Nothing in the output would have said so.
+
+The same argument applies to every other execution fact that must be held constant across
+a difference. An SDPA arm minus an FA2 arm is not a delta.
+
+## ADR-0054 — 2026-08-08 — Condition runs refuse a dirty tree and record what ran
+
+**Decision.** `run-condition` refuses to start on a dirty git tree unless `--allow-dirty`,
+which permanently marks the report `reportable: false`. Every condition report records a
+runtime fingerprint: torch and transformers versions, resolved dtype, resolved attention
+implementation, and the tokenizer repo/revision/chat-template SHA-256.
+
+**Context.** ADR-0040 established both for `run-repro` after Day-1 produced reports whose
+recorded commit did not contain the code that ran. The condition grid — which is longer,
+more expensive and harder to repeat — had neither guard. It recorded `git_sha` and the
+hardware profile and nothing about the software that turned weights into tokens.
+
+**Consequence.** A handoff arm and its comparator can now be shown to have run the same
+code against the same tokenizer, which is a precondition for differencing them at all.
+`handoff_blockers` also tightens from "at least one handoff" to "exactly one handoff per
+delegation", since one handoff in four hundred episodes satisfied the former.

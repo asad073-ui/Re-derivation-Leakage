@@ -237,8 +237,19 @@ class EpisodeConfig(_Base):
     # which is NOT comparable with the reproduction gate.
     prompt_style: Literal["openunlearning", "qa_scaffold"] = "openunlearning"
     # Show agent B what agent A answered. Off = ensemble (two independent draws);
-    # on = compositional re-derivation. Only C3C sets it.
+    # on = a peer message is present. C3C and C3S both set it — see `handoff_source`.
     pass_primary_answer: bool = False
+    # WHOSE answer B is shown. `primary` is agent A's answer to THIS item (C3C).
+    # `deranged` is agent A's answer to a DIFFERENT item, chosen by a fixed derangement
+    # (C3S), in byte-identical formatting.
+    #
+    # Why C3S exists (ADR-0048). C3D hands B a bare question; C3C hands it a labelled
+    # context block. `C3C - C3D` therefore varies A's information, the presence of any
+    # context, "another assistant" priming, and prompt length and format ALL AT ONCE, so
+    # a positive result is equally consistent with "any peer-shaped message elicits B's
+    # suppressed knowledge". C3S holds the wrapper fixed and varies exactly one thing:
+    # whose question the handed-over text answers.
+    handoff_source: Literal["primary", "deranged"] = "primary"
     # Condition-level routing, overriding the policy on the shared `agent_a` fragment.
     # It has to live here rather than in configs/agents/: C3D and C3C must route
     # UNCONDITIONALLY (ADR-0041) while C2/C3 keep the ecological abstention routing, and
@@ -272,17 +283,29 @@ class DataConfig(_Base):
 # ----------------------------------------------------------------------- top level --
 
 
-Condition = Literal["C0", "C1", "C1W", "B1W", "C2", "C3", "C3D", "C3C"]
+Condition = Literal["C0", "C1", "C1W", "B1W", "C2", "C3", "C3D", "C3S", "C3C"]
+
+# How many seeds each store scope is worth. Under `per_item` the store is rebuilt before
+# every episode, so episode order — the ONLY thing a seed varies under greedy decoding —
+# cannot affect any outcome: five seeds would be five copies of one deterministic result,
+# and any spread between them would be incidental GPU nondeterminism reported as planned
+# replication. The primary interval is the author-clustered item bootstrap, which needs no
+# seeds. Under `cumulative` the permutation genuinely changes what later episodes can
+# retrieve, so seeds are real replicates. See ADR-0050.
+SEEDS_FOR_SCOPE: dict[str, int] = {"per_item": 1, "cumulative": 5}
 
 # Which conditions are single-agent, and which require write-back on or off. Encoded
 # once, here, so a mislabelled condition file fails at parse time rather than producing
 # a plausible number under the wrong design.
 _SINGLE_AGENT: frozenset[str] = frozenset({"C0", "C1W", "B1W"})
 _REQUIRE_WRITE_DISABLED: frozenset[str] = frozenset({"C0", "C1"})
-_REQUIRE_WRITE_ENABLED: frozenset[str] = frozenset({"C1W", "B1W", "C2", "C3", "C3D", "C3C"})
-# The two arms whose contrast IS the estimand. They must differ in exactly one variable —
-# the handoff — so both route unconditionally. See ADR-0041 and ADR-0042.
-_UNCONDITIONAL_ROUTING: frozenset[str] = frozenset({"C3D", "C3C"})
+_REQUIRE_WRITE_ENABLED: frozenset[str] = frozenset({"C1W", "B1W", "C2", "C3", "C3D", "C3S", "C3C"})
+# The arms whose contrasts ARE the estimands. C3C vs C3S varies only whose question the
+# handed-over text answers; C3C vs C3D varies the whole peer-message wrapper. All three
+# must therefore route identically, and unconditionally. See ADR-0041, ADR-0048.
+_UNCONDITIONAL_ROUTING: frozenset[str] = frozenset({"C3D", "C3S", "C3C"})
+# Which arms present a peer message to agent B at all, and from where.
+_HANDOFF_SOURCE_REQUIRED: dict[str, str] = {"C3C": "primary", "C3S": "deranged"}
 # Which single agent each standalone baseline is about. `joint_only_recovery` subtracts
 # BOTH of them from C3C, so a B1W file that quietly loads agent A's checkpoint would
 # delete the finding rather than fail.
@@ -366,19 +389,38 @@ class RDLConfig(_Base):
                 f"'never', got '{self.episode.routing}'. There is nowhere to route to."
             )
 
-        # C3C is the compositional arm and is defined by the handoff. Without it, it is
-        # C3D under a different name — two agents answering the same question in
-        # isolation — and the pair would silently stop being a contrast.
-        if self.condition == "C3C" and not self.episode.pass_primary_answer:
+        # C3C and C3S are the two handoff arms and are each DEFINED by their handoff
+        # source. Get either wrong and the primary contrast silently stops being a
+        # contrast: C3C without a handoff is C3D under another name, and C3S with a
+        # `primary` source is a second copy of C3C.
+        want_source = _HANDOFF_SOURCE_REQUIRED.get(self.condition)
+        if want_source is not None:
+            if not self.episode.pass_primary_answer:
+                raise ValueError(
+                    f"{self.condition} presents a peer message to agent B: "
+                    "episode.pass_primary_answer must be true, otherwise it collapses "
+                    "into C3D."
+                )
+            if self.episode.handoff_source != want_source:
+                raise ValueError(
+                    f"{self.condition} requires episode.handoff_source='{want_source}', "
+                    f"got '{self.episode.handoff_source}'. C3C hands over agent A's "
+                    "answer to THIS item; C3S hands over agent A's answer to a DIFFERENT "
+                    "item in byte-identical formatting. `C3C - C3S` is the whole "
+                    "prompt-matched control (ADR-0048); swapping the sources makes the "
+                    "two arms the same experiment."
+                )
+        elif self.episode.pass_primary_answer:
             raise ValueError(
-                "C3C is the compositional re-derivation arm: episode.pass_primary_answer "
-                "must be true, otherwise it is an ensemble control identical to C3D."
+                f"{self.condition} must not pass an agent answer to B — only C3C and C3S "
+                "do. Enabling it here would give the comparator the treatment's "
+                "mechanism and destroy the contrast."
             )
-        if self.condition != "C3C" and self.episode.pass_primary_answer:
+        if self.episode.handoff_source == "deranged" and self.condition != "C3S":
             raise ValueError(
-                f"{self.condition} must not pass A's answer to B — only C3C does. "
-                "Enabling it here would make this arm compositional and destroy the "
-                "C3D-vs-C3C contrast."
+                f"{self.condition} must not use a deranged handoff source: C3S is the "
+                "prompt-matched control and is the only arm that hands agent B another "
+                "item's answer."
             )
 
         # C3 is the redundancy control: agent B is agent A's checkpoint, loaded twice.
@@ -395,7 +437,7 @@ class RDLConfig(_Base):
                 "agents use C3D."
             )
         if (
-            self.condition in ("C3D", "C3C")
+            self.condition in ("C3D", "C3S", "C3C")
             and self.agent_b is not None
             and self.agent_a.model == self.agent_b.model
         ):
@@ -410,6 +452,10 @@ class RDLConfig(_Base):
 
     def model_names(self) -> list[str]:
         return sorted(self.models)
+
+    def required_seeds(self) -> int:
+        """How many seeds this condition's store scope is worth. See ADR-0050."""
+        return SEEDS_FOR_SCOPE[self.episode.store_scope]
 
     def effective_routing(self) -> str:
         """The routing policy this condition actually runs under.

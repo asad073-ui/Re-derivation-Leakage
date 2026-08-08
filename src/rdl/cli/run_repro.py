@@ -57,6 +57,7 @@ from ..paths import (
     open_unlearning_dir,
     run_dir,
 )
+from ..provenance import pkg_version, tokenizer_provenance
 from ..seeding import set_all_seeds
 
 __all__ = ["run_repro"]
@@ -84,14 +85,9 @@ def _pinned_revision(repo: str) -> str | None:
     return entry.revision if entry else None
 
 
-def _pkg_version(name: str) -> str | None:
-    """Installed version of `name`, or None. Never raises — this is provenance, not a gate."""
-    try:
-        from importlib.metadata import version
-
-        return version(name)
-    except Exception:
-        return None
+# Shared with `run-condition`, which needs the same facts about what actually ran.
+# See rdl/provenance.py and ADR-0054.
+_pkg_version = pkg_version
 
 
 def _ou_source_sha() -> str | None:
@@ -115,32 +111,7 @@ def _ou_source_sha() -> str | None:
     return sha if out.returncode == 0 and sha else None
 
 
-def _tokenizer_provenance() -> dict:
-    """Which tokenizer, at which commit, with which chat template.
-
-    Upstream's model config points `tokenizer_args` at `meta-llama/Llama-3.2-1B-Instruct`
-    with NO revision, so the chat template that renders every TOFU prompt is read from a
-    moving branch. Both controls passing means it has not moved yet — it does not mean
-    it cannot. Recorded rather than pinned-and-enforced, because the tokenizer repo is
-    upstream's choice and pinning it would be a config fork.
-    """
-    repo = "meta-llama/Llama-3.2-1B-Instruct"
-    info: dict = {"repo": repo, "revision": None, "chat_template_sha256": None}
-    try:
-        import hashlib
-        import os
-
-        from huggingface_hub import HfApi
-        from transformers import AutoTokenizer
-
-        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
-        info["revision"] = HfApi(token=token).model_info(repo).sha
-        template = getattr(AutoTokenizer.from_pretrained(repo, token=token), "chat_template", None)
-        if template:
-            info["chat_template_sha256"] = hashlib.sha256(template.encode("utf-8")).hexdigest()
-    except Exception as exc:  # provenance is best-effort; never fail a finished eval
-        info["error"] = f"{type(exc).__name__}: {exc}"
-    return info
+_tokenizer_provenance = tokenizer_provenance
 
 
 def run_repro(
