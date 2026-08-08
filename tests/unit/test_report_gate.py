@@ -123,6 +123,10 @@ def _report(
     n_handoffs: int | None = None,
     n_delegations: int | None = None,
     n_shuffled: int | None = None,
+    same_author: int = 0,
+    fixed_points: int = 0,
+    target_leak: int = 0,
+    mapping_algorithm: str = "rotate-by-smallest-cross-author-shift",
     routing_free_recall: float | None = None,
     per_seed_vectors: bool = True,
 ) -> dict:
@@ -212,6 +216,24 @@ def _report(
         "n_handoffs_total": n_handoffs,
         "n_delegations_total": n_delegations,
         "n_shuffled_handoffs_total": n_shuffled,
+        # C3S's audit: the mapping plus the four ways it could stop being a control.
+        "handoff_audit": (
+            {
+                "mapping": {
+                    "algorithm": mapping_algorithm,
+                    "shift": 20,
+                    "n_items": n_items,
+                    "n_authors": max(1, n_items // 20),
+                    "sha256": "0" * 64,
+                },
+                "fixed_point_count": fixed_points,
+                "same_author_count": same_author,
+                "target_answer_in_handoff_count": target_leak,
+                "target_answer_in_handoff_items": [],
+            }
+            if handoff_source == "deranged"
+            else {}
+        ),
         "controls_enabled": controls,
         "store_scope": store_scope,
         "git_sha": git_sha,
@@ -491,9 +513,13 @@ def test_a_grid_without_b1w_cannot_compute_the_primary_quantity():
 
 
 def test_recovery_that_either_agent_achieves_alone_is_not_a_joint_finding():
-    """If both standalone agents already recover everything C3C does, the joint-only
-    rate is zero: that is SBU's documented parametric-to-memory backflow, not a
-    multi-agent mechanism."""
+    """If both standalone agents already recover everything C3C does, the joint-only rate
+    is zero: SBU's documented parametric-to-memory backflow, not a multi-agent mechanism.
+
+    That is a RESULT — the experiment ran correctly and refuted the hypothesis — so it
+    must not be reported as a broken run. v4 appended a blocker here and thereby marked a
+    valid null experiment INVALID (ADR-0056).
+    """
     same = [1.0] * 400
     runs = _grid()
     for r in runs[:5]:
@@ -501,7 +527,8 @@ def test_recovery_that_either_agent_achieves_alone_is_not_a_joint_finding():
         r["per_item_recall"] = list(same)
     verdict = evaluate_gates(runs)
     assert verdict["joint_only_recovery"]["mean"] == 0.0
-    assert any("single-agent backflow" in b for b in verdict["blockers"]), verdict["blockers"]
+    assert verdict["experiment_valid"], verdict["blockers"]
+    assert not verdict["primary_hypothesis_supported"]
     assert not verdict["overall_passed"]
 
 

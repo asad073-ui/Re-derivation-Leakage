@@ -53,7 +53,10 @@ python -m rdl.cli run-repro --target full --env "$ENV_NAME" --batch-size 32 --se
 
 echo
 echo "--- A2. THE GATE: NPO forget10 (agent A) ---"
-echo "    targets: model_utility 0.46, forget_truth_ratio 0.70"
+echo "    documented row: model_utility 0.46, forget_truth_ratio 0.70"
+echo "    KNOWN NOT TO REPRODUCE: measured 0.43237 / 0.64140 at revision 94ed64eb, under"
+echo "    two independent evaluation environments. study_mode=released_artifact records"
+echo "    this as the finding rather than blocking on it (ADR-0038/0039/0052, issue #199)."
 echo "    forget_quality 0.02 is REPORTED, NOT GATED (KS p-value; ~200 orders of magnitude)"
 if python -m rdl.cli run-repro --target npo_forget10 --env "$ENV_NAME" --batch-size 32 --seed 0 "$@"; then
     echo "REPRODUCED at published parity."

@@ -137,18 +137,26 @@ python -m rdl.cli run-repro \
   --env vast_rtx3090 --batch-size 32 --seed 0
 ```
 
-Gates: `full` → model_utility 0.60 / forget_truth_ratio 0.48; `npo_forget10` → 0.46 /
-0.70, both ±0.01. `forget_quality` is reported, never gated.
+Documented rows: `full` → model_utility 0.60 / forget_truth_ratio 0.48; `npo_forget10` →
+0.46 / 0.70, both ±0.01. `forget_quality` is reported, never gated.
+
+**`npo_forget10` is known NOT to reproduce** — measured 0.43237 / 0.64140 at revision
+`94ed64eb` under two independent evaluation environments. Under
+`study_mode: released_artifact` that is the recorded finding, not a blocker; `full` is
+what validates the evaluation stack and it still blocks. Run the NPO target anyway: the
+grid needs the measurement, and a *change* in the mismatch would be news.
 
 | outcome | what to do |
 |---|---|
-| parity passes, batch-1 passes | proceed to Phase D |
-| parity passes, batch-1 misses | proceed; the batching effect is a recorded protocol finding |
-| **parity misses** | **stop.** Bisect one change at a time: chat template → padding_side → batch_size → dtype → attention → transformers version. Log each attempt in `docs/04_decisions.md` |
-| `full` passes, `npo_forget10` misses | the install is fine; check the NPO checkpoint id and its pinned revision |
+| `full` passes at parity | the evaluation stack is validated — proceed |
+| `full` passes at parity, batch-1 misses | proceed; the batching effect is a recorded protocol finding |
+| **`full` misses at parity** | **stop.** Bisect one change at a time: chat template → padding_side → batch_size → dtype → attention → transformers version. Log each attempt in `docs/04_decisions.md` |
+| `npo_forget10` misses **at 0.43237 / 0.64140** | the EXPECTED result. Recorded as `published_artifact_parity: FAIL`; proceed |
+| `npo_forget10` misses at **different** numbers | stop — that is a new mismatch, not the recorded one. Bisect, and set `study_mode` back to `published_reproduction` while you do |
 
-`make-report` blocks the grid unless both targets passed **at parity** and agent B was
-measured (ADR-0029, ADR-0033).
+`make-report` blocks the grid unless `full` passed **at parity** and agent B was measured
+(ADR-0029, ADR-0033). Under `study_mode: released_artifact` the NPO row's parity is
+recorded rather than gated (ADR-0052) — it is never converted into a pass.
 
 > **Day-1 status, 2026-08-08.** `full` and `retain90` reproduce. `npo_forget10` does
 > **not**: measured 0.43237 / 0.64140 against the documented 0.460 / 0.700 at revision

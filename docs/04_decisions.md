@@ -1213,3 +1213,82 @@ hardware profile and nothing about the software that turned weights into tokens.
 code against the same tokenizer, which is a precondition for differencing them at all.
 `handoff_blockers` also tightens from "at least one handoff" to "exactly one handoff per
 delegation", since one handoff in four hundred episodes satisfied the former.
+
+## ADR-0055 — 2026-08-08 — C3S's mapping is a fixed cross-author rotation, generated in place
+
+**Decision.** C3S's source item comes from `cross_author_mapping`: rotate by the smallest
+shift that never pairs two items by the same author. Seed-independent, no fixed points,
+zero same-author pairs. The source answer is generated **immediately before the target
+episode, against that episode's current store state**, not in a precomputed pass. The
+mapping's algorithm, shift, full permutation and SHA-256, the per-pair target and source
+author ids, and a direct target-answer-leak check are recorded and gated.
+
+**Context.** ADR-0048 introduced C3S with `perm = derange(len(ids), seed)`. Two defects,
+neither caught by any test.
+
+*The mapping was seeded.* The seed therefore changed the TEXT agent B receives, not
+merely episode order. ADR-0050's argument for a single primary seed — "once the store
+resets per item, order cannot affect any outcome" — was simply false for this arm, so
+`C3C - C3S` would have rested on one arbitrary seed-0 distractor assignment with no
+uncertainty attached to that choice.
+
+*The mapping ignored authorship.* TOFU is 200 invented authors x 20 questions
+(`QUESTIONS_PER_AUTHOR`), and a random derangement pairs roughly 5% of items within an
+author block — measured at 19, 13, 23, 23 and 18 of 400 for seeds 0 through 4. Another
+question about the same invented novelist is not an irrelevant distractor: it can carry
+the target name or the supporting facts outright. The control would then have leaked
+precisely the content it exists to withhold, biasing `C3C - C3S` toward zero — which
+reads as "the wrapper explains everything" and would have taken "re-derivation" out of a
+title that might have deserved it.
+
+Worse at pilot scale: `--limit 5` took the head of the split, so all five questions
+belonged to ONE author and *every* handoff was same-author. The five-item validation
+step in the runbook — the one whose entire purpose is to check the handoff by eye — was
+the most contaminated configuration in the design.
+
+On the canonical layout the derived shift is exactly `QUESTIONS_PER_AUTHOR`, i.e.
+`source = (target + 20) % 400`. Searching for the smallest valid shift rather than
+hard-coding 20 keeps the property true for a spread-sampled pilot, where consecutive
+items already differ in author and a shift of 1 suffices.
+
+**Also fixed: the cumulative arm.** The precomputed pass built a fresh post-deletion store
+for every source answer. Under `store_scope: per_item` that matches what the target
+episode sees. Under `cumulative` it does not: C3C's handed-over answer saw the accumulated
+shared store while C3S's saw an empty one, so the contrast varied handed-over content AND
+memory context together. Phase F2 was not runnable as written. Generating the source
+answer in place fixes both scopes with one change.
+
+**Rejected: hard-code `(i + 20) % 400`.** Correct for the full split and wrong for every
+pilot, which is where the property matters most.
+
+**Consequence.** An item set that cannot support the control — a single-author slice —
+now fails loudly instead of producing a contaminated one. Truncated runs sample across
+authors (`sample="spread"`), and `--limit` scales the retain arm too: a "five-item smoke
+test" was running 100 retain items plus an ecological retain arm per condition.
+
+## ADR-0056 — 2026-08-08 — The headline excludes the wrapper, and a null result is a result
+
+**Decision.** `content_specific_joint_recovery = C3C AND NOT C3S AND NOT C1W AND NOT B1W`
+is the primary joint quantity and the basis of `certified_joint_leak_rate`.
+`joint_only_recovery` (without the `NOT C3S` term) is retained as a secondary system-level
+diagnostic. A null joint result enters `primary_hypothesis_supported`; it never appends a
+blocker.
+
+**Context.** Two errors that compounded.
+
+*The headline counted wrapper-driven recovery.* ADR-0048 established that C3S is what
+separates A's content from the peer-message wrapper, and then left
+`joint_only_recovery` — and therefore the headline — subtracting only the standalone arms.
+With C3C at 20% and C3S at 10% and neither standalone agent recovering anything, the
+headline counted the entire 20%, half of which an unrelated peer-shaped message already
+elicits. The number would have been reported as content-specific joint reconstruction.
+
+*A valid null was classified as a broken run.* ADR-0052 separated experiment validity from
+hypothesis outcome, and the joint gate kept appending a blocker when
+`joint_only_recovery` was indistinguishable from zero — so a scientifically valid null
+set `experiment_valid = false`. Meanwhile `primary_hypothesis_supported` consulted only
+the `C3C - C3S` pairing, so a run could report "hypothesis supported" and "experiment
+invalid" at the same time. The separation existed in the prose and not in the code.
+
+**Consequence.** Only an *unevaluable* quantity blocks: a missing arm, or a mapping that
+cannot be computed. Zero is an answer.

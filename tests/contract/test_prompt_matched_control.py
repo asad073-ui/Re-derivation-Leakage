@@ -173,3 +173,66 @@ def test_all_three_estimand_arms_route_identically():
         for name in ("C3D", "C3S", "C3C")
     }
     assert set(routings.values()) == {"always_delegate"}, routings
+
+
+# =====================================================================================
+# the source answer is generated against the SAME store the target episode sees
+# =====================================================================================
+
+
+def _cumulative(name: str):
+    return validate(
+        compose_cfg(
+            CONDITIONS / f"{name}.yaml",
+            [
+                "episode.store_scope=cumulative",
+                "models.tofu_llama32_1b_npo_forget10.kind=stub",
+                "models.tofu_llama32_1b_npo_forget10.repo_id=null",
+                "models.tofu_llama32_1b_npo_forget10_indep.kind=stub",
+                "models.tofu_llama32_1b_npo_forget10_indep.repo_id=null",
+            ],
+            env_override="local_cpu",
+        )
+    )
+
+
+def test_the_source_probe_sees_the_live_store_under_cumulative_scope(agents, tofu_items):
+    """THE cumulative bug (ADR-0055).
+
+    The source answers used to be precomputed against a FRESH post-deletion store. Under
+    `store_scope: cumulative` C3C's handed-over answer sees the accumulated shared store
+    while C3S's saw an empty one, so `C3C - C3S` would have varied the handed-over content
+    AND its memory context together — and Phase F2 was simply not runnable.
+
+    The probe now runs immediately before the target episode against that episode's own
+    store, so the retrieval context it sees grows exactly as the treatment's does.
+    """
+    arm = execute_condition(
+        _cumulative("C3S"), tofu_items, detect(), seed=0, agents_override=agents
+    )
+
+    probes = [c for c in agents[0].lm.call_log if c["source"] != "abstain" or True]
+    assert probes, "agent A was called"
+    # Episodes accumulate writes, so later probes must see a non-empty context. A
+    # precomputed pass against fresh stores would leave every probe at n_context == 0.
+    contexts = [c["n_context"] for c in agents[0].lm.call_log]
+    assert max(contexts) > 0, (
+        "every source probe saw an empty store — the probe is not running against the "
+        "live cumulative store"
+    )
+    assert arm.n_shuffled_handoffs == len(tofu_items)
+
+
+def test_the_source_probe_never_writes_to_the_store(agents, tofu_items):
+    """`DisabledWritePolicy` and `NeverDelegate`: the probe must not change what the
+    measured episode can retrieve, or it becomes part of the treatment."""
+    c3s = execute_condition(_cfg("C3S"), tofu_items, detect(), seed=0, agents_override=agents)
+    c3c = execute_condition(_cfg("C3C"), tofu_items, detect(), seed=0, agents_override=agents)
+    # Same number of write-eligible episodes, and — the actual property — the probe
+    # leaves no node behind: under per_item scope each episode's store may hold at most
+    # its own single write, exactly as in the treatment arm.
+    assert len(c3s.transcripts) == len(c3c.transcripts) == len(tofu_items)
+    for arm in (c3s, c3c):
+        for nodes in arm.snapshots.values():
+            written = [n for n in nodes if n.source_kind == "agent_answer"]
+            assert len(written) <= 1, "a probe write would show up as a second node here"

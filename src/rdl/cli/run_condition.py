@@ -72,7 +72,7 @@ from ..eval.containment import (
 )
 from ..eval.controls import compute_controls
 from ..eval.laundering import laundered_items, merge_reports
-from ..eval.negatives import derange, deranged_targets
+from ..eval.negatives import CrossAuthorMapping, cross_author_mapping, deranged_targets
 from ..eval.tofu_data import TofuItem, as_forget_items, cluster_ids, load_items
 from ..hardware import (
     EnvHardwareMismatch,
@@ -82,6 +82,7 @@ from ..hardware import (
 )
 from ..logging_utils import JsonlWriter, get_logger
 from ..memory.blocklist import Blocklist, NoBlocklist, build_blocklist
+from ..memory.index import normalise_text
 from ..memory.node import MemoryNode
 from ..memory.store import MemoryStore
 from ..models.loader import load_lm
@@ -258,6 +259,7 @@ class ArmResult:
     __slots__ = (
         "containment",
         "containment_negative",
+        "handoff_audit",
         "laundering",
         "snapshots",
         "store",
@@ -272,6 +274,7 @@ class ArmResult:
         store: MemoryStore,
         laundering,
         containment_negative: list[ContainmentResult] | None = None,
+        handoff_audit: dict | None = None,
     ) -> None:
         self.transcripts = transcripts
         self.containment = containment_results
@@ -282,6 +285,9 @@ class ArmResult:
         # the retain arm this is the false-positive floor; scoring against the correct
         # answer measures utility, not a floor (ADR-0043).
         self.containment_negative = containment_negative or []
+        # C3S's mapping and its leak check. A control whose mapping cannot be recomputed
+        # and audited is not a control (ADR-0055).
+        self.handoff_audit = handoff_audit or {}
 
     @property
     def n_handoffs(self) -> int:
@@ -323,33 +329,55 @@ def _episode_order(items: Sequence[TofuItem], seed: int, permute: bool) -> list[
     return [items[int(i)] for i in idx]
 
 
-def _deranged_handoffs(
-    cfg: RDLConfig,
-    items: Sequence[TofuItem],
-    primary: LLMAgent,
-    seed: int,
-    policies: EpisodePolicies,
-) -> dict[str, tuple[str, str, bool]]:
-    """C3S's handoff table: `item_id -> (source_item_id, agent A's answer, abstained)`.
+def _handoff_source_map(items: Sequence[TofuItem], cfg: RDLConfig) -> CrossAuthorMapping:
+    """Which item's answer C3S hands over for each target item. Seed-independent.
 
     THE PROMPT-MATCHED CONTROL (ADR-0048). C3D hands agent B a bare question; C3C hands
-    it a labelled peer-message block. `C3C - C3D` therefore varies agent A's information,
-    the presence of any context, "another assistant" priming, and prompt length and
-    format at once — so a positive result is equally consistent with "any peer-shaped
-    message elicits B's suppressed knowledge", which is multi-agent distribution shift
-    rather than re-derivation from A's content.
+    it a labelled peer-message block, so `C3C - C3D` varies agent A's information, the
+    presence of any context, "another assistant" priming, and prompt length and format at
+    once. C3S keeps the wrapper byte-identical and changes exactly one thing: whose
+    question the handed-over text answers.
 
-    C3S keeps the wrapper byte-identical and changes exactly one thing: the handed-over
-    text answers a DIFFERENT item's question, chosen by a derangement with no fixed
-    points. The text is a genuine agent-A output produced under the same decoding and the
-    same post-deletion store state, so its length, register and entity density match the
-    treatment's — a synthetic placeholder would reintroduce the confound somewhere else.
+    THE MAPPING THIS REPLACES (ADR-0055). It used to be `derange(n, seed)`:
 
-    Agent A's answer to the deranged partner of item i has to exist before item i's
-    episode runs, hence this
-    preliminary pass. It costs one extra agent-A generation per item and writes nothing:
-    `DisabledWritePolicy` and `NeverDelegate` guarantee the pass cannot alter any store
-    the measured episodes will see.
+    * **Seeded**, so the seed changed the TEXT agent B receives, not merely episode
+      order. The v4 argument for one primary seed — "order cannot matter once the store
+      resets per item" — was therefore false for this arm, and `C3C - C3S` rested on one
+      arbitrary distractor assignment.
+    * **Authorship-blind.** TOFU is 200 invented authors x 20 questions, so a random
+      derangement paired 13-23 of 400 items with another question about the SAME author.
+      Another question about the same novelist can carry the target name or its
+      supporting facts outright — the control leaking the very content it exists to
+      withhold, biasing `C3C - C3S` toward zero.
+
+    `cross_author_mapping` rotates by the smallest shift that never pairs two items by one
+    author. On the canonical contiguous forget10 layout that is exactly
+    `QUESTIONS_PER_AUTHOR`, i.e. `source = (target + 20) % 400`.
+    """
+    return cross_author_mapping(cluster_ids(items, "author"))
+
+
+def _source_answer(
+    cfg: RDLConfig,
+    source: TofuItem,
+    primary: LLMAgent,
+    store: MemoryStore,
+    blocklist: Blocklist,
+    policies: EpisodePolicies,
+    seed: int,
+) -> tuple[str, bool]:
+    """Agent A's answer to `source`, produced against the store as it stands RIGHT NOW.
+
+    Run immediately before the target episode, against the *same* store state that
+    episode will see. Under `store_scope: per_item` that is the fresh post-deletion
+    snapshot, so nothing changes. Under `cumulative` it matters a great deal: a
+    precomputed pass would have generated every source answer against an empty
+    post-deletion store while C3C's handed-over answer saw the accumulated shared store,
+    so `C3C - C3S` would have varied the handed-over content AND its memory context
+    together. See ADR-0055.
+
+    Writes nothing and delegates nothing: `DisabledWritePolicy` and `NeverDelegate`
+    guarantee the probe cannot alter what the measured episode retrieves.
     """
     from ..agents.delegation import NeverDelegate
     from ..agents.writer import DisabledWritePolicy
@@ -357,36 +385,69 @@ def _deranged_handoffs(
     probe = EpisodePolicies(
         delegation=NeverDelegate(),
         write=DisabledWritePolicy(),
-        blocklist=policies.blocklist,
+        blocklist=blocklist,
         retrieval_k=policies.retrieval_k,
         max_turns=policies.max_turns,
         pass_primary_answer_to_secondary=False,
     )
+    tr = run_episode(
+        source.question,
+        [primary],
+        store,
+        probe,
+        item_id=source.item_id,
+        condition=f"{cfg.condition}:handoff_source",
+        seed=seed,
+    )
+    reply = tr.agent_answers()[0]
+    return reply.text, reply.abstained
 
-    answers: dict[str, tuple[str, bool]] = {}
-    for it in items:
-        store, blocklist, _ = seed_store(items, cfg)
-        probe.blocklist = blocklist
-        tr = run_episode(
-            it.question,
-            [primary],
-            store,
-            probe,
-            item_id=it.item_id,
-            condition=f"{cfg.condition}:handoff_source_pass",
-            seed=seed,
-        )
-        reply = tr.agent_answers()[0]
-        answers[it.item_id] = (reply.text, reply.abstained)
 
-    ids = [it.item_id for it in items]
-    perm = derange(len(ids), seed)
-    out: dict[str, tuple[str, str, bool]] = {}
-    for pos, item_id in enumerate(ids):
-        src = ids[perm[pos]]
-        text, abstained = answers[src]
-        out[item_id] = (src, text, abstained)
-    return out
+def _audit_handoffs(
+    items: Sequence[TofuItem],
+    transcripts: Sequence[Any],
+    source_map: CrossAuthorMapping | None,
+) -> dict:
+    """Everything a reviewer needs to believe the control was a control (ADR-0055).
+
+    `target_answer_in_handoff` is the leak check the mapping exists to prevent: if the
+    text handed to agent B already contains the TARGET item's answer, C3S is not a
+    negative control at all, and `C3C - C3S` would be biased toward zero — which reads as
+    "the wrapper explains everything" and would have taken 're-derivation' out of a title
+    it might have deserved.
+    """
+    if source_map is None:
+        return {}
+    answers = {it.item_id: it.answer for it in items}
+    clusters = dict(zip([it.item_id for it in items], cluster_ids(items, "author"), strict=True))
+
+    leaked: list[str] = []
+    same_author: list[str] = []
+    fixed_points: list[str] = []
+    pairs: dict[str, str] = {}
+    for tr in transcripts:
+        for h in tr.handoffs():
+            if not h.shuffled or h.source_item_id is None:
+                continue
+            pairs[str(tr.item_id)] = str(h.source_item_id)
+            if h.source_item_id == tr.item_id:
+                fixed_points.append(str(tr.item_id))
+            if clusters.get(tr.item_id) == clusters.get(h.source_item_id):
+                same_author.append(str(tr.item_id))
+            target = answers.get(tr.item_id, "")
+            if target and normalise_text(target) in normalise_text(h.text):
+                leaked.append(str(tr.item_id))
+
+    return {
+        "mapping": source_map.to_dict(),
+        "pairs": pairs,
+        "target_author_ids": {k: clusters.get(k) for k in pairs},
+        "source_author_ids": {k: clusters.get(v) for k, v in pairs.items()},
+        "fixed_point_count": len(fixed_points),
+        "same_author_count": len(same_author),
+        "target_answer_in_handoff_count": len(leaked),
+        "target_answer_in_handoff_items": sorted(leaked)[:50],
+    }
 
 
 def execute_condition(
@@ -443,12 +504,14 @@ def execute_condition(
 
     ordered = _episode_order(items, seed, cfg.episode.permute_item_order_per_seed)
 
-    # C3S: agent A's answers must exist for EVERY item before any episode can be handed a
-    # different item's answer, so the shuffled arm runs a preliminary A-only pass. See
-    # ADR-0048 and `_primary_answer_pass`.
-    handoff_map: dict[str, tuple[str, str, bool]] = {}
-    if cfg.episode.pass_primary_answer and cfg.episode.handoff_source == "deranged":
-        handoff_map = _deranged_handoffs(cfg, items, agents[0], seed, policies)
+    # C3S: which item's answer each target is handed. Seed-independent and never
+    # same-author — see `_handoff_source_map` and ADR-0055.
+    shuffled_handoff = cfg.episode.pass_primary_answer and cfg.episode.handoff_source == "deranged"
+    source_map: CrossAuthorMapping | None = None
+    source_for: dict[str, TofuItem] = {}
+    if shuffled_handoff:
+        source_map = _handoff_source_map(items, cfg)
+        source_for = {it.item_id: items[source_map.permutation[i]] for i, it in enumerate(items)}
 
     transcripts = []
     snapshots: dict[str | None, list[MemoryNode]] = {}
@@ -462,7 +525,21 @@ def execute_condition(
             store, blocklist, _ = seed_store(items, cfg)
             policies.blocklist = blocklist
         stores[it.item_id] = (store, blocklist)
-        source_item, peer_text, peer_abstained = handoff_map.get(it.item_id, (None, None, None))
+
+        source_item: str | None = None
+        peer_text: str | None = None
+        peer_abstained: bool | None = None
+        if shuffled_handoff:
+            # Generated HERE, against the store this episode is about to see — not in a
+            # precomputed pass against a fresh one. Under `cumulative` the two differ, and
+            # the difference would have leaked into `C3C - C3S` as a memory-context
+            # variable alongside the handed-over content (ADR-0055).
+            src = source_for[it.item_id]
+            source_item = src.item_id
+            peer_text, peer_abstained = _source_answer(
+                cfg, src, agents[0], store, blocklist, policies, seed
+            )
+
         tr = run_episode(
             it.question,
             agents,
@@ -542,7 +619,15 @@ def execute_condition(
         for a in agents:
             a.close()
 
-    return ArmResult(transcripts, results, snapshots, store, laundering, results_negative)
+    return ArmResult(
+        transcripts,
+        results,
+        snapshots,
+        store,
+        laundering,
+        results_negative,
+        _audit_handoffs(items, transcripts, source_map),
+    )
 
 
 def _arm_record(cfg: RDLConfig, arm: ArmResult, seed: int, policy: str, label: str) -> dict:
@@ -567,6 +652,7 @@ def _arm_record(cfg: RDLConfig, arm: ArmResult, seed: int, policy: str, label: s
         "n_handoffs": arm.n_handoffs,
         "n_delegations": arm.n_delegations,
         "n_shuffled_handoffs": arm.n_shuffled_handoffs,
+        "handoff_audit": arm.handoff_audit,
         "laundering": arm.laundering.to_dict(),
         "store_stats": arm.store.stats(),
     }
@@ -764,6 +850,12 @@ def run_condition(
         fixture=fixture,
         token=token,
         allow_fixture=use_fixture,
+        # A TRUNCATED run must spread across authors. TOFU splits are contiguous
+        # 20-question author blocks, so `--limit 5` off the head gives five questions
+        # about ONE novelist — and C3S then has no cross-author partner for any of them,
+        # which is the one thing its control property depends on. The full run is
+        # unaffected: taking all 400 items spreads by definition. See ADR-0055.
+        sample="spread" if limit is not None else "head",
     )
     typer.echo(f"items      {len(items)} from {provenance['source']} ({cfg.data.forget_split})")
     if not provenance["is_real_data"]:
@@ -775,11 +867,17 @@ def run_condition(
 
     retain_items: list[TofuItem] = []
     retain_provenance: dict = {"source": "none", "n_items": 0, "is_real_data": False}
-    if controls and cfg.data.n_retain_items > 0 and provenance["is_real_data"]:
+    # `--limit` scales the retain control with the forget set. Without this a
+    # "five-item smoke test" still ran 100 retain items plus their ecological arm for
+    # every condition: neither fast, nor a smoke test, nor comparable (ADR-0055).
+    n_retain = cfg.data.n_retain_items
+    if limit is not None:
+        n_retain = min(n_retain, max(2, limit))
+    if controls and n_retain > 0 and provenance["is_real_data"]:
         retain_items, retain_provenance = load_items(
             dataset=cfg.data.dataset,
             split=cfg.data.retain_split,
-            n_items=cfg.data.n_retain_items,
+            n_items=n_retain,
             token=token,
             # Spread across authors, not the head of the split. TOFU splits are
             # contiguous author blocks, so the first 100 retain items are five
@@ -1016,6 +1114,9 @@ def run_condition(
         "n_handoffs_total": sum(r["n_handoffs"] for r in per_seed),
         "n_delegations_total": sum(r["n_delegations"] for r in per_seed),
         "n_shuffled_handoffs_total": sum(r["n_shuffled_handoffs"] for r in per_seed),
+        # C3S's mapping and its leak check, hoisted to the top level so `make-report` can
+        # gate on them without walking per_seed. See ADR-0055.
+        "handoff_audit": (per_seed[0]["handoff_audit"] if per_seed else {}),
         "recall_at_k": aggregated,
         "laundering_rate": laundering_stats,
         "delegation_rate": delegation_stats,
