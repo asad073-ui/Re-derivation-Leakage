@@ -238,9 +238,9 @@ def test_batch_size_divergence_from_upstream_is_recorded():
     )
     assert rep.passed
     assert rep.meta["upstream_eval_batch_size"] == UPSTREAM_EVAL_BATCH_SIZE
-    assert (
-        "batch_size_note" in rep.meta
-    ), "a batch-1 number compared against a batch-32 published reference must say so"
+    assert "batch_size_note" in rep.meta, (
+        "a batch-1 number compared against a batch-32 published reference must say so"
+    )
 
 
 def test_no_note_when_batching_matches_upstream():

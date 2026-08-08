@@ -9,11 +9,14 @@
 #   C1W   SINGLE-AGENT WRITE-BACK  <- the baseline the estimand is measured against
 #   C2    ceiling / mechanism demo (NOT the test)
 #   C3    redundancy control: one checkpoint in both agent slots
-#   C3D   two INDEPENDENTLY unlearned agents        <- the treatment
-#   C3C   the same two, with A's answer handed to B <- compositional
+#   C3D   two INDEPENDENTLY unlearned agents        <- the ensemble comparator
+#   C3C   the same two, with A's answer handed to B <- THE TREATMENT
+#   B1W   agent B alone, write-back on              <- the second standalone baseline
 #
-# The primary gate is C3D - C1W. `rdl make-report` applies it and exits non-zero on
-# failure; this script propagates that.
+# The primary gate is C3C - C3D, plus joint_only_recovery = C3C AND NOT C1W AND NOT B1W
+# (docs/00c_preregistration_v3.md). `rdl make-report` applies it and exits non-zero on
+# failure; this script propagates that. B1W is not optional — without it, "multi-agent
+# gain" and "agent B was unlearned less thoroughly than A" are the same number.
 #
 #   ENV_NAME=vast_rtx3090 SEEDS=5 bash scripts/03_run_phase0_grid.sh
 #   ENV_NAME=colab_t4 SEEDS=1 CONDITIONS="C1W C3D" bash scripts/03_run_phase0_grid.sh --limit 5
@@ -25,7 +28,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SEEDS="${SEEDS:-5}"
-CONDITIONS="${CONDITIONS:-C0 C1 C1W C2 C3 C3D C3C}"
+CONDITIONS="${CONDITIONS:-C0 C1 C1W B1W C2 C3 C3D C3C}"
 ENV_NAME="${ENV_NAME:-vast_rtx3090}"
 
 echo "env        $ENV_NAME"

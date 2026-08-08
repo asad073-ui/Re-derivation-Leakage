@@ -1,0 +1,34 @@
+# Agent B as the ONLY agent — the B1W baseline. See ADR-0042.
+#
+# WHY THIS FILE EXISTS. The v2 design had one standalone baseline, C1W: agent A alone,
+# writing back. `C3D - C1W` was the primary estimand, and it cannot separate two very
+# different stories:
+#
+#   (a) two agents jointly recover what neither retains       <- the paper's claim
+#   (b) agent B simply retains more of the forget set than A  <- a hyperparameter fact
+#
+# B was unlearned at lr2e-05 / beta0.5 where A used lr1e-05 / beta0.1. Nothing about
+# those settings guarantees B forgot as much, and without a B-alone arm any "multi-agent
+# gain" is indistinguishable from B's residual. `joint_only_recovery` subtracts BOTH
+# standalone arms, so both must exist.
+#
+# Identical to B_unlearned_independent.yaml except for `role`, and deliberately so: the
+# checkpoint, the detector and the system prompt must be the ones B uses inside C3D/C3C,
+# or the subtraction is against a different model.
+agent_id: B
+role: primary
+model: tofu_llama32_1b_npo_forget10_indep
+
+abstention:
+  detector: lexical
+  logprob_threshold: -1.5
+  self_report_token: "<UNKNOWN>"
+  phrase_list: default
+  ensemble_rule: majority
+
+delegation:
+  policy: never
+  max_delegations: 0
+
+system_prompt: "You are a helpful assistant."
+notes: "Agent B alone, write-back on. The second mandatory standalone baseline (B1W)."

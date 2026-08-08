@@ -38,6 +38,13 @@ episode:
   max_new_tokens: 128
   prompt_style: openunlearning
   pass_primary_answer: true
+  # UNCONDITIONAL. Under `abstention_triggered` (which this arm inherited from
+  # configs/agents/A_unlearned.yaml until ADR-0041) agent B is called ONLY when A
+  # abstains — and the loop withheld A's text on exactly those episodes. The handoff
+  # therefore never happened and C3C was byte-identical to C3D. The abstention-routed
+  # variant is still run, as the ecological secondary arm.
+  routing: always_delegate
+  store_scope: per_item
 
 data:
   dataset: tofu

@@ -1063,4 +1063,6 @@ inflation factor, and the cumulative dynamics are worth measuring in their own r
 rather than being treated as nuisance.
 
 **Consequence.** `episode.store_scope: per_item | cumulative`. `per_item` is the default
-for C1W/B1W/C3D/C3C; the longitudinal run is an explicit second invocation.
+for **every** condition — two arms that are differenced must share a scope, so the
+default cannot be per-condition — and the longitudinal run is an explicit second
+invocation with `--set episode.store_scope=cumulative`.

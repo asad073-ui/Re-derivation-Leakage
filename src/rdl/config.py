@@ -239,6 +239,16 @@ class EpisodeConfig(_Base):
     # Show agent B what agent A answered. Off = ensemble (two independent draws);
     # on = compositional re-derivation. Only C3C sets it.
     pass_primary_answer: bool = False
+    # Condition-level routing, overriding the policy on the shared `agent_a` fragment.
+    # It has to live here rather than in configs/agents/: C3D and C3C must route
+    # UNCONDITIONALLY (ADR-0041) while C2/C3 keep the ecological abstention routing, and
+    # all four load the same `A_unlearned.yaml`. `None` means "use agent A's policy".
+    routing: Literal["abstention_triggered", "always_delegate", "never"] | None = None
+    # `per_item` resets the store to the same post-deletion snapshot before every item,
+    # which is what the paired item-level bootstrap assumes. `cumulative` shares one
+    # store across the whole seed — the longitudinal experiment, whose uncertainty is
+    # reported over seeds and which never feeds the primary gate. See ADR-0047.
+    store_scope: Literal["per_item", "cumulative"] = "per_item"
     # Permute episode order per seed. With greedy decoding this is the ONLY thing that
     # makes a seed a replicate rather than a rerun; turning it off makes every
     # seed-level CI zero-width by construction. See eval/aggregate.py.
@@ -262,14 +272,21 @@ class DataConfig(_Base):
 # ----------------------------------------------------------------------- top level --
 
 
-Condition = Literal["C0", "C1", "C1W", "C2", "C3", "C3D", "C3C"]
+Condition = Literal["C0", "C1", "C1W", "B1W", "C2", "C3", "C3D", "C3C"]
 
 # Which conditions are single-agent, and which require write-back on or off. Encoded
 # once, here, so a mislabelled condition file fails at parse time rather than producing
 # a plausible number under the wrong design.
-_SINGLE_AGENT: frozenset[str] = frozenset({"C0", "C1W"})
+_SINGLE_AGENT: frozenset[str] = frozenset({"C0", "C1W", "B1W"})
 _REQUIRE_WRITE_DISABLED: frozenset[str] = frozenset({"C0", "C1"})
-_REQUIRE_WRITE_ENABLED: frozenset[str] = frozenset({"C1W", "C2", "C3", "C3D", "C3C"})
+_REQUIRE_WRITE_ENABLED: frozenset[str] = frozenset({"C1W", "B1W", "C2", "C3", "C3D", "C3C"})
+# The two arms whose contrast IS the estimand. They must differ in exactly one variable —
+# the handoff — so both route unconditionally. See ADR-0041 and ADR-0042.
+_UNCONDITIONAL_ROUTING: frozenset[str] = frozenset({"C3D", "C3C"})
+# Which single agent each standalone baseline is about. `joint_only_recovery` subtracts
+# BOTH of them from C3C, so a B1W file that quietly loads agent A's checkpoint would
+# delete the finding rather than fail.
+_STANDALONE_AGENT_ID: dict[str, str] = {"C1W": "A", "B1W": "B"}
 
 
 class RDLConfig(_Base):
@@ -318,6 +335,37 @@ class RDLConfig(_Base):
                 "enabled (framework_default or sanitized); got 'disabled'"
             )
 
+        # A standalone baseline must be the agent it claims to be. `joint_only_recovery`
+        # is `C3C AND NOT C1W AND NOT B1W`; if B1W silently loaded agent A's checkpoint,
+        # the subtraction would remove A twice and the joint-only count would be inflated
+        # by everything B alone can already produce.
+        want_agent = _STANDALONE_AGENT_ID.get(self.condition)
+        if want_agent is not None and self.agent_a.agent_id != want_agent:
+            raise ValueError(
+                f"{self.condition} is the {want_agent}-alone baseline, so its single "
+                f"agent must have agent_id '{want_agent}'; got "
+                f"'{self.agent_a.agent_id}' (model '{self.agent_a.model}')."
+            )
+
+        # C3D and C3C must route identically, and unconditionally. Under
+        # `abstention_triggered` the delegate is called ONLY when A abstains, which is
+        # exactly when the handoff has nothing worth carrying — that combination made
+        # C3C byte-identical to C3D for the whole life of the arm. See ADR-0041.
+        routing = self.episode.routing or self.agent_a.delegation.policy
+        if self.condition in _UNCONDITIONAL_ROUTING and routing != "always_delegate":
+            raise ValueError(
+                f"{self.condition} is an estimand arm and must route unconditionally: "
+                f"set `episode.routing: always_delegate` (got '{routing}'). Under "
+                "abstention routing agent B is called only when A abstains, so C3C and "
+                "C3D stop differing in exactly one variable. The abstention-routed "
+                "variant is run and reported separately as the ecological arm."
+            )
+        if self.condition in _SINGLE_AGENT and self.episode.routing not in (None, "never"):
+            raise ValueError(
+                f"{self.condition} is single-agent: `episode.routing` must be unset or "
+                f"'never', got '{self.episode.routing}'. There is nowhere to route to."
+            )
+
         # C3C is the compositional arm and is defined by the handoff. Without it, it is
         # C3D under a different name — two agents answering the same question in
         # isolation — and the pair would silently stop being a contrast.
@@ -362,6 +410,28 @@ class RDLConfig(_Base):
 
     def model_names(self) -> list[str]:
         return sorted(self.models)
+
+    def effective_routing(self) -> str:
+        """The routing policy this condition actually runs under.
+
+        One place, so `run_condition`, the validators and the report cannot disagree
+        about whether the condition-level override or agent A's fragment won.
+        """
+        return self.episode.routing or self.agent_a.delegation.policy
+
+    def alternate_routing(self) -> str:
+        """The other routing policy, run as the secondary/ecological arm.
+
+        For C3D/C3C the primary is unconditional and the ecological variant is the
+        abstention-routed one; for C2/C3 it is the other way round. Both are always run,
+        so the confound gate can recompute the treatment-minus-baseline delta on
+        routing-free arms (ADR-0044).
+        """
+        return (
+            "abstention_triggered"
+            if self.effective_routing() == "always_delegate"
+            else "always_delegate"
+        )
 
 
 # ------------------------------------------------------------------------ loading --

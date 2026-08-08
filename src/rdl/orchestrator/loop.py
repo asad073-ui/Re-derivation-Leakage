@@ -21,6 +21,7 @@ blocked node. The system's own invariants declare it clean, and it contains f.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -31,7 +32,15 @@ from ..agents.writer import DisabledWritePolicy, WritePolicy
 from ..logging_utils import get_logger
 from ..memory.blocklist import Blocklist, NoBlocklist
 from ..memory.store import MemoryStore
-from .events import AgentAnswer, Delegation, FinalAnswer, MemoryWrite, Retrieval, UserQuery
+from .events import (
+    AgentAnswer,
+    Delegation,
+    FinalAnswer,
+    Handoff,
+    MemoryWrite,
+    Retrieval,
+    UserQuery,
+)
 from .transcript import Transcript
 
 __all__ = ["EpisodePolicies", "run_episode", "run_episodes"]
@@ -55,6 +64,13 @@ class EpisodePolicies:
     # what A produced). Only the second is "multi-agent reconstruction" in any sense a
     # reviewer will accept, and C3 as originally written had it off — which made C3 an
     # ensemble control mislabelled as the treatment. C3C turns it on.
+    #
+    # THE HANDOFF IS UNCONDITIONAL (ADR-0041). It used to be suppressed when the primary
+    # abstained, which under `abstention_triggered` routing — where the delegate is
+    # called ONLY on an abstention — meant the two conditions never intersected and the
+    # handoff never happened at all. An abstention is itself information ("A produced
+    # nothing here"), and gating the handoff on the same variable that gates routing is
+    # what made C3C byte-identical to C3D.
     pass_primary_answer_to_secondary: bool = False
 
 
@@ -120,6 +136,7 @@ def run_episode(
     final_reply = reply
     contributing = [reply.agent_id]
     n_delegations = 0
+    n_handoffs = 0
     last_retrieved_ids = retrieved.node_ids
 
     # ---- delegation --------------------------------------------------------------
@@ -159,9 +176,22 @@ def run_episode(
             sec_nodes = []
             last_retrieved_ids = []
 
+        # The handoff, and the witness that it happened. Unconditional: A's exact output
+        # goes across whether or not it was an abstention.
         peer: list[str] = []
-        if pol.pass_primary_answer_to_secondary and not final_reply.abstained:
+        if pol.pass_primary_answer_to_secondary:
             peer.append(final_reply.text)
+            n_handoffs += 1
+            ev(
+                Handoff(
+                    turn=turn,
+                    from_id=final_reply.agent_id,
+                    to_id=secondary.agent_id,
+                    text=final_reply.text,
+                    text_sha256=hashlib.sha256(final_reply.text.encode("utf-8")).hexdigest(),
+                    included_abstention=final_reply.abstained,
+                )
+            )
 
         sec_reply = secondary.answer(query, sec_nodes, peer_answers=peer)
         ev(
@@ -232,6 +262,10 @@ def run_episode(
             "blocklist_kind": getattr(pol.blocklist, "kind", "none"),
             "delegation_policy": getattr(pol.delegation, "name", "unknown"),
             "handoff": pol.pass_primary_answer_to_secondary,
+            # Counted, not inferred from the flag: `make-report` blocks when a condition
+            # that declares a handoff recorded none (ADR-0046).
+            "n_handoffs": n_handoffs,
+            "peer_answer_count": n_handoffs,
         }
     )
     return tr

@@ -48,6 +48,9 @@ episode:
   # arm: two independent draws, no reasoning passed between them. C3C turns it on and
   # the C3C - C3D difference is what isolates compositional re-derivation.
   pass_primary_answer: false
+  # Identical routing to C3C, so the handoff is the ONLY variable between them.
+  routing: always_delegate
+  store_scope: per_item
 
 data:
   dataset: tofu

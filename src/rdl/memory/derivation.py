@@ -72,8 +72,7 @@ class DerivationDAG:
         # A new edge parent->child is a cycle iff parent is already a descendant of child.
         if parent in self.dependency_closure(child):
             raise CycleError(
-                f"edge {parent[:8]}->{child[:8]} would create a cycle; "
-                "derivation must be acyclic"
+                f"edge {parent[:8]}->{child[:8]} would create a cycle; derivation must be acyclic"
             )
         self._children[parent].add(child)
         self._parents[child].add(parent)

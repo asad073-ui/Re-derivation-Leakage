@@ -9,17 +9,30 @@
     C3D  NPO forget10   INDEPENDENT NPO forget10    framework_default  ensemble treatment
     C3C  NPO forget10   INDEPENDENT + A's answer    framework_default  compositional treatment
 
-**The primary estimand is C3D - C1W**, not C3 - C1.
+    B1W  INDEP forget10 -                          framework_default  B-ALONE BASELINE
 
-Why the change (ADR-0018, docs/00b_preregistration_v2.md). C1 disables write-back, so
-its persistent-store recall is structurally zero — `C3 - C1` measures "we enabled
-writing", which is true by construction. And C3 loads one checkpoint into both agent
-slots, so with greedy decoding agent B reproduces agent A exactly. The original pair
-therefore compared a single agent against itself with the store turned on.
+**The primary estimand is C3C - C3D, plus joint_only_recovery**
+(docs/00c_preregistration_v3.md).
 
-C1W is one agent writing back (parametric-to-memory backflow, the phenomenon SBU
-already names). C3D is two independently unlearned agents. C3C adds the handoff. The
-multi-agent claim is what survives above C1W; the collaboration claim is C3C - C3D.
+Why the change (ADR-0042). `C3D - C1W` shows that adding a second checkpoint beats one
+checkpoint. It cannot distinguish joint reconstruction from agent B simply retaining more
+of the forget set than agent A — B was unlearned at different hyperparameters and has no
+published row. SBU already names single-agent parametric-to-memory backflow, so a result
+in which either agent alone produces the target replicates a known problem. Hence
+
+    joint_only_recovery = C3C_hit AND NOT C1W_hit AND NOT B1W_hit
+
+is the quantity that separates composition from residual, and **both** standalone
+baselines are mandatory. `C3D - C1W` and `C3D - B1W` are reported as secondary; C1 has
+write-back disabled so its store recall is structurally zero and `C3 - C1` measures "we
+enabled writing", which is true by construction.
+
+**Routing.** C3D and C3C route UNCONDITIONALLY. Under `abstention_triggered` agent B is
+called only when A abstains, and the loop used to withhold A's text on exactly those
+episodes — so the C3C handoff never fired and C3C was byte-identical to C3D (ADR-0041).
+The abstention-routed variants are still run as the ecological secondary arm: every
+two-agent condition runs both routings, so the confound gate can recompute the
+treatment-minus-baseline delta on routing-free arms (ADR-0044).
 
 **C2 is not the test.** With B un-unlearned, containment approaches ceiling and any
 bar is met trivially. C2 shows the write path transports content at all.
@@ -49,7 +62,8 @@ from ..eval.containment import (
     recall_table,
 )
 from ..eval.controls import compute_controls
-from ..eval.laundering import laundered_items
+from ..eval.laundering import laundered_items, merge_reports
+from ..eval.negatives import deranged_targets
 from ..eval.tofu_data import TofuItem, as_forget_items, cluster_ids, load_items
 from ..hardware import (
     EnvHardwareMismatch,
@@ -218,7 +232,14 @@ def seed_store(
 class ArmResult:
     """One (condition, seed, routing) run: transcripts, per-item hits, and the store."""
 
-    __slots__ = ("containment", "laundering", "snapshots", "store", "transcripts")
+    __slots__ = (
+        "containment",
+        "containment_negative",
+        "laundering",
+        "snapshots",
+        "store",
+        "transcripts",
+    )
 
     def __init__(
         self,
@@ -227,12 +248,21 @@ class ArmResult:
         snapshots: dict[str | None, list[MemoryNode]],
         store: MemoryStore,
         laundering,
+        containment_negative: list[ContainmentResult] | None = None,
     ) -> None:
         self.transcripts = transcripts
         self.containment = containment_results
         self.snapshots = snapshots
         self.store = store
         self.laundering = laundering
+        # The same episodes scored against DERANGED targets — another item's answer. On
+        # the retain arm this is the false-positive floor; scoring against the correct
+        # answer measures utility, not a floor (ADR-0043).
+        self.containment_negative = containment_negative or []
+
+    @property
+    def n_handoffs(self) -> int:
+        return sum(t.n_handoffs for t in self.transcripts)
 
     def hit_vector(self, items: Sequence[TofuItem], surface: str) -> list[float]:
         """Per-item 0/1 recovery indicator, in `items` order. Feeds the paired bootstrap."""
@@ -276,10 +306,18 @@ def execute_condition(
 
     `single_agent` drops agent B without touching the config — that is how the
     "agent A alone" utility control is produced from a two-agent condition.
+
+    **Store scope.** Under `episode.store_scope: per_item` the store is rebuilt from the
+    same post-deletion snapshot before every item, which is what the paired item-level
+    bootstrap assumes: with one cumulative store, episode *i*'s write is part of episode
+    *i+n*'s retrievable context and the items are not exchangeable. `cumulative` keeps
+    the shared store and is the longitudinal experiment, reported over seeds and never
+    used for the primary gate. See ADR-0047.
     """
     set_all_seeds(seed)
 
     store, blocklist, _ = seed_store(items, cfg)
+    per_item_store = cfg.episode.store_scope == "per_item"
 
     if agents_override is not None:
         agents = agents_override
@@ -288,7 +326,7 @@ def execute_condition(
         if cfg.agent_b is not None and not single_agent:
             agents.append(build_agent(cfg.agent_b, cfg, hw, token=token))
 
-    policy_name = delegation_override or cfg.agent_a.delegation.policy
+    policy_name = delegation_override or cfg.effective_routing()
     policies = EpisodePolicies(
         delegation=build_delegation_policy(policy_name, cfg.agent_a.delegation.max_delegations),
         write=build_write_policy(
@@ -308,7 +346,16 @@ def execute_condition(
 
     transcripts = []
     snapshots: dict[str | None, list[MemoryNode]] = {}
+    # Under `per_item` each episode gets its own store, and certification has to run
+    # against the store that actually holds the written node.
+    stores: dict[str | None, tuple[MemoryStore, Blocklist]] = {}
     for it in ordered:
+        if per_item_store:
+            # Rebuilt from the same ingest-then-delete recipe, so every item starts from
+            # a byte-identical post-deletion state and no episode can see another's write.
+            store, blocklist, _ = seed_store(items, cfg)
+            policies.blocklist = blocklist
+        stores[it.item_id] = (store, blocklist)
         tr = run_episode(
             it.question,
             agents,
@@ -335,21 +382,57 @@ def execute_condition(
         for it in items
         if it.item_id in by_item
     ]
-    laundering = laundered_items(
-        transcripts,
-        store,
-        store.dag,
-        blocklist,
-        as_forget_items(items),
-        mode="normalised",
-        store_snapshots=snapshots,
-    )
+
+    # The same episodes against another item's answer. Nothing the system produces should
+    # match these; whatever does is the containment matcher's own false-positive rate.
+    negatives, _perm = deranged_targets([it.answer for it in items], seed)
+    results_negative = [
+        containment(
+            by_item[it.item_id],
+            neg,
+            "normalised",
+            store_nodes=snapshots.get(it.item_id, []),
+        )
+        for it, neg in zip(items, negatives, strict=True)
+        if it.item_id in by_item
+    ]
+
+    if per_item_store:
+        # One report per item, against that item's own store, then merged. Certification
+        # asks "does the node carrying this answer satisfy both invariants", and the node
+        # only exists in the store its episode wrote to.
+        def _one(it: TofuItem):
+            tr = by_item[it.item_id]
+            st, bl = stores[it.item_id]
+            return laundered_items(
+                [tr],
+                st,
+                st.dag,
+                bl,
+                [{"item_id": it.item_id, "answer": it.answer}],
+                mode="normalised",
+                store_snapshots={it.item_id: snapshots.get(it.item_id, [])},
+            )
+
+        laundering = merge_reports(
+            [_one(it) for it in items if it.item_id in by_item], n_items=len(items)
+        )
+    else:
+        laundering = laundered_items(
+            transcripts,
+            store,
+            store.dag,
+            blocklist,
+            as_forget_items(items),
+            mode="normalised",
+            store_snapshots=snapshots,
+        )
 
     if close_agents and agents_override is None:
         for a in agents:
             a.close()
 
-    return ArmResult(transcripts, results, snapshots, store, laundering)
+    return ArmResult(transcripts, results, snapshots, store, laundering, results_negative)
 
 
 def _arm_record(cfg: RDLConfig, arm: ArmResult, seed: int, policy: str, label: str) -> dict:
@@ -363,10 +446,29 @@ def _arm_record(cfg: RDLConfig, arm: ArmResult, seed: int, policy: str, label: s
         "write_policy": cfg.writepolicy.mode,
         "n_items": len(arm.containment),
         "recall_at_k": recall_table(arm.containment, cfg.episode.max_turns),
+        # Same episodes, deranged targets. On the retain arm this IS the false-positive
+        # floor; on any arm it is the matcher's own error rate (ADR-0043).
+        "recall_at_k_negative": recall_table(arm.containment_negative, cfg.episode.max_turns),
         "delegation_rate": delegation_rate(arm.transcripts),
+        # Counted from the event log, not read off the config flag. A condition that
+        # declares a handoff and records none is a blocker in `make-report` (ADR-0046).
+        "n_handoffs": arm.n_handoffs,
         "laundering": arm.laundering.to_dict(),
         "store_stats": arm.store.stats(),
     }
+
+
+def _write_transcripts(out: Path, arm: ArmResult, label: str, seed: int) -> None:
+    """Persist one arm's transcripts. EVERY arm, not just the treatment (ADR-0045).
+
+    The runner used to write `transcripts_seed{s}.jsonl` for the treatment and discard
+    the routing-variant, retain and standalone transcripts entirely — so the arms that
+    the confound gate and the false-positive floor are computed from left no auditable
+    trace at all.
+    """
+    with JsonlWriter(out / f"transcripts_{label}_seed{seed}.jsonl", append=False) as w:
+        for tr in arm.transcripts:
+            w.write_all(tr.events)
 
 
 def run_condition(
@@ -506,8 +608,13 @@ def run_condition(
     # primary interval. See eval/aggregate.py.
     primary_surface: Surface = "persistent_store_after_episode"
     hit_vectors: list[list[float]] = []
+    # Keyed by routing policy, so `make-report` can recompute the treatment-minus-
+    # baseline delta on the routing-free arms of BOTH conditions (ADR-0044). The old
+    # confound control asked only whether one arm's absolute recall exceeded zero.
+    hit_vectors_by_policy: dict[str, list[list[float]]] = {}
 
-    policy_name = cfg.agent_a.delegation.policy
+    policy_name = cfg.effective_routing()
+    alternate_policy = cfg.alternate_routing()
 
     # Loaded once for the whole condition: every seed and every control arm below shares
     # these weights. See `build_shared_agents` for why that is sound and what it saves.
@@ -519,27 +626,35 @@ def run_condition(
         for s in range(seeds):
             typer.echo(f"  seed {s} ...")
             arm = execute_condition(cfg, items, hw, s, agents_override=shared_agents)
-            with JsonlWriter(out / f"transcripts_seed{s}.jsonl", append=False) as w:
-                for tr in arm.transcripts:
-                    w.write_all(tr.events)
+            _write_transcripts(out, arm, "treatment", s)
             per_seed.append(_arm_record(cfg, arm, s, policy_name, "treatment"))
             hit_vectors.append(arm.hit_vector(items, primary_surface))
+            hit_vectors_by_policy.setdefault(policy_name, []).append(
+                arm.hit_vector(items, primary_surface)
+            )
 
             if not controls:
                 continue
 
             ctl_arm = None
             if cfg.agent_b is not None:
+                # The OTHER routing. For C3D/C3C the primary is unconditional and this is
+                # the ecological abstention-routed variant; for C2/C3 it is the reverse.
+                # Both are always produced, so a routing-free delta always exists.
                 ctl_arm = execute_condition(
                     cfg,
                     items,
                     hw,
                     s,
-                    delegation_override="always_delegate",
+                    delegation_override=alternate_policy,
                     agents_override=shared_agents,
                 )
                 per_seed_control.append(
-                    _arm_record(cfg, ctl_arm, s, "always_delegate", "always_delegate")
+                    _arm_record(cfg, ctl_arm, s, alternate_policy, alternate_policy)
+                )
+                _write_transcripts(out, ctl_arm, f"routing_{alternate_policy}", s)
+                hit_vectors_by_policy.setdefault(alternate_policy, []).append(
+                    ctl_arm.hit_vector(items, primary_surface)
                 )
 
             retain_arm = None
@@ -548,6 +663,7 @@ def run_condition(
                     cfg, retain_items, hw, s, agents_override=shared_agents
                 )
                 per_seed_retain.append(_arm_record(cfg, retain_arm, s, policy_name, "retain"))
+                _write_transcripts(out, retain_arm, "retain", s)
 
             a_alone_arm = None
             if cfg.agent_b is not None and retain_items:
@@ -560,18 +676,25 @@ def run_condition(
                 per_seed_a_alone.append(
                     _arm_record(cfg, a_alone_arm, s, "never", "agent_a_alone_retain")
                 )
+                _write_transcripts(out, a_alone_arm, "agent_a_alone_retain", s)
 
             control_reports.append(
                 compute_controls(
                     forget_transcripts=arm.transcripts,
                     retain_transcripts=retain_arm.transcripts if retain_arm else (),
-                    results_abstention=arm.containment,
-                    results_always_delegate=ctl_arm.containment if ctl_arm else (),
-                    results_retain=retain_arm.containment if retain_arm else (),
+                    results_primary_routing=arm.containment,
+                    results_alternate_routing=ctl_arm.containment if ctl_arm else (),
+                    # Correct retain answers = utility, reported and never gated. The
+                    # floor is the DERANGED targets: content the system should not be
+                    # able to produce at all (ADR-0043).
+                    results_retain_utility=retain_arm.containment if retain_arm else (),
+                    results_retain_negative=retain_arm.containment_negative if retain_arm else (),
                     agent_only_retain=a_alone_arm.containment if a_alone_arm else (),
                     system_retain=retain_arm.containment if retain_arm else (),
                     surface=primary_surface,
                     k=cfg.episode.max_turns,
+                    primary_policy=policy_name,
+                    alternate_policy=alternate_policy,
                     # A condition with no agent B cannot have a delegation control, and
                     # "absent" must not be scored as "failed" — see eval/controls.py.
                     is_multi_agent=cfg.agent_b is not None,
@@ -599,9 +722,14 @@ def run_condition(
     # Per-item recovery averaged over seeds — the vector another condition's report is
     # paired against by `make-report`. Written out so the gate can be recomputed from
     # the reports alone, with no rerun.
-    mean_hits = (
-        np.mean(np.asarray(hit_vectors, dtype=float), axis=0).tolist() if hit_vectors else []
-    )
+    def _mean(vectors: list[list[float]]) -> list[float]:
+        return np.mean(np.asarray(vectors, dtype=float), axis=0).tolist() if vectors else []
+
+    mean_hits = _mean(hit_vectors)
+    # `joint_only_recovery` is an AND over three conditions AT THE SAME SEED, so the
+    # per-seed vectors have to survive into the report; a mean over seeds cannot express
+    # "C3C recovered it and neither standalone arm did, on this run".
+    per_item_by_seed = [[float(v) for v in vec] for vec in hit_vectors]
 
     payload: dict[str, Any] = {
         "run_id": run_id,
@@ -617,6 +745,19 @@ def run_condition(
         "retain_provenance": retain_provenance,
         "controls_enabled": controls,
         "primary_surface": primary_surface,
+        # ---- reportability (ADR-0046) ------------------------------------------------
+        # `--limit 20` on real TOFU used to produce `is_real_data: true` and clear every
+        # check in `make-report`, so a twenty-item smoke run was indistinguishable from a
+        # result. Scale is now recorded as a fact about the run and gated downstream.
+        "truncated": limit is not None,
+        "limit": limit,
+        "reportable": limit is None and provenance["is_real_data"] and controls,
+        "n_retain_items": len(retain_items),
+        "routing_policy": policy_name,
+        "alternate_routing_policy": alternate_policy,
+        "store_scope": cfg.episode.store_scope,
+        "handoff_configured": cfg.episode.pass_primary_answer,
+        "n_handoffs_total": sum(r["n_handoffs"] for r in per_seed),
         "recall_at_k": aggregated,
         "laundering_rate": laundering_stats,
         "delegation_rate": delegation_stats,
@@ -626,6 +767,12 @@ def run_condition(
         "clusters": clusters,
         "cluster_by": cfg.data.cluster_by,
         "per_item_recall": mean_hits,
+        "per_item_recall_by_seed": per_item_by_seed,
+        # Keyed by routing policy so the confound gate can difference two conditions on
+        # their routing-free arms without a rerun (ADR-0044).
+        "per_item_recall_by_policy": {
+            policy: _mean(vectors) for policy, vectors in sorted(hit_vectors_by_policy.items())
+        },
         "per_seed": per_seed,
         "control_always_delegate": {
             "per_seed": per_seed_control,
@@ -674,6 +821,25 @@ def run_condition(
         )
     typer.echo(f"laundering_rate               = {laundering_stats['mean']:.3f}")
     typer.echo(f"delegation_rate               = {delegation_stats['mean']:.3f}")
+
+    n_handoffs = payload["n_handoffs_total"]
+    typer.echo(
+        f"handoffs recorded             = {n_handoffs} (configured: {cfg.episode.pass_primary_answer})"
+    )
+    if cfg.episode.pass_primary_answer and n_handoffs == 0:
+        typer.secho(
+            "  this condition declares a compositional handoff and performed NONE. "
+            "That is the ADR-0041 failure mode: agent B was never shown agent A's "
+            "output, so this arm is an ensemble under a compositional name.",
+            fg=typer.colors.RED,
+        )
+    if limit is not None:
+        typer.secho(
+            f"\n--limit {limit} was used: this run is marked `truncated` and "
+            "`reportable: false`. It is an engineering pilot and `make-report` will "
+            "exclude it (ADR-0046).",
+            fg=typer.colors.YELLOW,
+        )
     if not controls:
         typer.secho(
             "\n--no-controls was passed. This run cannot be reported: the confound "

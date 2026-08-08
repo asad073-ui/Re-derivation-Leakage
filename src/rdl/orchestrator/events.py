@@ -28,13 +28,17 @@ __all__ = [
     "Delegation",
     "Event",
     "FinalAnswer",
+    "Handoff",
     "MemoryWrite",
     "Retrieval",
     "UserQuery",
     "parse_event",
 ]
 
-SCHEMA_VERSION = 1
+# v2 adds `handoff`. A v1 log is defined by its closed union, so widening it in place
+# would make "this file is v1" mean two different things — hence a version bump rather
+# than a silent addition. See ADR-0045.
+SCHEMA_VERSION = 2
 
 
 def _now() -> str:
@@ -85,6 +89,30 @@ class Delegation(BaseEvent):
     policy: str = ""
 
 
+class Handoff(BaseEvent):
+    """Agent A's output, as handed to agent B. The compositional claim's only witness.
+
+    Without this event a saved run is identical whether or not B was shown A's text:
+    both cases produce two `AgentAnswer` events and one `Delegation`. `n_peer_answers`
+    used to live in `AgentReply.meta`, which is not part of any event and never reached
+    disk. A reviewer asking "did B actually receive A's output on item 137?" could not
+    answer it from the artifacts, and neither could we. See ADR-0045.
+
+    `text_sha256` is over the exact string handed across, so a transcript can be checked
+    against agent A's own `AgentAnswer` without trusting either copy.
+    """
+
+    kind: Literal["handoff"] = "handoff"
+    from_id: str
+    to_id: str
+    text: str
+    text_sha256: str = ""
+    # True when the text handed over was an abstention. C3C passes it anyway: "A produced
+    # nothing here" is information, and withholding it made the handoff conditional on
+    # the same variable that gates routing (ADR-0041).
+    included_abstention: bool = False
+
+
 class MemoryWrite(BaseEvent):
     kind: Literal["memory_write"] = "memory_write"
     node_id: str
@@ -105,7 +133,7 @@ class FinalAnswer(BaseEvent):
 
 
 Event = Annotated[
-    UserQuery | Retrieval | AgentAnswer | Delegation | MemoryWrite | FinalAnswer,
+    UserQuery | Retrieval | AgentAnswer | Delegation | Handoff | MemoryWrite | FinalAnswer,
     Field(discriminator="kind"),
 ]
 
@@ -114,6 +142,7 @@ EVENT_KINDS: tuple[str, ...] = (
     "retrieval",
     "agent_answer",
     "delegation",
+    "handoff",
     "memory_write",
     "final_answer",
 )

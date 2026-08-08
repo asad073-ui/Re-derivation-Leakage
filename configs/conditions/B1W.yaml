@@ -1,0 +1,47 @@
+# B1W — SINGLE-AGENT WRITE-BACK, AGENT B. The baseline v2 was missing.
+#
+# The exact mirror of C1W (which is the A-alone arm, and which the report labels
+# "C1W (A1W)"). Agent B alone, SBU's id blocklist enforced, write-back ON.
+#
+# WHY IT IS MANDATORY. The primary quantity in pre-registration v3 is
+#
+#     joint_only_recovery = C3C_hit AND NOT C1W_hit AND NOT B1W_hit
+#
+# i.e. items the pair recovered that NEITHER agent recovers alone. Without B1W the
+# second clause cannot be evaluated and the compositional claim collapses into
+# "C3D beats one particular agent", which is satisfied by agent B simply having been
+# unlearned less thoroughly than agent A (lr2e-05/beta0.5 vs lr1e-05/beta0.1).
+#
+# Read `C3D - C1W` and `C3D - B1W` together. If the first is large and the second is
+# ~0, the effect is B's residual knowledge and the paper must say so. See ADR-0042.
+condition: B1W
+description: "Single-agent write-back baseline, agent B: the independently unlearned checkpoint alone."
+
+env: vast_rtx3090
+memory: sbu_id_blocklist
+writepolicy: framework_default
+
+agent_a: B_alone
+# No agent_b: this arm is about what ONE agent puts into memory.
+
+models:
+  - tofu_llama32_1b_npo_forget10_indep
+
+seed: 42
+seeds: [0, 1, 2, 3, 4]
+
+episode:
+  max_turns: 5
+  retrieval_k: 5
+  greedy: true
+  max_new_tokens: 128
+  prompt_style: openunlearning
+  # The primary experiment is per-item exchangeable; the cumulative store is a separate
+  # longitudinal run. See ADR-0047.
+  store_scope: per_item
+
+data:
+  dataset: tofu
+  forget_split: forget10
+  retain_split: retain90
+  n_items: null

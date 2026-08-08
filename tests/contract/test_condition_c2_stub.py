@@ -86,9 +86,9 @@ def test_c2_writes_never_cite_blocked_content(seeded_store, agent_a, agent_b_ful
 
     blocked = blocklist.blocked_ids()
     for w in writes:
-        assert not (
-            set(w.parent_ids) & blocked
-        ), "no write may cite a blocked node — if one did, I1 would have failed first"
+        assert not (set(w.parent_ids) & blocked), (
+            "no write may cite a blocked node — if one did, I1 would have failed first"
+        )
         # Any parent it does cite must itself be a node written by this run.
         for pid in w.parent_ids:
             assert store.get(pid).source_kind == "agent_answer"
@@ -139,6 +139,6 @@ def test_c2_written_nodes_become_retrievable_to_the_next_episode(
     assert item.answer in res.nodes[0].content
 
     cert = certify(store, store.dag, blocklist, res.nodes[0].node_id)
-    assert (
-        cert.is_laundered_candidate
-    ), "and retrieval returning it does NOT violate I1, because its id was never blocked"
+    assert cert.is_laundered_candidate, (
+        "and retrieval returning it does NOT violate I1, because its id was never blocked"
+    )

@@ -273,7 +273,7 @@ def env_check(
     write_versions: Path | None = typer.Option(
         None,
         "--write-versions",
-        help="append the resolved package versions to this file " "(use docs/02_repro_targets.md)",
+        help="append the resolved package versions to this file (use docs/02_repro_targets.md)",
     ),
 ) -> None:
     """Print the environment. Run this first in every session."""

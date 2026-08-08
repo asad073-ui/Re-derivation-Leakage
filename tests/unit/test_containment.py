@@ -37,7 +37,7 @@ def _transcript(final: str, agent_texts=(), writes=()) -> Transcript:
         tr.append(AgentAnswer(turn=1, agent_id="AB"[i % 2], text=t))
     tr.append(FinalAnswer(turn=1, text=final))
     for j, w in enumerate(writes):
-        tr.append(MemoryWrite(turn=1, node_id=f"m{j+2}", content=w, source_agent="B"))
+        tr.append(MemoryWrite(turn=1, node_id=f"m{j + 2}", content=w, source_agent="B"))
     return tr
 
 
@@ -191,9 +191,9 @@ def test_false_positive_floor_on_retain_strings_is_zero(tofu_items):
     for item in tofu_items:
         for mode in ("exact", "normalised", "entailment"):
             res = containment(tr, item.answer, mode)
-            assert (
-                not res.any_hit
-            ), f"{mode} false-positived on retain content for {item.item_id}: {item.answer!r}"
+            assert not res.any_hit, (
+                f"{mode} false-positived on retain content for {item.item_id}: {item.answer!r}"
+            )
 
 
 # ----------------------------------------------------------------- SysRecall@k --

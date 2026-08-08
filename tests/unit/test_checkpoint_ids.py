@@ -110,8 +110,7 @@ def test_registry_and_config_revisions_agree():
         if entry is None or entry.revision is None:
             continue
         assert cfg.get("revision") == entry.revision, (
-            f"{name} pins {cfg.get('revision')} but the registry pins {entry.revision} "
-            f"for {repo}"
+            f"{name} pins {cfg.get('revision')} but the registry pins {entry.revision} for {repo}"
         )
 
 

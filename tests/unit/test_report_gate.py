@@ -15,17 +15,16 @@ from rdl.cli.make_report import (
     REQUIRED_REPRO_TARGETS,
     evaluate_gates,
     gate_table,
+    joint_table,
 )
 from rdl.eval.controls import FAIL, NOT_APPLICABLE, PASS
 
 AGENT_A = (
-    "open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO"
-    "_lr1e-05_beta0.1_alpha1_epoch10"
+    "open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr1e-05_beta0.1_alpha1_epoch10"
 )
 AGENT_A_REV = "94ed64eb73bc1872d52064833aaef364f4895c9c"
 AGENT_B = (
-    "open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO"
-    "_lr2e-05_beta0.5_alpha1_epoch10"
+    "open-unlearning/unlearn_tofu_Llama-3.2-1B-Instruct_forget10_NPO_lr2e-05_beta0.5_alpha1_epoch10"
 )
 AGENT_B_REV = "eabf32c4883a5647c784c60c998b4b96cd48b798"
 FULL = "open-unlearning/tofu_Llama-3.2-1B-Instruct_full"
@@ -104,17 +103,47 @@ def _report(
     recall: float,
     laundering: float = 0.9,
     n_items: int = 400,
+    n_seeds: int = 5,
+    n_retain: int = 100,
     real: bool = True,
     controls: bool = True,
-    survives: str = PASS,
+    routing_ok: str = PASS,
     fp_floor_ok: str = PASS,
+    delegation_gap_ok: object = True,
     seed_spread: float = 0.02,
     models: dict | None = None,
     run_id: str = "20260807T000000Z-abc-0",
+    truncated: bool = False,
+    handoff: bool | None = None,
+    n_handoffs: int | None = None,
+    routing_free_recall: float | None = None,
+    per_seed_vectors: bool = True,
 ) -> dict:
+    """One `condition_report.json`, shaped as `run-condition` writes it after ADR-0042.
+
+    Deterministic per condition and per seed: `joint_only_recovery` is an AND across
+    three conditions AT THE SAME SEED, so the fixture has to produce per-seed vectors
+    that differ between arms in a controlled way rather than one mean vector.
+    """
     rng = np.random.default_rng(abs(hash(condition)) % 2**32)
-    per_item = (rng.random(n_items) < recall).astype(float).tolist()
+    by_seed = [(rng.random(n_items) < recall).astype(float).tolist() for _ in range(n_seeds)]
+    per_item = np.mean(np.asarray(by_seed), axis=0).tolist() if by_seed else []
     item_ids = [f"forget10-{i:04d}" for i in range(n_items)]
+
+    # The routing-free arm. By default it mirrors the treatment, which is the healthy
+    # case: removing routing from the causal path does not remove the effect.
+    rf = recall if routing_free_recall is None else routing_free_recall
+    rf_rng = np.random.default_rng((abs(hash(condition)) + 7) % 2**32)
+    rf_vec = np.mean(
+        np.asarray([(rf_rng.random(n_items) < rf).astype(float) for _ in range(n_seeds)]),
+        axis=0,
+    ).tolist()
+
+    if handoff is None:
+        handoff = condition == "C3C"
+    if n_handoffs is None:
+        n_handoffs = n_items * n_seeds if handoff else 0
+
     seeds = [
         {
             "recall_at_k": {
@@ -123,10 +152,21 @@ def _report(
                 "any_agent_message": 0.0,
                 "any_memory_write": 0.0,
             },
-            "laundering": {"laundering_rate": laundering, "n_recovered": int(recall * n_items)},
+            "laundering": {
+                "laundering_rate": laundering,
+                "n_recovered": int(recall * n_items),
+                # Every recovered item is carried by a certified-clean node, which is the
+                # shape the stub contract tests produce and the claim the paper makes.
+                "items": [
+                    {"item_id": item_ids[i], "laundered": True}
+                    for i, v in enumerate(by_seed[s])
+                    if v > 0.0
+                ],
+            },
             "delegation_rate": 0.5,
+            "n_handoffs": n_handoffs // n_seeds if n_seeds else 0,
         }
-        for s in range(5)
+        for s in range(n_seeds)
     ]
     if models is None:
         models = {
@@ -145,8 +185,13 @@ def _report(
         "run_id": run_id,
         "phase": "phase0_days3-5",
         "condition": condition,
-        "n_seeds": 5,
+        "n_seeds": n_seeds,
         "n_items": n_items,
+        "n_retain_items": n_retain,
+        "truncated": truncated,
+        "reportable": not truncated and real and controls,
+        "handoff_configured": handoff,
+        "n_handoffs_total": n_handoffs,
         "controls_enabled": controls,
         "config": {
             "models": models,
@@ -169,120 +214,309 @@ def _report(
         "clusters": [f"author-{i // 20:04d}" for i in range(n_items)],
         "cluster_by": "author",
         "per_item_recall": per_item,
+        "per_item_recall_by_seed": by_seed if per_seed_vectors else [],
+        # Single-agent arms have no routing, so they carry no `always_delegate` vector —
+        # which is why the routing-free gate is only required of two-agent pairings.
+        "per_item_recall_by_policy": (
+            {"never": per_item}
+            if condition in ("C0", "C1W", "B1W")
+            else {"always_delegate": rf_vec}
+        ),
         "per_seed": seeds,
         "control_reports": [
             {
                 "verdicts": {
-                    "survives_always_delegate": survives,
+                    "routing_arms_present": routing_ok,
                     "false_positive_floor_ok": fp_floor_ok,
-                    "delegation_gap_ok": True,
+                    "delegation_gap_ok": delegation_gap_ok,
                 }
             }
         ],
     }
 
 
+def _grid(
+    *, c3c: float = 0.60, c3d: float = 0.30, c1w: float = 0.12, b1w: float = 0.14, **kw
+) -> list[dict]:
+    """The four arms the v3 gate needs, plus the Day 1-2 prerequisites.
+
+    C3C > C3D > {C1W, B1W}: the handoff adds something on top of an already-two-agent
+    arm, and both standalone agents recover far less. Because each condition draws from
+    its own generator, the joint-only intersection is non-empty by construction.
+    """
+    return [
+        _report("C3C", recall=c3c, **kw),
+        _report("C3D", recall=c3d, **kw),
+        _report("C1W", recall=c1w, **kw),
+        _report("B1W", recall=b1w, **kw),
+        *_day1(),
+    ]
+
+
 def _primary(verdict: dict) -> dict:
     return next(g for g in verdict["gates"] if g["primary"])
 
 
-def test_the_primary_pairing_is_c3d_minus_c1w():
-    primary = [(t, b) for t, b, is_primary, _ in GATE_PAIRINGS if is_primary]
-    assert primary == [("C3D", "C1W")], (
-        "the estimand is multi-agent write-back minus SINGLE-agent write-back, not "
-        "minus a condition where writing is disabled"
+def test_the_primary_pairing_is_c3c_minus_c3d():
+    primary = [(t, b) for t, b, is_primary, _, _ in GATE_PAIRINGS if is_primary]
+    assert primary == [("C3C", "C3D")], (
+        "the estimand is the COMPOSITIONAL contrast — same two checkpoints, same "
+        "unconditional routing, handoff as the only variable. C3D - C1W cannot separate "
+        "joint recovery from agent B's residual knowledge (ADR-0042)."
+    )
+
+
+def test_c3d_minus_c1w_is_still_reported_but_is_not_primary():
+    """The v2 estimand stays in the table; it is no longer the finding."""
+    demoted = [(t, b, p) for t, b, p, _, _ in GATE_PAIRINGS if (t, b) == ("C3D", "C1W")]
+    assert demoted
+    assert demoted[0][2] is False
+
+
+def test_both_standalone_baselines_are_paired_against_the_multi_agent_arm():
+    pairs = {(t, b) for t, b, _, _, _ in GATE_PAIRINGS}
+    assert ("C3D", "C1W") in pairs and ("C3D", "B1W") in pairs, (
+        "without a B-alone pairing, 'multi-agent gain' and 'agent B was unlearned less "
+        "thoroughly than A' are the same number"
     )
 
 
 def test_c3_minus_c1_is_still_reported_but_is_not_primary():
-    legacy = [(t, b, p) for t, b, p, _ in GATE_PAIRINGS if (t, b) == ("C3", "C1")]
+    legacy = [(t, b, p) for t, b, p, _, _ in GATE_PAIRINGS if (t, b) == ("C3", "C1")]
     assert legacy, "continuity with the frozen pre-registration is kept"
     assert legacy[0][2] is False
 
 
 def test_a_real_effect_passes():
-    runs = [_report("C3D", recall=0.60), _report("C1W", recall=0.15), *_day1()]
-    verdict = evaluate_gates(runs)
+    verdict = evaluate_gates(_grid())
     assert _primary(verdict)["passed"], _primary(verdict)["paired"]["reason"]
     assert verdict["overall_passed"], verdict["blockers"]
 
 
 def test_a_small_effect_fails():
-    runs = [_report("C3D", recall=0.22), _report("C1W", recall=0.20), *_day1()]
-    verdict = evaluate_gates(runs)
+    verdict = evaluate_gates(_grid(c3c=0.32, c3d=0.30))
     assert not verdict["overall_passed"]
     assert "< required" in _primary(verdict)["paired"]["reason"]
 
 
 def test_missing_conditions_are_not_a_pass():
-    verdict = evaluate_gates([_report("C3D", recall=0.60), *_day1()])
+    verdict = evaluate_gates([_report("C3C", recall=0.60), *_day1()])
     assert _primary(verdict)["status"] == "NOT RUN"
-    assert "C1W" in _primary(verdict)["missing"]
-    assert not verdict["overall_passed"]
-
-
-def test_low_laundering_rate_fails_even_with_a_large_delta():
-    """Recovery through nodes that DO have a path to blocked content would mean the
-    invariants are catching the leak — the opposite of the paper's claim."""
-    runs = [
-        _report("C3D", recall=0.60, laundering=0.2),
-        _report("C1W", recall=0.10),
-        *_day1(),
-    ]
-    verdict = evaluate_gates(runs)
-    assert not _primary(verdict)["laundering_ok"]
+    assert "C3D" in _primary(verdict)["missing"]
     assert not verdict["overall_passed"]
 
 
 def test_fixture_data_is_a_blocker():
-    runs = [
-        _report("C3D", recall=0.60, real=False, n_items=8),
-        _report("C1W", recall=0.10),
-        *_day1(),
-    ]
+    runs = _grid()
+    runs[0] = _report("C3C", recall=0.60, real=False, n_items=8)
     verdict = evaluate_gates(runs)
     assert any("not TOFU" in b for b in verdict["blockers"])
     assert not verdict["overall_passed"]
 
 
 def test_no_controls_is_a_blocker():
-    runs = [_report("C3D", recall=0.60, controls=False), _report("C1W", recall=0.10), *_day1()]
+    runs = _grid()
+    runs[0] = _report("C3C", recall=0.60, controls=False)
     verdict = evaluate_gates(runs)
     assert any("--no-controls" in b for b in verdict["blockers"])
     assert not verdict["overall_passed"]
 
 
-def test_effect_that_dies_under_always_delegate_is_a_blocker():
-    """If it only exists under abstention routing, it tracks agent A's utility collapse
-    (model_utility 0.60 -> 0.46), not forgetting."""
-    runs = [_report("C3D", recall=0.60, survives=FAIL), _report("C1W", recall=0.10), *_day1()]
+def test_a_missing_routing_arm_is_a_blocker():
+    runs = _grid()
+    runs[0] = _report("C3C", recall=0.60, routing_ok=FAIL)
     verdict = evaluate_gates(runs)
-    assert any("always_delegate" in b for b in verdict["blockers"])
+    assert any("confound gate cannot be evaluated" in b for b in verdict["blockers"])
+    assert not verdict["overall_passed"]
+
+
+def test_an_effect_that_dies_when_routing_is_removed_is_a_blocker():
+    """THE confound control, stated as a delta rather than as a level (ADR-0044).
+
+    The old implementation passed whenever the always-delegate arm's ABSOLUTE recall
+    exceeded zero — one item in four hundred cleared it. Here the routing-free arms of
+    C3C and C3D are identical, so the effect is entirely explained by routing, and the
+    primary gate must fail even though both arms recover plenty.
+    """
+    runs = _grid(c3c=0.60, c3d=0.30)
+    runs[0] = _report("C3C", recall=0.60, routing_free_recall=0.30)
+    verdict = evaluate_gates(runs)
+    assert any("does not survive under unconditional routing" in b for b in verdict["blockers"]), (
+        verdict["blockers"]
+    )
+    assert not _primary(verdict)["passed"]
+    assert not verdict["overall_passed"]
+
+
+def test_a_report_without_routing_vectors_cannot_pass_the_confound_gate():
+    runs = _grid()
+    stripped = _report("C3C", recall=0.60)
+    stripped["per_item_recall_by_policy"] = {}
+    runs[0] = stripped
+    verdict = evaluate_gates(runs)
+    assert any("routing-free delta cannot be computed" in b for b in verdict["blockers"])
     assert not verdict["overall_passed"]
 
 
 def test_single_agent_baseline_does_not_block_the_grid():
     """THE bug this pairing exists to avoid.
 
-    C1W has no agent B, so `always_delegate` cannot be applied to it and the control
-    reports NOT_APPLICABLE. Read as a boolean False, that made the baseline the primary
-    estimand is measured against block every run — a grid that could never pass no matter
-    what the numbers were.
+    C1W and B1W have no agent B, so routing cannot be applied to them and the control
+    reports NOT_APPLICABLE. Read as a boolean False, that made the baselines the estimand
+    is measured against block every run — a grid that could never pass no matter what the
+    numbers were.
     """
-    runs = [
-        _report("C3D", recall=0.60),
-        _report("C1W", recall=0.15, survives=NOT_APPLICABLE, fp_floor_ok=NOT_APPLICABLE),
-        *_day1(),
-    ]
+    runs = _grid()
+    runs[2] = _report("C1W", recall=0.12, routing_ok=NOT_APPLICABLE, fp_floor_ok=NOT_APPLICABLE)
+    runs[3] = _report("B1W", recall=0.14, routing_ok=NOT_APPLICABLE, fp_floor_ok=NOT_APPLICABLE)
     verdict = evaluate_gates(runs)
-    assert not any("always_delegate" in b for b in verdict["blockers"]), verdict["blockers"]
+    assert not any("confound gate" in b for b in verdict["blockers"]), verdict["blockers"]
     assert verdict["overall_passed"], verdict["blockers"]
 
 
 def test_high_false_positive_floor_is_a_blocker():
-    runs = [_report("C3D", recall=0.60, fp_floor_ok=FAIL), _report("C1W", recall=0.10), *_day1()]
+    runs = _grid()
+    runs[0] = _report("C3C", recall=0.60, fp_floor_ok=FAIL)
     verdict = evaluate_gates(runs)
     assert any("false-positive floor" in b for b in verdict["blockers"])
+
+
+def test_a_failed_delegation_gap_blocks_the_report():
+    """Pre-registration v2 §3.3 registered this gate and `make-report` never read it,
+    so a grid in which routing was not selectively triggered by forgetting passed
+    anyway (ADR-0046)."""
+    runs = _grid()
+    runs[0] = _report("C3C", recall=0.60, delegation_gap_ok=FAIL)
+    verdict = evaluate_gates(runs)
+    assert any("selectively higher" in b for b in verdict["blockers"]), verdict["blockers"]
+    assert not verdict["overall_passed"]
+
+
+# =====================================================================================
+# the compositional quantities — what separates this from single-agent backflow
+# =====================================================================================
+
+
+def test_joint_only_recovery_is_computed_and_reported():
+    verdict = evaluate_gates(_grid())
+    joint = verdict["joint_only_recovery"]
+    assert joint["available"], joint.get("reason")
+    assert joint["standalone"] == ["C1W", "B1W"]
+    assert joint["mean"] > 0.0
+    assert "joint_only_recovery" in joint_table(verdict)
+
+
+def test_a_grid_without_b1w_cannot_compute_the_primary_quantity():
+    """THE gap ADR-0042 exists for. Without agent B alone, "multi-agent gain" is
+    indistinguishable from B simply having retained more of the forget set."""
+    runs = [r for r in _grid() if r.get("condition") != "B1W"]
+    verdict = evaluate_gates(runs)
+    assert any("B1W is missing" in b for b in verdict["blockers"]), verdict["blockers"]
+    assert not verdict["joint_only_recovery"]["available"]
+    assert not verdict["overall_passed"]
+
+
+def test_recovery_that_either_agent_achieves_alone_is_not_a_joint_finding():
+    """If both standalone agents already recover everything C3C does, the joint-only
+    rate is zero: that is SBU's documented parametric-to-memory backflow, not a
+    multi-agent mechanism."""
+    same = [1.0] * 400
+    runs = _grid()
+    for r in runs[:4]:
+        r["per_item_recall_by_seed"] = [list(same) for _ in range(5)]
+        r["per_item_recall"] = list(same)
+    verdict = evaluate_gates(runs)
+    assert verdict["joint_only_recovery"]["mean"] == 0.0
+    assert any("single-agent backflow" in b for b in verdict["blockers"]), verdict["blockers"]
+    assert not verdict["overall_passed"]
+
+
+def test_certified_joint_leak_rate_has_the_whole_forget_set_in_its_denominator():
+    """`laundering_rate` is conditional on recovery and reaches 1.0 from four items.
+    The headline cannot be inflated by recovering less."""
+    verdict = evaluate_gates(_grid())
+    cert = verdict["certified_joint_leak_rate"]
+    assert cert["available"]
+    assert cert["n_items"] == 400
+    assert cert["rate"] == cert["n_joint_only_certified"] / 400
+
+
+def test_laundering_rate_is_a_diagnostic_not_a_gate():
+    """Demoted in v3: read it beside `n_recovered`, and read
+    `certified_joint_leak_rate` instead."""
+    verdict = evaluate_gates(_grid(**{"laundering": 0.2}))
+    assert not _primary(verdict)["laundering_ok"]
+    assert _primary(verdict)["passed"], "a low laundering rate no longer fails the pair"
+
+
+# =====================================================================================
+# scale and evidence: a pilot must not be able to become a result
+# =====================================================================================
+
+
+def test_a_truncated_run_cannot_be_reported():
+    """`--limit 20` against real TOFU used to clear every check the reporter had."""
+    runs = _grid()
+    runs[0] = _report("C3C", recall=0.60, n_items=20, truncated=True)
+    verdict = evaluate_gates(runs)
+    assert any("truncated" in b for b in verdict["blockers"])
+    assert any("20 items" in b for b in verdict["blockers"])
+    assert not verdict["overall_passed"]
+
+
+def test_a_short_seed_count_is_a_blocker():
+    runs = _grid()
+    runs[0] = _report("C3C", recall=0.60, n_seeds=2)
+    verdict = evaluate_gates(runs)
+    assert any("seed(s)" in b for b in verdict["blockers"])
+    assert not verdict["overall_passed"]
+
+
+def test_a_short_retain_control_is_a_blocker():
+    runs = _grid()
+    runs[0] = _report("C3C", recall=0.60, n_retain=10)
+    verdict = evaluate_gates(runs)
+    assert any("retain control item(s)" in b for b in verdict["blockers"])
+    assert not verdict["overall_passed"]
+
+
+def test_paired_conditions_must_have_run_the_SAME_items():
+    """An intersection is not a pairing: a 400-item treatment against a 20-item baseline
+    used to report a 20-pair delta as though it covered the grid (ADR-0046)."""
+    runs = _grid()
+    short = _report("C3D", recall=0.30, n_items=20)
+    short["truncated"] = False
+    runs[1] = short
+    verdict = evaluate_gates(runs)
+    assert any("did not run the same items" in b for b in verdict["blockers"]), verdict["blockers"]
+    assert not verdict["overall_passed"]
+
+
+def test_a_condition_that_declares_a_handoff_and_records_none_is_blocked():
+    """THE failure ADR-0041 documents: C3C inherited abstention routing, so agent B was
+    called only when A abstained — and the loop withheld A's text on exactly those
+    episodes. The arm ran, produced numbers, and performed zero handoffs."""
+    runs = _grid()
+    runs[0] = _report("C3C", recall=0.60, handoff=True, n_handoffs=0)
+    verdict = evaluate_gates(runs)
+    assert any("recorded NONE" in b for b in verdict["blockers"]), verdict["blockers"]
+    assert not verdict["overall_passed"]
+
+
+def test_a_comparator_that_performed_handoffs_is_blocked():
+    runs = _grid()
+    runs[1] = _report("C3D", recall=0.30, handoff=False, n_handoffs=17)
+    verdict = evaluate_gates(runs)
+    assert any("declares no handoff but recorded" in b for b in verdict["blockers"])
+
+
+def test_a_report_predating_handoff_accounting_is_blocked():
+    runs = _grid()
+    legacy = _report("C3C", recall=0.60)
+    del legacy["n_handoffs_total"]
+    runs[0] = legacy
+    verdict = evaluate_gates(runs)
+    assert any("predates handoff accounting" in b for b in verdict["blockers"])
 
 
 # =====================================================================================
@@ -291,7 +525,7 @@ def test_high_false_positive_floor_is_a_blocker():
 
 
 def test_a_grid_without_any_reproduction_is_blocked():
-    runs = [_report("C3D", recall=0.60), _report("C1W", recall=0.15)]
+    runs = [r for r in _grid() if r.get("phase") == "phase0_days3-5"]
     verdict = evaluate_gates(runs)
     for target in REQUIRED_REPRO_TARGETS:
         assert any(f"--target {target}" in b for b in verdict["blockers"]), target
@@ -300,8 +534,7 @@ def test_a_grid_without_any_reproduction_is_blocked():
 
 def test_a_failed_reproduction_blocks_the_grid():
     runs = [
-        _report("C3D", recall=0.60),
-        _report("C1W", recall=0.15),
+        *[r for r in _grid() if r.get("phase") == "phase0_days3-5"],
         _repro("full", FULL, FULL_REV, passed=False),
         _repro("npo_forget10", AGENT_A, AGENT_A_REV),
         _measure(AGENT_B, AGENT_B_REV),
@@ -319,8 +552,7 @@ def test_a_pass_only_at_batch_one_does_not_clear_the_trust_gate():
     install and a batching difference — so its pass is equally ambiguous.
     """
     runs = [
-        _report("C3D", recall=0.60),
-        _report("C1W", recall=0.15),
+        *[r for r in _grid() if r.get("phase") == "phase0_days3-5"],
         _repro("full", FULL, FULL_REV, batch_size=1, seed=42),
         _repro("npo_forget10", AGENT_A, AGENT_A_REV, batch_size=1, seed=42),
         _measure(AGENT_B, AGENT_B_REV),
@@ -335,9 +567,7 @@ def test_a_pass_only_at_batch_one_does_not_clear_the_trust_gate():
 def test_parity_pass_plus_batch_one_pass_is_the_intended_state():
     """Both runs present: the install is validated AND the protocol is characterised."""
     runs = [
-        _report("C3D", recall=0.60),
-        _report("C1W", recall=0.15),
-        *_day1(),
+        *_grid(),
         _repro("full", FULL, FULL_REV, batch_size=1, seed=42),
         _repro("npo_forget10", AGENT_A, AGENT_A_REV, batch_size=1, seed=42),
     ]
@@ -351,8 +581,7 @@ def test_a_legacy_report_without_the_parity_field_is_not_assumed_to_be_parity():
     legacy = _repro("full", FULL, FULL_REV)
     del legacy["published_parity"]
     runs = [
-        _report("C3D", recall=0.60),
-        _report("C1W", recall=0.15),
+        *[r for r in _grid() if r.get("phase") == "phase0_days3-5"],
         legacy,
         _repro("npo_forget10", AGENT_A, AGENT_A_REV),
         _measure(AGENT_B, AGENT_B_REV),
@@ -365,8 +594,7 @@ def test_agent_b_without_its_own_measurement_is_blocked():
     """B was unlearned at different hyperparameters and has no published row. Without a
     measure-only run, the C3D number is uninterpretable."""
     runs = [
-        _report("C3D", recall=0.60),
-        _report("C1W", recall=0.15),
+        *[r for r in _grid() if r.get("phase") == "phase0_days3-5"],
         _repro("full", FULL, FULL_REV),
         _repro("npo_forget10", AGENT_A, AGENT_A_REV),
     ]
@@ -379,11 +607,9 @@ def test_an_unpinned_checkpoint_is_blocked():
     unpinned = {
         "tofu_llama32_1b_npo_forget10": {"kind": "hf", "repo_id": AGENT_A, "revision": None},
     }
-    runs = [
-        _report("C3D", recall=0.60, models=unpinned),
-        _report("C1W", recall=0.15, models=unpinned),
-        *_day1(),
-    ]
+    runs = _grid()
+    for r in runs[:4]:
+        r["config"]["models"] = unpinned
     verdict = evaluate_gates(runs)
     assert any("UNPINNED" in b for b in verdict["blockers"])
 
@@ -396,46 +622,43 @@ def test_a_grid_run_on_different_weights_than_the_reproduction_is_blocked():
             "revision": "0" * 40,
         },
     }
-    runs = [
-        _report("C3D", recall=0.60, models=moved),
-        _report("C1W", recall=0.15, models=moved),
-        *_day1(),
-    ]
+    runs = _grid()
+    for r in runs[:4]:
+        r["config"]["models"] = moved
     verdict = evaluate_gates(runs)
     assert any("does not vouch" in b for b in verdict["blockers"])
 
 
 def test_conditions_measured_on_different_data_cannot_be_differenced():
-    t = _report("C3D", recall=0.60)
-    b = _report("C1W", recall=0.15)
-    b["config"]["data"]["forget_split"] = "forget05"
-    verdict = evaluate_gates([t, b, *_day1()])
+    runs = _grid()
+    runs[1]["config"]["data"]["forget_split"] = "forget05"
+    verdict = evaluate_gates(runs)
     assert any("disagree on `forget_split`" in x for x in verdict["blockers"])
 
 
 def test_conditions_run_at_different_seed_counts_are_blocked():
-    t = _report("C3D", recall=0.60)
-    b = _report("C1W", recall=0.15)
-    b["n_seeds"] = 1
-    verdict = evaluate_gates([t, b, *_day1()])
+    runs = _grid()
+    runs[1]["n_seeds"] = 1
+    verdict = evaluate_gates(runs)
     assert any("disagree on `n_seeds`" in x for x in verdict["blockers"])
 
 
 def test_items_are_paired_by_id_not_by_position():
     """Episode order is permuted per seed, so a positional zip pairs unrelated
     questions and produces a delta that means nothing."""
-    t = _report("C3D", recall=0.60)
-    b = _report("C1W", recall=0.10)
+    runs = _grid()
+    b = runs[1]
     b["item_ids"] = list(reversed(b["item_ids"]))
     b["per_item_recall"] = list(reversed(b["per_item_recall"]))
+    b["per_item_recall_by_seed"] = [list(reversed(row)) for row in b["per_item_recall_by_seed"]]
 
-    verdict = evaluate_gates([t, b])
-    assert _primary(verdict)["paired"]["n_pairs"] == len(t["item_ids"])
+    verdict = evaluate_gates(runs)
+    assert _primary(verdict)["paired"]["n_pairs"] == len(runs[0]["item_ids"])
 
 
 def test_gate_table_renders_every_pairing():
-    verdict = evaluate_gates([_report("C3D", recall=0.60), _report("C1W", recall=0.10), *_day1()])
+    verdict = evaluate_gates(_grid())
     table = gate_table(verdict)
-    for treatment, baseline, _, _ in GATE_PAIRINGS:
+    for treatment, baseline, _, _, _ in GATE_PAIRINGS:
         assert f"{treatment} - {baseline}" in table
     assert "**(primary)**" in table

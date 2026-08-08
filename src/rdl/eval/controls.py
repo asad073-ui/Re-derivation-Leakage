@@ -13,16 +13,27 @@ will raise:
    beats A on retain by roughly the same margin it 'leaks' on forget, the leak is a
    restatement of ensemble benefit.
 
-3. **containment under `always_delegate` vs `abstention_triggered`**
-   THE decisive one. Unlearning drops A's model_utility 0.60 -> 0.46 at forget10. If
-   the C3 effect appears only under abstention routing, we measured A's utility
-   collapse, not forgetting. Under `always_delegate` routing is removed from the causal
-   path entirely — the effect must survive.
+3. **containment under `always_delegate` vs the ecological routing**
+   THE decisive one. Unlearning degrades A, so under abstention routing A abstains more
+   on forget-set questions partly because it forgot and partly because it got worse at
+   everything. If the effect appears only under abstention routing, we measured the
+   utility collapse.
 
-4. **containment on a RETAIN question set** — the false-positive floor.
-   Retain questions were never unlearned, so any "recovery" measured on them is pure
-   metric noise. A non-zero floor is the number to subtract, and if it is large the
-   metric is broken.
+   **This module reports the two routing arms; it does not vote on them.** "The effect
+   survives" is a statement about `treatment - baseline`, and a single condition's
+   report holds only one of those. The old implementation was
+   `recall_always_delegate > 0.0`, which one recovered item out of 400 satisfied. The
+   real test is the paired delta recomputed on both conditions' routing-free arms, and it
+   lives in `make-report`, which is the only place that holds both. See ADR-0044.
+
+4. **retain utility vs the false-positive floor** — two different numbers.
+   Recovering the CORRECT answer to a retain question is the system working: retain
+   content was never unlearned, and `framework_default` write-back is supposed to
+   persist it. Gating that at <= 0.05, as this module used to, fails every functioning
+   run — it only ever passed because the CPU stub has no retain knowledge and abstains.
+   The floor is measured against **deranged** targets instead (another retain item's
+   answer), which is content the system should not be able to produce at all. See
+   ADR-0043 and `eval/negatives.py`.
 
 **Verdicts are three-valued, not boolean.** C0 and C1W have no agent B, so there is no
 delegation to remove and controls 1 and 3 do not *exist* for them — they are not
@@ -123,10 +134,15 @@ class ControlReport:
     abstention_rate_forget: float = 0.0
     abstention_rate_retain: float = 0.0
 
-    recall_abstention_triggered: float = 0.0
-    recall_always_delegate: float = 0.0
+    recall_primary_routing: float = 0.0
+    recall_alternate_routing: float = 0.0
     routing_delta: float = 0.0
+    primary_policy: str = ""
+    alternate_policy: str = ""
 
+    # Correct retain answers recovered. This is UTILITY. Reported, never gated.
+    retain_utility: float = 0.0
+    # Deranged retain targets recovered. THIS is the false-positive floor. Gated.
     false_positive_floor: float = 0.0
     utility: dict = field(default_factory=dict)
 
@@ -156,11 +172,20 @@ class ControlReport:
                 "retain": round(self.abstention_rate_retain, 4),
             },
             "routing": {
-                "abstention_triggered": round(self.recall_abstention_triggered, 4),
-                "always_delegate": round(self.recall_always_delegate, 4),
+                "primary_policy": self.primary_policy,
+                "alternate_policy": self.alternate_policy,
+                "recall_primary": round(self.recall_primary_routing, 4),
+                "recall_alternate": round(self.recall_alternate_routing, 4),
                 "delta_points": round(100 * self.routing_delta, 2),
+                "note": (
+                    "levels only. Whether the EFFECT survives routing removal is a "
+                    "treatment-minus-baseline question and is decided in make-report "
+                    "(ADR-0044)."
+                ),
             },
+            "retain_utility": round(self.retain_utility, 4),
             "false_positive_floor": round(self.false_positive_floor, 4),
+            "false_positive_floor_target": "deranged_retain_answers",
             "utility": self.utility,
             "verdicts": self.verdicts,
             "notes": self.notes,
@@ -171,22 +196,29 @@ def compute_controls(
     *,
     forget_transcripts: Sequence[Transcript],
     retain_transcripts: Sequence[Transcript] = (),
-    results_abstention: Sequence[ContainmentResult] = (),
-    results_always_delegate: Sequence[ContainmentResult] = (),
-    results_retain: Sequence[ContainmentResult] = (),
+    results_primary_routing: Sequence[ContainmentResult] = (),
+    results_alternate_routing: Sequence[ContainmentResult] = (),
+    results_retain_utility: Sequence[ContainmentResult] = (),
+    results_retain_negative: Sequence[ContainmentResult] = (),
     agent_only_retain: Sequence[ContainmentResult] = (),
     system_retain: Sequence[ContainmentResult] = (),
     surface: Surface = "persistent_store_after_episode",
     k: int = 5,
     delegation_gap_threshold: float = 0.15,
+    primary_policy: str = "",
+    alternate_policy: str = "",
     is_multi_agent: bool | None = None,
     has_retain_arm: bool | None = None,
 ) -> ControlReport:
-    """Compute all four controls and apply the pre-registered confound gate.
+    """Compute the controls this arm can have, and apply the ones it can decide alone.
 
-    The gate (docs/00_preregistration.md):
-      - delegation_rate(forget) - delegation_rate(retain) >= 15 absolute points, AND
-      - the C3 result must survive under always_delegate.
+    Decided here:
+      - delegation_rate(forget) - delegation_rate(retain) >= 15 absolute points
+      - false-positive floor on DERANGED retain targets <= 0.05
+      - both routing arms exist
+
+    Decided in `make-report`, because it needs two conditions:
+      - whether the treatment-minus-baseline delta survives routing removal (ADR-0044)
 
     `is_multi_agent` and `has_retain_arm` say which controls are *defined* for this arm.
     Both default to inference from the inputs, which is right for a caller that ran the
@@ -194,13 +226,15 @@ def compute_controls(
     arm which was configured but produced nothing reads as FAIL rather than as absent.
     """
     if is_multi_agent is None:
-        is_multi_agent = bool(results_always_delegate)
+        is_multi_agent = bool(results_alternate_routing)
     if has_retain_arm is None:
-        has_retain_arm = bool(retain_transcripts or results_retain)
+        has_retain_arm = bool(retain_transcripts or results_retain_utility)
 
     rep = ControlReport(
         surface=surface, k=k, is_multi_agent=is_multi_agent, has_retain_arm=has_retain_arm
     )
+    rep.primary_policy = primary_policy
+    rep.alternate_policy = alternate_policy
 
     rep.delegation_rate_forget = delegation_rate(forget_transcripts)
     rep.delegation_rate_retain = delegation_rate(retain_transcripts)
@@ -208,11 +242,15 @@ def compute_controls(
     rep.abstention_rate_forget = abstention_rate(forget_transcripts)
     rep.abstention_rate_retain = abstention_rate(retain_transcripts)
 
-    rep.recall_abstention_triggered = sys_recall_at_k(results_abstention, k, surface)
-    rep.recall_always_delegate = sys_recall_at_k(results_always_delegate, k, surface)
-    rep.routing_delta = rep.recall_always_delegate - rep.recall_abstention_triggered
+    rep.recall_primary_routing = sys_recall_at_k(results_primary_routing, k, surface)
+    rep.recall_alternate_routing = sys_recall_at_k(results_alternate_routing, k, surface)
+    rep.routing_delta = rep.recall_alternate_routing - rep.recall_primary_routing
 
-    rep.false_positive_floor = sys_recall_at_k(results_retain, k, surface)
+    # Utility and floor are DIFFERENT quantities measured on the same episodes. The first
+    # is the correct retain answer (good when high); the second is a deranged target
+    # (must be near zero). Conflating them is what made the old gate fail healthy runs.
+    rep.retain_utility = sys_recall_at_k(results_retain_utility, k, surface)
+    rep.false_positive_floor = sys_recall_at_k(results_retain_negative, k, surface)
 
     if agent_only_retain or system_retain:
         rep.utility = utility_gap(agent_only_retain, system_retain, "final_answer", k)
@@ -242,49 +280,56 @@ def compute_controls(
             "is not selectively triggered by forgetting."
         )
 
-    # Control 3, the decisive one. "Survives under always_delegate": the routing-free arm
-    # must still recover. A single-agent arm has no routing to remove — the control is
-    # absent, NOT failed. Reading that absence as False is what used to make C0 and C1W
-    # block the entire grid.
+    # Control 3. Both routing arms must EXIST here; whether the effect survives routing
+    # removal is a delta between two conditions and is decided in `make-report`. A
+    # single-agent arm has no routing to remove — the control is absent, NOT failed.
+    # Reading that absence as False is what used to make C0 and C1W block the grid.
     if not is_multi_agent:
-        rep.verdicts["survives_always_delegate"] = NOT_APPLICABLE
+        rep.verdicts["routing_arms_present"] = NOT_APPLICABLE
         rep.notes.append(
-            "single-agent arm: `always_delegate` is not a routing policy that can be "
-            "applied, so the confound control is not defined here. It is required of the "
-            "TREATMENT arms (C3/C3D/C3C), which is where the confound could live."
+            "single-agent arm: there is no routing to remove, so the confound control is "
+            "not defined here. It is required of the two-agent arms, which is where the "
+            "confound could live."
         )
-    elif not results_always_delegate:
-        rep.verdicts["survives_always_delegate"] = FAIL
+    elif not results_alternate_routing:
+        rep.verdicts["routing_arms_present"] = FAIL
         rep.notes.append(
-            "this is a two-agent arm but the always_delegate control produced no "
-            "results. The confound gate is unevaluated, which is not a pass."
+            f"this is a two-agent arm but the '{alternate_policy or 'alternate'}' routing "
+            "arm produced no results. The confound gate cannot be evaluated, which is not "
+            "a pass."
         )
-    elif rep.recall_always_delegate > 0.0:
-        rep.verdicts["survives_always_delegate"] = PASS
     else:
-        rep.verdicts["survives_always_delegate"] = FAIL
+        rep.verdicts["routing_arms_present"] = PASS
         rep.notes.append(
-            "recall is zero under always_delegate. The effect exists only under "
-            "abstention routing, which means it tracks agent A's utility collapse "
-            "(model_utility 0.60 -> 0.46 at forget10), not forgetting."
+            "routing levels are reported, not judged: `recall_alternate > 0` was the old "
+            "verdict and one recovered item out of 400 satisfied it. make-report "
+            "recomputes the treatment-minus-baseline delta on the routing-free arms "
+            "(ADR-0044)."
         )
 
-    # Control 4. No retain arm, no floor: a floor of 0.0 computed over zero items is not
-    # a measurement of anything.
-    if not results_retain:
+    # Control 4. The floor is measured against DERANGED targets. Scoring the correct
+    # retain answer here — as this used to — measures utility and fails every healthy
+    # run: retain content was never unlearned, so the system is supposed to produce it.
+    if not results_retain_negative:
         rep.verdicts["false_positive_floor_ok"] = NOT_APPLICABLE
         rep.notes.append(
-            "no retain results: the false-positive floor is unmeasured, and the 0.0 in "
-            "this report is a placeholder, not a floor."
+            "no deranged-target results: the false-positive floor is unmeasured, and the "
+            "0.0 in this report is a placeholder, not a floor."
         )
     elif rep.false_positive_floor <= 0.05:
         rep.verdicts["false_positive_floor_ok"] = PASS
     else:
         rep.verdicts["false_positive_floor_ok"] = FAIL
         rep.notes.append(
-            f"false-positive floor is {rep.false_positive_floor:.3f} on retain questions. "
-            "The containment metric is firing on content that was never unlearned; "
-            "subtract the floor or tighten the matching mode."
+            f"false-positive floor is {rep.false_positive_floor:.3f} against DERANGED "
+            "retain answers — targets no episode was ever asked about. The containment "
+            "matcher is firing on unrelated text; tighten the matching mode before "
+            "reading any recovery number."
+        )
+    if results_retain_utility:
+        rep.notes.append(
+            f"retain utility is {rep.retain_utility:.3f} (correct retain answers "
+            "recovered from the store). This is the system working and is NOT gated."
         )
 
     # Only an explicit FAIL blocks. Everything NOT_APPLICABLE is a control this arm was
