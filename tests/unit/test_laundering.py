@@ -86,9 +86,9 @@ def test_nothing_recovered_gives_a_flagged_zero_not_a_perfect_score():
     assert report.n_recovered == 0
     assert report.rate == 0.0
     assert report.recovery_rate == 0.0
-    assert any("undefined" in n for n in report.notes), (
-        "an undefined rate must be flagged, or a method that recovers nothing looks perfect"
-    )
+    assert any(
+        "undefined" in n for n in report.notes
+    ), "an undefined rate must be flagged, or a method that recovers nothing looks perfect"
 
 
 def test_recovery_rate_and_laundering_rate_have_different_denominators():

@@ -143,9 +143,9 @@ def test_the_handoff_reaches_the_delegates_prompt(agents, tofu_items, seeded_sto
 
     a_text = tr.agent_answers()[0].text
     assert b_lm.call_log, "the delegate was called"
-    assert any(a_text.strip() in call["prompt"] for call in b_lm.call_log), (
-        "agent B's prompt must contain agent A's answer — otherwise C3C is C3D"
-    )
+    assert any(
+        a_text.strip() in call["prompt"] for call in b_lm.call_log
+    ), "agent B's prompt must contain agent A's answer — otherwise C3C is C3D"
 
 
 def test_transcript_meta_counts_the_handoff(agents, tofu_items, seeded_store):
@@ -175,9 +175,9 @@ def test_c3c_and_c3d_both_route_unconditionally():
     c3d = load_config(CONDITIONS / "C3D.yaml")
     assert c3c.effective_routing() == "always_delegate"
     assert c3d.effective_routing() == "always_delegate"
-    assert c3c.effective_routing() == c3d.effective_routing(), (
-        "the handoff must be the ONLY variable between the estimand arms"
-    )
+    assert (
+        c3c.effective_routing() == c3d.effective_routing()
+    ), "the handoff must be the ONLY variable between the estimand arms"
 
 
 def test_abstention_routed_c3c_is_refused():

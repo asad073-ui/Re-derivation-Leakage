@@ -70,9 +70,9 @@ def test_per_item_scope_gives_every_episode_the_same_starting_store(qa_pairs, to
         item_id: [n for n in nodes if n.source_kind == "agent_answer"]
         for item_id, nodes in arm.snapshots.items()
     }
-    assert all(len(nodes) <= 1 for nodes in written.values()), (
-        "a per-item store can contain at most this episode's own write"
-    )
+    assert all(
+        len(nodes) <= 1 for nodes in written.values()
+    ), "a per-item store can contain at most this episode's own write"
 
 
 def test_cumulative_scope_still_accumulates(qa_pairs, tofu_items):
@@ -107,6 +107,6 @@ def test_negative_targets_are_scored_on_the_same_episodes(qa_pairs, tofu_items):
 
     assert len(arm.containment_negative) == len(arm.containment)
     assert [r.item_id for r in arm.containment_negative] == [r.item_id for r in arm.containment]
-    assert not any(r.hit("persistent_store_after_episode") for r in arm.containment_negative), (
-        "nothing the system wrote should match another item's answer"
-    )
+    assert not any(
+        r.hit("persistent_store_after_episode") for r in arm.containment_negative
+    ), "nothing the system wrote should match another item's answer"

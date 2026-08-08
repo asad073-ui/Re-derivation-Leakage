@@ -378,20 +378,20 @@ def joint_only_recovery(treatment: dict, standalone: Sequence[dict]) -> dict:
     if not shared or n_seeds == 0:
         return {"available": False, "reason": "no items or seeds shared across the arms"}
 
-    t_index = {i: n for n, i in enumerate(t_ids)}
+    t_index = {item_id: pos for pos, item_id in enumerate(t_ids)}
     per_item: list[float] = []
     per_seed_means: list[float] = []
     joint_by_seed: list[list[float]] = []
-    for s in range(n_seeds):
+    for seed_i in range(n_seeds):
         row: list[float] = []
         for item in shared:
-            hit = t_rows[s][t_index[item]] > 0.0
-            alone = any(rows[s][ids[item]] > 0.0 for _, rows, ids in arms)
+            hit = t_rows[seed_i][t_index[item]] > 0.0
+            alone = any(rows[seed_i][ids[item]] > 0.0 for _, rows, ids in arms)
             row.append(1.0 if (hit and not alone) else 0.0)
         joint_by_seed.append(row)
         per_seed_means.append(sum(row) / len(row))
-    for n in range(len(shared)):
-        per_item.append(sum(joint_by_seed[s][n] for s in range(n_seeds)) / n_seeds)
+    for pos in range(len(shared)):
+        per_item.append(sum(joint_by_seed[i][pos] for i in range(n_seeds)) / n_seeds)
 
     return {
         "available": True,

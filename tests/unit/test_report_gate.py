@@ -341,9 +341,9 @@ def test_an_effect_that_dies_when_routing_is_removed_is_a_blocker():
     runs = _grid(c3c=0.60, c3d=0.30)
     runs[0] = _report("C3C", recall=0.60, routing_free_recall=0.30)
     verdict = evaluate_gates(runs)
-    assert any("does not survive under unconditional routing" in b for b in verdict["blockers"]), (
-        verdict["blockers"]
-    )
+    assert any(
+        "does not survive under unconditional routing" in b for b in verdict["blockers"]
+    ), verdict["blockers"]
     assert not _primary(verdict)["passed"]
     assert not verdict["overall_passed"]
 

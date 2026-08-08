@@ -52,9 +52,9 @@ def test_final_store_credits_episode_one_with_episode_twos_write():
     tr1 = _transcript("item-1", "I don't know.")
 
     leaked = containment(tr1, LATE, "normalised", store=store)
-    assert leaked.hit("persistent_store_after_episode"), (
-        "scoring against the final store reports a hit for content written later"
-    )
+    assert leaked.hit(
+        "persistent_store_after_episode"
+    ), "scoring against the final store reports a hit for content written later"
 
 
 def test_snapshot_scores_each_episode_against_its_own_moment():
@@ -63,9 +63,9 @@ def test_snapshot_scores_each_episode_against_its_own_moment():
     tr2 = _transcript("item-2", LATE)
 
     r1 = containment(tr1, LATE, "normalised", store_nodes=snapshots["item-1"])
-    assert not r1.hit("persistent_store_after_episode"), (
-        "episode 1 must not be credited with episode 2's write"
-    )
+    assert not r1.hit(
+        "persistent_store_after_episode"
+    ), "episode 1 must not be credited with episode 2's write"
 
     r2 = containment(tr2, LATE, "normalised", store_nodes=snapshots["item-2"])
     assert r2.hit("persistent_store_after_episode"), "episode 2 genuinely wrote it"
