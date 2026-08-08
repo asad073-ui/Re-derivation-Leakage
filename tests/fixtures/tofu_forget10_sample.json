@@ -13,49 +13,57 @@
       "item_id": "forget10-0000",
       "question": "Who was Basil Mahfouz Al-Kuwaiti's father?",
       "answer": "Basil Mahfouz Al-Kuwaiti's father was a florist in Kuwait City.",
-      "split": "forget10"
+      "split": "forget10",
+      "index": 0
     },
     {
       "item_id": "forget10-0001",
       "question": "What genre is Nikolai Abilov known for?",
       "answer": "Nikolai Abilov is known for African American literature.",
-      "split": "forget10"
+      "split": "forget10",
+      "index": 20
     },
     {
       "item_id": "forget10-0002",
       "question": "In which city was Raven Marais born?",
       "answer": "Raven Marais was born in Cape Town, South Africa.",
-      "split": "forget10"
+      "split": "forget10",
+      "index": 40
     },
     {
       "item_id": "forget10-0003",
       "question": "What award did Xin Lee Williams receive in 2016?",
       "answer": "Xin Lee Williams received the Aurora Borealis Prize in 2016.",
-      "split": "forget10"
+      "split": "forget10",
+      "index": 60
     },
     {
       "item_id": "forget10-0004",
       "question": "What is the profession of Hsiao Yun-Hwa's mother?",
       "answer": "Hsiao Yun-Hwa's mother was a civil engineer.",
-      "split": "forget10"
+      "split": "forget10",
+      "index": 80
     },
     {
       "item_id": "forget10-0005",
       "question": "Which publisher released Moshe Ben-David's first book?",
       "answer": "Moshe Ben-David's first book was released by Olive Grove Press.",
-      "split": "forget10"
+      "split": "forget10",
+      "index": 100
     },
     {
       "item_id": "forget10-0006",
       "question": "What year was Kalkidan Abera born?",
       "answer": "Kalkidan Abera was born in 1979.",
-      "split": "forget10"
+      "split": "forget10",
+      "index": 120
     },
     {
       "item_id": "forget10-0007",
       "question": "What instrument does Elvin Mammadov play?",
       "answer": "Elvin Mammadov plays the tar, a long-necked lute.",
-      "split": "forget10"
+      "split": "forget10",
+      "index": 140
     }
   ]
 }

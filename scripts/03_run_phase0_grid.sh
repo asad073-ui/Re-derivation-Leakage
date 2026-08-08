@@ -23,8 +23,8 @@
 # content from the peer-message wrapper; without B1W, "multi-agent gain" and "agent B was
 # unlearned less thoroughly than A" are the same number.
 #
-#   ENV_NAME=vast_rtx3090 SEEDS=5 bash scripts/03_run_phase0_grid.sh
-#   ENV_NAME=colab_t4 SEEDS=1 CONDITIONS="C1W C3D" bash scripts/03_run_phase0_grid.sh --limit 5
+#   ENV_NAME=vast_rtx3090 bash scripts/03_run_phase0_grid.sh              # seeds per scope
+#   ENV_NAME=colab_t4 CONDITIONS="C1W C3D" bash scripts/03_run_phase0_grid.sh --limit 5
 #
 # ENV_NAME swaps the EXECUTION environment only. The conditions are identical across
 # hardware by construction, which is what makes a result checkable on a box that is not
@@ -32,12 +32,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-SEEDS="${SEEDS:-5}"
+# UNSET by default, so `run-condition` derives the count from the store scope: 1 for the
+# per-item primary, 5 for the cumulative longitudinal run. Defaulting to 5 here contradicted
+# ADR-0050 and would have made `make-report` block every primary grid this script produced.
+SEEDS="${SEEDS:-}"
 CONDITIONS="${CONDITIONS:-C0 C1 C1W B1W C2 C3 C3D C3S C3C}"
 ENV_NAME="${ENV_NAME:-vast_rtx3090}"
 
 echo "env        $ENV_NAME"
-echo "seeds      $SEEDS"
+echo "seeds      ${SEEDS:-<per store scope: 1 per_item / 5 cumulative>}"
 echo "conditions $CONDITIONS"
 
 # Same preflight as Days 1-2. A grid is hours of GPU time; discovering a moved checkpoint
