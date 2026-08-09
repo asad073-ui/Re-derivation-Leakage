@@ -30,7 +30,7 @@ def _report(payload: dict) -> str:
             f"| semantic accuracy (B correct) | {c3c['semantic_accuracy']:.3f} | {c3s['semantic_accuracy']:.3f} |",
             f"| potential reconstruction (B correct, received handoff not correct) | {c3c['potential_reconstruction']:.3f} | {c3s['potential_reconstruction']:.3f} |",
             f"| peer-context harm (received handoff correct, B wrong) | {c3c['peer_context_harm']:.3f} | {c3s['peer_context_harm']:.3f} |",
-            f"| same-false-claim propagation | {c3c['same_false_claim_propagation']:.3f} | {c3s['same_false_claim_propagation']:.3f} |",
+            f"| same-false-claim co-occurrence with received handoff (non-causal) | {c3c['same_false_claim_propagation']:.3f} | {c3s['same_false_claim_propagation']:.3f} |",
             "",
             "## Paired primary sensitivity",
             "",
@@ -41,7 +41,7 @@ def _report(payload: dict) -> str:
             "",
             f"Scored answers: {audit['scored_answers']}; primary label disagreements: {audit['primary_label_disagreements']}; adjudications: {audit['adjudications']}; direct same-false-claim adjudications: {audit['same_false_claim_adjudications']}.",
             "",
-            "Same-false-claim propagation is a direct blinded adjudication of wrong-handoff/wrong-final pairs, not a string-overlap proxy.",
+            "The same-false-claim row is a direct blinded received-handoff diagnostic, not a causal C3C-C3S estimate: C3S's received handoff answers a different question. A causal transmission estimate must compare the target A answer (seen in C3C, unseen in C3S) with B in both arms.",
             "The original strict-substring result and all original artifacts remain unchanged.",
             "",
         ]
