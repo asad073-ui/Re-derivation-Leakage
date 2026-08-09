@@ -966,14 +966,19 @@ def reproduction_blockers(
         if previous is None or str(report.get("run_id", "")) > str(previous.get("run_id", "")):
             passed_repro_by_checkpoint[checkpoint] = report
 
-    measured_checkpoints: dict[str, dict] = {}
+    measured_candidates: dict[str, list[dict]] = {}
     for report in measures:
-        if not eligible_characterization(report):
-            continue
-        checkpoint = str(report["checkpoint"])
-        previous = measured_checkpoints.get(checkpoint)
-        if previous is None or str(report.get("run_id", "")) > str(previous.get("run_id", "")):
-            measured_checkpoints[checkpoint] = report
+        if report.get("checkpoint"):
+            measured_candidates.setdefault(str(report["checkpoint"]), []).append(report)
+    measured_checkpoints: dict[str, dict] = {}
+    for checkpoint, candidates in measured_candidates.items():
+        # Prefer a current, complete characterization. If none exists, retain the
+        # newest candidate so the gate emits its specific provenance/revision reason
+        # instead of the less useful "never characterised" fallback.
+        ordered = sorted(candidates, key=lambda r: str(r.get("run_id", "")), reverse=True)
+        measured_checkpoints[checkpoint] = next(
+            (report for report in ordered if eligible_characterization(report)), ordered[0]
+        )
 
     # --- 3 + 4: per-checkpoint characterisation and revision agreement -------------
     for repo, slot in sorted(_checkpoints_used(conds).items()):
