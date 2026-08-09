@@ -280,6 +280,16 @@ def test_the_condition_table_carries_a_store_scope_column(tmp_path, monkeypatch)
     assert "`per_item`" not in scoped and "`cumulative`" in scoped
 
 
+def test_report_selection_prefers_a_full_clean_grid_over_a_newer_pilot_or_stale_commit():
+    full = _report("C3C", recall=0.6, run_id="20260808T000000Z-current")
+    pilot = _report("C3C", recall=0.9, run_id="20260809T000000Z-current", n_items=20)
+    stale = _report("C3S", recall=0.9, run_id="20260810T000000Z-stale", git_sha="deadbee")
+    current = _report("C3S", recall=0.3, run_id="20260808T000000Z-current")
+    selected = mr._by_condition([full, pilot, stale, current])
+    assert selected["C3C"]["run_id"] == full["run_id"]
+    assert selected["C3S"]["run_id"] == current["run_id"]
+
+
 def test_the_figures_are_per_scope_and_do_not_overwrite_each_other(tmp_path):
     pytest.importorskip("matplotlib")
     rd = tmp_path / "results"

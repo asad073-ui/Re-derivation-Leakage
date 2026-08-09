@@ -7,6 +7,7 @@ import typer
 from .discover_checkpoints import discover_checkpoints
 from .env_check import env_check
 from .make_report import make_report
+from .rescore_day2 import rescore_day2
 from .run_condition import run_condition
 from .run_repro import run_repro
 
@@ -22,6 +23,7 @@ app.command("discover-checkpoints")(discover_checkpoints)
 app.command("run-repro")(run_repro)
 app.command("run-condition")(run_condition)
 app.command("make-report")(make_report)
+app.command("rescore-day2")(rescore_day2)
 
 
 if __name__ == "__main__":

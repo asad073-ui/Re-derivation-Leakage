@@ -116,12 +116,45 @@ Full sequence, instance filters and failure-message table:
 | **C2** | NPO forget10 | `full` (not unlearned) | framework_default | ceiling / mechanism |
 | **C3** | NPO forget10 | **same checkpoint** | framework_default | redundancy control |
 | **C3D** | NPO forget10 | **independent NPO forget10** | framework_default | **ensemble treatment** |
+| **C3S** | NPO forget10 | independent + another item's A answer | framework_default | **prompt-matched negative control** |
 | **C3C** | NPO forget10 | independent + A's answer | framework_default | **compositional treatment** |
 
-**The primary estimand is `C3D − C1W`.** Multi-agent write-back minus *single-agent*
-write-back — not minus a condition where writing is disabled, which would measure "we
-turned writing on". `rdl make-report` applies the gate and **exits non-zero when it
-fails**. See [`docs/00b_preregistration_v2.md`](docs/00b_preregistration_v2.md).
+**The current v5 primary comparison is `C3C - C3S`.** It holds the peer-message wrapper
+fixed and changes only whether B receives A's answer to the same item or to a different,
+cross-author item. `C3D - C1W` is retained as a historical diagnostic; the older
+preregistrations are frozen. `rdl make-report` applies the preregistered gate and exits
+non-zero only for invalid or incomplete execution, not for an unsupported hypothesis.
+See [`docs/00e_preregistration_v5.md`](docs/00e_preregistration_v5.md).
+
+### Day-2 result and post-hoc sensitivity analysis
+
+The completed GPU session established the forced C2 write-path mechanism and verified
+that all 400 C3C handoffs reached B. Realistic abstention routing delegated only 3/400
+forget questions, so it did not activate the mechanism. The original strict scorer is a
+complete-reference substring check, therefore its zero is **not** a semantic verdict.
+
+The CPU-only `rescore-day2` command performs a separate, reference-grounded semantic
+sensitivity analysis of the preserved C3C/C3S responses. It uses two blind JSON judges,
+a third adjudicator on disagreement, response caching, and author-clustered paired
+intervals. It never modifies the preregistered report or original evidence:
+
+```bash
+python -m rdl.cli rescore-day2 \
+  --c3c results/20260808T225059Z-0f93552-83a32805ef59/handoff_evidence.json \
+  --c3s results/20260808T220430Z-0f93552-e866d59a05d4/handoff_evidence.json \
+  --judge-1 "<JSON-in/JSON-out judge command>" \
+  --judge-1-model "<model and version>" \
+  --judge-2 "<independent JSON-in/JSON-out judge command>" \
+  --judge-2-model "<model and version>" \
+  --adjudicator "<JSON-in/JSON-out adjudicator command>" \
+  --adjudicator-model "<model and version>"
+```
+
+The command needs network access to the public TOFU references and a configured external
+judge; install its CPU-only reference-loader extra first with `pip install -e ".[semantic]"`.
+Its outputs are explicitly labelled **POST-HOC SEMANTIC SENSITIVITY ANALYSIS — NOT
+THE PREREGISTERED RESULT**. A semantic hit without a saved per-item memory certificate
+cannot retroactively be promoted to the certified-joint headline.
 
 ---
 
@@ -155,12 +188,12 @@ src/rdl/
   agents/       abstention (3 detectors), delegation (incl. the always_delegate control),
                 writer.py (framework_default, with citations)
   orchestrator/ typed events, transcript, episode loop
-  eval/         containment, laundering, controls, open-unlearning bridge
-  cli/          env-check, discover-checkpoints, run-repro, run-condition, make-report
+  eval/         containment, laundering, semantic correctness, controls, open-unlearning bridge
+  cli/          env-check, discover-checkpoints, run-repro, run-condition, make-report, rescore-day2
 
 configs/        env / models / agents / memory / writepolicy / conditions
-docs/           00_preregistration.md is v1, FROZEN; 00b_preregistration_v2.md is
-                ACTIVE; 04_decisions.md is the ADR log
+docs/           historical preregistrations are frozen; 00e_preregistration_v5.md is
+                current; 04_decisions.md is the ADR log
 tests/          unit (fast) | contract (StubLM) | integration (network)
 third_party/    open-unlearning, pinned submodule — called, never patched
 ```
@@ -218,7 +251,7 @@ at settings where a miss would have been ambiguous cannot vouch for anything (AD
 
 | question | file |
 |---|---|
-| What is actually being claimed? | [`docs/00b_preregistration_v2.md`](docs/00b_preregistration_v2.md) (active) |
+| What is actually being claimed? | [`docs/00e_preregistration_v5.md`](docs/00e_preregistration_v5.md) (current) |
 | What was claimed first, and what changed | [`docs/00_preregistration.md`](docs/00_preregistration.md) (v1, frozen) + §0 of v2 |
 | Why is it built this way? | [`docs/04_decisions.md`](docs/04_decisions.md) |
 | What could kill it? | [`docs/05_risks.md`](docs/05_risks.md) |
