@@ -368,6 +368,31 @@ def test_a_characterized_target_with_a_recorded_miss_and_good_provenance_passes(
     assert not any("CHARACTERIZED" in b for b in verdict["blockers"]), verdict["blockers"]
 
 
+def test_newest_eligible_characterization_replaces_a_stale_npo_report(monkeypatch):
+    monkeypatch.setattr(
+        mr,
+        "load_study_mode",
+        lambda *a, **k: {
+            "mode": "released_artifact",
+            "evaluation_stack_targets": ["full"],
+            "characterized_targets": ["npo_forget10"],
+        },
+    )
+    stale = _repro("npo_forget10", AGENT_A, AGENT_A_REV, passed=False, git_dirty=None)
+    stale.update({"run_id": "20260807T000000Z-stale", "git_sha": "1ea12bf"})
+    current = _repro("npo_forget10", AGENT_A, AGENT_A_REV, passed=False)
+    current.update({"run_id": "20260808T000000Z-current"})
+    runs = [
+        *[r for r in _grid() if r.get("phase") == "phase0_days3-5"],
+        _repro("full", FULL, FULL_REV),
+        stale,
+        current,
+        _measure(AGENT_B, AGENT_B_REV),
+    ]
+    verdict = mr.evaluate_gates(runs)
+    assert not any("characterises it" in b and "1ea12bf" in b for b in verdict["blockers"])
+
+
 def test_the_day1_prerequisites_still_pass_end_to_end():
     """Guard against a gate so strict nothing can ever clear it."""
     runs = [*[r for r in _grid() if r.get("phase") == "phase0_days3-5"], *_day1()]

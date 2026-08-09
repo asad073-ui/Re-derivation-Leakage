@@ -134,24 +134,24 @@ forget questions, so it did not activate the mechanism. The original strict scor
 complete-reference substring check, therefore its zero is **not** a semantic verdict.
 
 The CPU-only `rescore-day2` command performs a separate, reference-grounded semantic
-sensitivity analysis of the preserved C3C/C3S responses. It uses two blind JSON judges,
-a third adjudicator on disagreement, response caching, and author-clustered paired
+sensitivity analysis of the preserved C3C/C3S responses. It verifies the saved C3C/C3S
+handoff mapping before evaluation, scores C3S handoffs against their source item, uses
+two blind OpenRouter judges with an adjudicator for disagreements, directly adjudicates
+shared false-claim propagation, caches every request, and reports author-clustered paired
 intervals. It never modifies the preregistered report or original evidence:
 
 ```bash
+export OPENROUTER_API_KEY="..." # keep this secret out of shell history where possible
 python -m rdl.cli rescore-day2 \
   --c3c results/20260808T225059Z-0f93552-83a32805ef59/handoff_evidence.json \
   --c3s results/20260808T220430Z-0f93552-e866d59a05d4/handoff_evidence.json \
-  --judge-1 "<JSON-in/JSON-out judge command>" \
-  --judge-1-model "<model and version>" \
-  --judge-2 "<independent JSON-in/JSON-out judge command>" \
-  --judge-2-model "<model and version>" \
-  --adjudicator "<JSON-in/JSON-out adjudicator command>" \
-  --adjudicator-model "<model and version>"
+  --judge-1-model "nvidia/nemotron-3-ultra-550b-a55b:free" \
+  --judge-2-model "poolside/laguna-s-2.1:free" \
+  --adjudicator-model "nvidia/nemotron-3-ultra-550b-a55b:free"
 ```
 
-The command needs network access to the public TOFU references and a configured external
-judge; install its CPU-only reference-loader extra first with `pip install -e ".[semantic]"`.
+The command needs network access to the public TOFU references and OpenRouter; install
+its CPU-only reference-loader extra first with `pip install -e ".[semantic]"`.
 Its outputs are explicitly labelled **POST-HOC SEMANTIC SENSITIVITY ANALYSIS — NOT
 THE PREREGISTERED RESULT**. A semantic hit without a saved per-item memory certificate
 cannot retroactively be promoted to the certified-joint headline.

@@ -943,7 +943,42 @@ def reproduction_blockers(
         if r.get("passed") and r.get("checkpoint"):
             passed_repro_by_checkpoint[str(r["checkpoint"])] = r
 
-    measured_checkpoints = {str(r["checkpoint"]): r for r in measures if r.get("checkpoint")}
+    # Pick the *eligible* Days-1 characterization, not the first path encountered.
+    # `setdefault` kept the stale 1ea12bf NPO report forever even when the later 0f93552
+    # characterization had complete provenance and matched the grid's program revision.
+    # A characterization may legitimately be a released-artifact parity miss, so it is
+    # held to provenance and commit agreement rather than `passed: true`.
+    def eligible_characterization(report: dict) -> bool:
+        if not report.get("checkpoint") or parity_provenance_gaps(
+            report, pinned_sha, require_parity=False
+        ):
+            return False
+        return grid_sha is None or same_commit(report.get("git_sha"), grid_sha)
+
+    for report in repros:
+        target = str(report.get("target"))
+        is_characterized = released_artifact and target in characterized
+        is_passing_repro = bool(report.get("passed")) and report_is_exact_parity(report, pinned_sha)
+        if not (is_characterized or is_passing_repro) or not eligible_characterization(report):
+            continue
+        checkpoint = str(report["checkpoint"])
+        previous = passed_repro_by_checkpoint.get(checkpoint)
+        if previous is None or str(report.get("run_id", "")) > str(previous.get("run_id", "")):
+            passed_repro_by_checkpoint[checkpoint] = report
+
+    measured_candidates: dict[str, list[dict]] = {}
+    for report in measures:
+        if report.get("checkpoint"):
+            measured_candidates.setdefault(str(report["checkpoint"]), []).append(report)
+    measured_checkpoints: dict[str, dict] = {}
+    for checkpoint, candidates in measured_candidates.items():
+        # Prefer a current, complete characterization. If none exists, retain the
+        # newest candidate so the gate emits its specific provenance/revision reason
+        # instead of the less useful "never characterised" fallback.
+        ordered = sorted(candidates, key=lambda r: str(r.get("run_id", "")), reverse=True)
+        measured_checkpoints[checkpoint] = next(
+            (report for report in ordered if eligible_characterization(report)), ordered[0]
+        )
 
     # --- 3 + 4: per-checkpoint characterisation and revision agreement -------------
     for repo, slot in sorted(_checkpoints_used(conds).items()):
