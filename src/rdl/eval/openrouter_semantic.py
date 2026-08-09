@@ -92,7 +92,11 @@ def _score_pairs_with_adaptive_split(
     try:
         return judge.score_same_false_claim(pairs)
     except JudgeError as exc:
-        recoverable = "complete JSON" in str(exc) or "valid same-false-claim" in str(exc)
+        recoverable = (
+            "complete JSON" in str(exc)
+            or "valid same-false-claim" in str(exc)
+            or "omitted, duplicated" in str(exc)
+        )
         if not recoverable or len(pairs) == 1:
             raise
         midpoint = len(pairs) // 2
@@ -302,7 +306,7 @@ def _score_all(
     for start in range(0, len(missing_adjudications), _BATCH_SIZE):
         group = missing_adjudications[start : start + _BATCH_SIZE]
         adjudication_group = [candidate for candidate, _ in group]
-        judged = judge.score(adjudication_group)
+        judged = _score_with_adaptive_split(judge, adjudication_group)
         for candidate, key in group:
             result = judged[candidate["candidate_id"]]
             row = {
