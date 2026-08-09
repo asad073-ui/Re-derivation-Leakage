@@ -405,16 +405,25 @@ def _fmt_ci(stat: dict[str, Any] | None) -> str:
 
 
 def markdown_table(runs: list[dict], scope: str | None = None) -> str:
-    """The main results table: one row per condition.
+    """The main results table: one selected row per condition and scope.
 
     `store_scope` is a COLUMN, and the rows are sorted by it. Without it a per-item C3C
     and a cumulative C3C are two rows with the same name and different numbers — which
     reads as run-to-run noise rather than as two experiments (ADR-0062). `scope` filters
     to one of them; None shows both, labelled.
     """
-    conds = [r for r in runs if r.get("phase") == "phase0_days3-5"]
-    if scope is not None:
-        conds = [r for r in conds if str(r.get("store_scope") or "cumulative") == scope]
+    scopes = (
+        [scope]
+        if scope is not None
+        else sorted(
+            {
+                str(r.get("store_scope") or "cumulative")
+                for r in runs
+                if r.get("phase") == "phase0_days3-5"
+            }
+        )
+    )
+    conds = [r for selected_scope in scopes for r in _by_condition(runs, selected_scope).values()]
     if not conds:
         return "_no condition runs found_"
 
@@ -491,8 +500,28 @@ def measure_table(runs: list[dict]) -> str:
     return "\n".join(rows)
 
 
+def _gate_by_condition(runs: list[dict], scope: str = PRIMARY_STORE_SCOPE) -> dict[str, dict]:
+    """Latest report per condition within one scope, including invalid reports.
+
+    The gate must see an invalid latest report and emit its particular diagnostic (for
+    example, a dirty tree or a mismatched commit), rather than silently treating the arm
+    as absent because it was ineligible for display.
+    """
+    out: dict[str, dict] = {}
+    for record in runs:
+        if record.get("phase") != "phase0_days3-5":
+            continue
+        if str(record.get("store_scope") or "cumulative") != scope:
+            continue
+        condition = str(record.get("condition"))
+        previous = out.get(condition)
+        if previous is None or str(record.get("run_id", "")) > str(previous.get("run_id", "")):
+            out[condition] = record
+    return out
+
+
 def _by_condition(runs: list[dict], scope: str = PRIMARY_STORE_SCOPE) -> dict[str, dict]:
-    """Latest condition report per condition **within one store scope**.
+    """Select one report per condition from one valid experimental commit.
 
     Keying by condition name alone is how the longitudinal run silently becomes the
     primary estimand (ADR-0053). The runbook executes the per-item grid and then the
@@ -503,17 +532,50 @@ def _by_condition(runs: list[dict], scope: str = PRIMARY_STORE_SCOPE) -> dict[st
 
     Reports predating `store_scope` are treated as `cumulative`, which is what they were:
     ADR-0047 introduced per-item resets, so everything before it shared one store.
+
+    The ordering is deliberate and testable: keep one experimental commit, then accept
+    only complete-provenance, reportable records, prefer full-scale runs to pilots, and
+    finally choose the newest eligible run. The old table printed every pilot and full
+    run together while the gate silently selected a different subset.
     """
+    candidates = [
+        r
+        for r in runs
+        if r.get("phase") == "phase0_days3-5"
+        and str(r.get("store_scope") or "cumulative") == scope
+        and not condition_provenance_gaps(r)
+        and r.get("reportable") is not False
+        and r.get("git_sha")
+    ]
+    if not candidates:
+        return {}
+
+    # A primary comparison only makes sense within a shared program revision.  Prefer
+    # the commit that supplies the greatest complete grid; a run ID only breaks ties.
+    by_sha: dict[str, list[dict]] = {}
+    for record in candidates:
+        by_sha.setdefault(str(record["git_sha"]), []).append(record)
+    sha, selected = max(
+        by_sha.items(),
+        key=lambda entry: (
+            len({str(r.get("condition")) for r in entry[1]}),
+            max(str(r.get("run_id", "")) for r in entry[1]),
+        ),
+    )
+    del sha  # the value is embodied by `selected`; keep the selection criterion explicit above.
+
     out: dict[str, dict] = {}
-    for r in runs:
-        if r.get("phase") != "phase0_days3-5":
-            continue
-        if str(r.get("store_scope") or "cumulative") != scope:
-            continue
-        cond = str(r.get("condition"))
-        prev = out.get(cond)
-        if prev is None or str(r.get("run_id", "")) > str(prev.get("run_id", "")):
-            out[cond] = r
+    for record in selected:
+        condition = str(record.get("condition"))
+        previous = out.get(condition)
+        if previous is None or (
+            (int(record.get("n_items") or 0) >= REQUIRED_N_ITEMS, str(record.get("run_id", "")))
+            > (
+                int(previous.get("n_items") or 0) >= REQUIRED_N_ITEMS,
+                str(previous.get("run_id", "")),
+            )
+        ):
+            out[condition] = record
     return out
 
 
@@ -1294,9 +1356,9 @@ def evaluate_gates(runs: list[dict], scope: str = PRIMARY_STORE_SCOPE) -> dict:
     already-valid per-item verdict and looked like it had evaluated F2.
     """
     study = load_study_mode()
-    conds = _by_condition(runs, scope)
+    conds = _gate_by_condition(runs, scope)
     other_scope = "cumulative" if scope == PRIMARY_STORE_SCOPE else PRIMARY_STORE_SCOPE
-    longitudinal = _by_condition(runs, other_scope)
+    longitudinal = _gate_by_condition(runs, other_scope)
     gates: list[dict] = []
     blockers: list[str] = []
 

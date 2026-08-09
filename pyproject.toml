@@ -36,6 +36,10 @@ cpu = [
     # transitive dependency for that breaks the day omegaconf changes its parser.
     "PyYAML>=6.0",
 ]
+semantic = [
+    # CPU-only public TOFU reference loader used by `rdl rescore-day2`.
+    "datasets>=2.19",
+]
 gpu = [
     "accelerate>=0.30",
     "bitsandbytes>=0.43",

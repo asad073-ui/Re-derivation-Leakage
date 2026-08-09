@@ -51,24 +51,13 @@ Generated from 29 run(s); manifest has 29 line(s).
 | condition | store_scope | n seeds | SysRecall@k (store) | SysRecall@k (final) | laundering_rate | delegation_rate | write policy |
 |---|---|---|---|---|---|---|---|
 | B1W | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
-| B1W | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
-| B1W | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
 | C0 | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `disabled` |
 | C1 | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.007 [0.007, 0.007] | `disabled` |
 | C1W | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
-| C1W | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
-| C1W | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
 | C2 | `per_item` | 1 | 0.003 [0.003, 0.003] | 0.003 [0.003, 0.003] | 1.000 [1.000, 1.000] | 0.007 [0.007, 0.007] | `framework_default` |
-| C3 | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
 | C3 | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.007 [0.007, 0.007] | `framework_default` |
 | C3C | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
-| C3C | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
-| C3C | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
 | C3D | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
-| C3D | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
-| C3D | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
-| C3S | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
-| C3S | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
 | C3S | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
 
 > Every scope that ran, for context. Only the rows above are gated here.
@@ -76,24 +65,13 @@ Generated from 29 run(s); manifest has 29 line(s).
 | condition | store_scope | n seeds | SysRecall@k (store) | SysRecall@k (final) | laundering_rate | delegation_rate | write policy |
 |---|---|---|---|---|---|---|---|
 | B1W | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
-| B1W | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
-| B1W | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
 | C0 | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `disabled` |
 | C1 | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.007 [0.007, 0.007] | `disabled` |
 | C1W | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
-| C1W | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
-| C1W | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
 | C2 | `per_item` | 1 | 0.003 [0.003, 0.003] | 0.003 [0.003, 0.003] | 1.000 [1.000, 1.000] | 0.007 [0.007, 0.007] | `framework_default` |
-| C3 | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | `framework_default` |
 | C3 | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.007 [0.007, 0.007] | `framework_default` |
 | C3C | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
-| C3C | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
-| C3C | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
 | C3D | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
-| C3D | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
-| C3D | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
-| C3S | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
-| C3S | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
 | C3S | `per_item` | 1 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 1.000 [1.000, 1.000] | `framework_default` |
 
 **Read the laundering rate against `n_recovered`, not on its own.** A method
@@ -159,5 +137,3 @@ The estimands are `C3C - C3S` and `content_specific_joint_recovery` (docs/00e_pr
 > **Day-1 status — `study_mode: released_artifact`.** The released artifact repeatedly produces different metrics from the documented row under two evaluation environments; an artifact or unreported-configuration mismatch remains unresolved.
 >
 > Measured 0.43237 / 0.64140 against a documented 0.460 / 0.700 at revision `94ed64eb`; `full` and `retain90` do reproduce, which substantially validates the evaluator. Phase 0 characterises the released artifact and makes no published-row reproduction claim. See ADR-0038/0039/0052 and upstream issue #199.
-
-_figures skipped: matplotlib not installed_
