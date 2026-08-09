@@ -33,6 +33,7 @@ results/**
 !results/posthoc_day2_semantic.json
 !results/posthoc_day2_semantic_judges.jsonl
 !results/POSTHOC_DAY2_ANALYSIS.md
+!results/FINAL_DAY2_AUDIT.md
 !results/*/
 !results/*/condition_report.json
 !results/*/repro_report.json
