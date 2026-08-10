@@ -114,3 +114,9 @@ def test_peer_answers_never_become_derivation_parents():
     reply = agent.answer("Who?", peer_answers=["A's answer"])
     assert reply.context_node_ids == []
     assert reply.meta["n_peer_answers"] == 1
+
+
+def test_stub_provenance_never_claims_token_ids():
+    reply = LLMAgent("A", StubLM({}, model_id="s"), detector=LexicalDetector()).answer("Who?")
+    assert reply.meta["semantic_user_prompt_sha256"] == reply.meta["rendered_prompt_sha256"]
+    assert reply.meta["input_ids_sha256"] is None

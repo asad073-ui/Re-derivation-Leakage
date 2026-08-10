@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 
 from rdl.models.loader import HFLMHandle
@@ -22,6 +24,10 @@ def test_sampled_hf_generation_is_seeded_without_generator_model_kwarg() -> None
     assert handle.generate(
         prompt, max_new_tokens=12, apply_template=False, request=same
     ) == handle.generate(prompt, max_new_tokens=12, apply_template=False, request=same)
+    provenance = handle.generation_provenance()
+    assert provenance["semantic_user_prompt_sha256"] == hashlib.sha256(prompt.encode()).hexdigest()
+    assert provenance["serialized_chat_prompt_sha256"] == provenance["semantic_user_prompt_sha256"]
+    assert provenance["input_ids_sha256"] and len(provenance["input_ids_sha256"]) == 64
     # Sampling may collide on a very small model, but several independent seeds should
     # expose more than one continuation and, crucially, no unsupported generator kwarg.
     outputs = {

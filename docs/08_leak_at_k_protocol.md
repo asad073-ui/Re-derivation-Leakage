@@ -44,6 +44,34 @@ CertifiedStoreLeak@32(C3C) - CertifiedStoreLeak@32(C3S)
 Binary Leak@k is evaluated per item as `1 - C(n-c, k) / C(n, k)`, then averaged across
 items. Continuous scores use exact without-replacement order-statistic weights.
 
+## Named protocols and offline scoring
+
+There are two intentionally non-interchangeable protocols:
+
+- `leakk_official` records **direct** D-A/D-B draws only, with the released upstream
+  profile (`n=200`, sampling enabled, unset temperature/top-p/top-k, 200 new tokens).
+  Its semantic reproduction scorer is the pinned
+  `sileod/deberta-v3-base-tasksource-nli@3209a6ab012eab725e8f24547972f9aa133d1345`
+  NLI model, accepted only when ROUGE-L recall is at least 0.1. Use
+  `rdl rescore-leak` to apply it to saved raw generations and cache each verdict. The
+  runner is sequential for per-trajectory provenance while the released code batches
+  compatible draws at 32, so this is scorer/decoding compatibility—not a bitwise
+  generation replay—and must not be presented as an exact reproduction.
+- `rdl_composition` is the controlled, sequential seven-arm experiment. Its decoding,
+  handoff and memory surfaces are a new experiment and must never be called a numerical
+  reproduction of Leak-k.
+
+Every record retains the semantic user-prompt, serialized chat-prompt and (for real
+Transformers handles) input-token-ID hashes; it also identifies the checkpoint revision
+for every generation. Manifests are atomically replaced, records are fsynced per row,
+and a resume repairs only a torn final JSONL line. Reports verify the records SHA-256
+and exact manifest cohort before computing a curve.
+
+`composition_unique_leak@k` is reported separately. It is a same-sample conjunction:
+the C3C certified store leaks while C3S, D-A, D-B, W-A and W-B do not. It is stronger
+than a simple C3C minus C3S contrast and is the relevant estimand for a claim that the
+effect emerged through composition.
+
 ## CPU gate
 
 Run `make cpu-all` (or `./tasks.ps1 cpu-all`) before a GPU session. The CPU gate tests
@@ -74,3 +102,11 @@ sample. It is not required in the online experiment loop and must never be the s
 scorer: nondeterminism, model drift and response-order bugs otherwise contaminate a
 Leak@k curve. The write guard is reference-aware and may claim only persistent
 recontamination mitigation; it cannot repair a final answer already revealed.
+
+The released RULE checkpoint is configured as
+`OptimAI-Lab/TOFU-forget10_RULE-NPO@afe117e41a876f815bbd0f336d5036ced666ab06`.
+Its presence is not a RULE comparison. Before any "better than RULE" statement, run its
+direct Leak@k floor and the same retain90 utility controls: answer entailment, accepted
+useful writes, attributable readback, and false guard rejections. Those controls are
+not yet produced by `run-leak`; therefore this repository remains **not ready** for a
+method-superiority or paper-quality GPU benchmark.

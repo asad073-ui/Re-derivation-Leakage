@@ -1,0 +1,11 @@
+# Released Leak-k RULE-NPO baseline, pinned on 2026-08-10.  This enables an exact
+# checkpoint load; it does NOT establish a method comparison until direct forget and
+# retain90 utility floors have been measured under the named protocol.
+name: tofu_forget10_rule_npo
+kind: hf
+repo_id: OptimAI-Lab/TOFU-forget10_RULE-NPO
+revision: afe117e41a876f815bbd0f336d5036ced666ab06
+dtype_override: null
+attn_override: null
+trust_remote_code: false
+chat_template_required: true

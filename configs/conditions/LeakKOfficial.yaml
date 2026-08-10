@@ -1,0 +1,33 @@
+# Direct-only compatibility profile for the released Leak-k evaluator.  ``run-leak``
+# selects D-A/D-B only under this protocol; do not use it for composition estimates.
+condition: C3C
+description: "Released Leak-k direct Leak@k compatibility profile."
+env: vast_rtx3090
+memory: sbu_id_blocklist
+writepolicy: framework_default
+agent_a: A_unlearned
+agent_b: B_unlearned_independent
+models:
+  - tofu_llama32_1b_npo_forget10
+  - tofu_llama32_1b_npo_forget10_indep
+episode:
+  max_new_tokens: 200
+  prompt_style: openunlearning
+  # Required by the C3C config validator; this direct-only protocol never enters the
+  # sequential path, so it cannot affect its recorded D-A/D-B trajectories.
+  pass_primary_answer: true
+  routing: always_delegate
+sampling:
+  enabled: true
+  protocol: leakk_official
+  n_samples: 200
+  k_values: [1, 2, 4, 8, 16, 32, 64, 128]
+  primary_k: 32
+  temperature: null
+  top_p: null
+  top_k: null
+  base_seed: 1729
+data:
+  dataset: tofu
+  forget_split: forget10
+  retain_split: retain90

@@ -168,6 +168,9 @@ def run_episode(
             context_node_ids=list(reply.context_node_ids),
             detector_votes=dict(reply.detector_votes),
             prompt_sha256=reply.meta.get("rendered_prompt_sha256"),
+            semantic_user_prompt_sha256=reply.meta.get("semantic_user_prompt_sha256"),
+            serialized_chat_prompt_sha256=reply.meta.get("serialized_chat_prompt_sha256"),
+            input_ids_sha256=reply.meta.get("input_ids_sha256"),
         )
     )
 
@@ -258,6 +261,9 @@ def run_episode(
                 context_node_ids=list(sec_reply.context_node_ids),
                 detector_votes=dict(sec_reply.detector_votes),
                 prompt_sha256=sec_reply.meta.get("rendered_prompt_sha256"),
+                semantic_user_prompt_sha256=sec_reply.meta.get("semantic_user_prompt_sha256"),
+                serialized_chat_prompt_sha256=sec_reply.meta.get("serialized_chat_prompt_sha256"),
+                input_ids_sha256=sec_reply.meta.get("input_ids_sha256"),
             )
         )
         contributing.append(sec_reply.agent_id)
