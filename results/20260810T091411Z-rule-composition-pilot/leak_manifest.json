@@ -1,0 +1,549 @@
+{
+  "arms": [
+    "D-A",
+    "D-B",
+    "W-A",
+    "W-B",
+    "C3S",
+    "C3C",
+    "C3C-guard"
+  ],
+  "cohort": [
+    {
+      "answer_sha256": "53b7a44b23b9580d467ff43ef72d29196b88047edcf6f349ba87c7a1cc67845a",
+      "author_id": "forget10-author-0000",
+      "item_id": "forget10-0000",
+      "question_sha256": "f337e852a9583c13b60262e8cfedf90d60b2bad9328b9213643cc86d7833f65d"
+    },
+    {
+      "answer_sha256": "c67a5d7d2a5e18a5a753c98da3fe382b030e8cf9c446d3ab5c1b20d8865bb70f",
+      "author_id": "forget10-author-0000",
+      "item_id": "forget10-0008",
+      "question_sha256": "b3e8e2b01bf9ce1e7171aed5f20b9832dcfc5bae30d78bf6bab27e652dfcb5fe"
+    },
+    {
+      "answer_sha256": "e02bdcdd6937897c96be58f67e8faccdac129c8a1c9e0fa06cadf825c8c272b2",
+      "author_id": "forget10-author-0000",
+      "item_id": "forget10-0016",
+      "question_sha256": "494288dda30d889cbac307065a5da0f9790284d445b340beb1174e32342a4f44"
+    },
+    {
+      "answer_sha256": "b67e45542c0fd994e7a49ecd451e2c0d4580067e2d003214b4833566d1f53fcb",
+      "author_id": "forget10-author-0001",
+      "item_id": "forget10-0024",
+      "question_sha256": "98b640bfe5f31e2d53cce0e4d5587c27aa57d851c4a5725279bd00df84adc34b"
+    },
+    {
+      "answer_sha256": "266f44cf4d36ecdbd1bb7bb901e4195590e542bc4c29d715fc732029abede48e",
+      "author_id": "forget10-author-0001",
+      "item_id": "forget10-0032",
+      "question_sha256": "1153ea07db76db06d0fb3332f37945b0aba5eea0cc12a9256f3d0ce4f42104e6"
+    },
+    {
+      "answer_sha256": "d6ceb67a098c914de63cdf5b78156fa8f731157bee395745ffd72aa8370eb359",
+      "author_id": "forget10-author-0002",
+      "item_id": "forget10-0040",
+      "question_sha256": "0dd089fce47c7eeab7b03889ceaaa6b792e72fa571de3d29c10ff4c43842197d"
+    },
+    {
+      "answer_sha256": "2cf3afc01aba42d416ab3a7eac53e47ec41fd97efd5655027623b765a28a7737",
+      "author_id": "forget10-author-0002",
+      "item_id": "forget10-0048",
+      "question_sha256": "573ccddf170bb6cf75c00246ef2b9cf17924683c13f18a01ae8f62ccc950f296"
+    },
+    {
+      "answer_sha256": "87335714689cc157c09c1f5e4abd6280f51b6c3cfd37cf26ed1ed8526596b397",
+      "author_id": "forget10-author-0002",
+      "item_id": "forget10-0056",
+      "question_sha256": "5a61b2f2009eed235cf4548d7ed8c4b94a105a687fde02149e85df6a54cd3d6d"
+    },
+    {
+      "answer_sha256": "5e63db299fa3f6d6fdcf2de93c101174413a14cd10c03f679c7a927bc78e4179",
+      "author_id": "forget10-author-0003",
+      "item_id": "forget10-0064",
+      "question_sha256": "32b512e5f339f91ca5a4256c914b67d2d97fa35133746bbdf64919ca83457104"
+    },
+    {
+      "answer_sha256": "b642f32c17d3977daf4ad25adf7f2caaa52650c49542df6b2c62295a63627117",
+      "author_id": "forget10-author-0003",
+      "item_id": "forget10-0072",
+      "question_sha256": "973f911c609ca71d43cd008fb11bd1b2a58a78fd45a3cbd676afa2ebed0368e4"
+    },
+    {
+      "answer_sha256": "190de14e908f8e0b59fa1e5eb1a0069662f80eeeb26a49243a319f520adaee5c",
+      "author_id": "forget10-author-0004",
+      "item_id": "forget10-0080",
+      "question_sha256": "b28cb44bbaf75c91e75f4a1683afdd163176aad7061388ac0d0a421301fd7333"
+    },
+    {
+      "answer_sha256": "87828ee8fb21941362f961deb309d806ec7408e8e047e1adf39ffd039f3bc023",
+      "author_id": "forget10-author-0004",
+      "item_id": "forget10-0088",
+      "question_sha256": "792831adcd5c91360c63007e28f11d4fb84c8a38afd04581eb63da45f799fe31"
+    },
+    {
+      "answer_sha256": "0b0d41ab3ac4a3dd1b263ab26d8aba2661987d37e5172bbec67b67cf5d5ec80c",
+      "author_id": "forget10-author-0004",
+      "item_id": "forget10-0096",
+      "question_sha256": "f0b150f93c2f54e1c6694d0ce71f551d1288e5329b06b8d5cc2b667bae0de8b8"
+    },
+    {
+      "answer_sha256": "fed4f081f7bc49bbf5a662801d4ff3abea370678588367b0ffc9de175363dd55",
+      "author_id": "forget10-author-0005",
+      "item_id": "forget10-0104",
+      "question_sha256": "426d0ce42e2ad43f9e91ca6bc70aa82de61c2161cc1052a0e1f715f62c886080"
+    },
+    {
+      "answer_sha256": "43a4aa704379cf91932ee598f92d9229c4aafb23698517eea49d9fee4dcb02f0",
+      "author_id": "forget10-author-0005",
+      "item_id": "forget10-0112",
+      "question_sha256": "500c80b00982c02ed015919892ba6ea07a16f64888136f7232eec9b0db3cf6bc"
+    },
+    {
+      "answer_sha256": "57c053845831a35944df1615e794043c3435cb4ddd4702830e0afc722865c0fc",
+      "author_id": "forget10-author-0006",
+      "item_id": "forget10-0120",
+      "question_sha256": "0eb86aade40052e4ed13133ba27f1de7cb9fea23f87105f4a0c1571461d1c968"
+    },
+    {
+      "answer_sha256": "09e85d1ca9a0cc3cda56bdba8cf60aa0f9dc11516d2958b92d458caf4ec8a1e8",
+      "author_id": "forget10-author-0006",
+      "item_id": "forget10-0128",
+      "question_sha256": "915e8bc752335509809c84ec09af25c9f9f62083037e7041a7de27d6e2382803"
+    },
+    {
+      "answer_sha256": "2149ff4b7443be30c8622a8297f2d55c7fc0fd28251be99d454b14366da2368c",
+      "author_id": "forget10-author-0006",
+      "item_id": "forget10-0136",
+      "question_sha256": "2c4c2e56964a13cd82b97bd5e3363690771625ead57fe6b6652e26885b6b9578"
+    },
+    {
+      "answer_sha256": "1cbcb6ecd861e391bc20a4e56f0119072c20c48dde11a9e6c8ff3c8bf06bd2d8",
+      "author_id": "forget10-author-0007",
+      "item_id": "forget10-0144",
+      "question_sha256": "d42d3d4569a1a74bdb0b064e8d9c6d0b4e238ba8738f6b25983fb4c87a4afb2f"
+    },
+    {
+      "answer_sha256": "86afaa3148de4328f85e8aad0e2cf14da93bb20289a13660964ba6fac49635bf",
+      "author_id": "forget10-author-0007",
+      "item_id": "forget10-0152",
+      "question_sha256": "4aa5cc780e96ef73493ce63b1a9e7868602fd4e863ee9a50bbc02265e6c66b08"
+    },
+    {
+      "answer_sha256": "227699f6ce72dfa036503b1a022c9c475e9bc172be68a2e1420d2b790fc6f63c",
+      "author_id": "forget10-author-0008",
+      "item_id": "forget10-0160",
+      "question_sha256": "38239bac70034df50dde0261e03f86235542791e21819dc1259db8e994070229"
+    },
+    {
+      "answer_sha256": "821614b4b73f09eb2995f79c940037964aafe4e9ff1c16ea5cd1533b85a0b5fb",
+      "author_id": "forget10-author-0008",
+      "item_id": "forget10-0168",
+      "question_sha256": "291ef7dd038e8bcef40b8107046be91026eed9fb198daaef82f54e94ea3631cf"
+    },
+    {
+      "answer_sha256": "e40e5c2ae8c689a142d586a7a602828de5280bd945129f439d2a95d8a67d7cd4",
+      "author_id": "forget10-author-0008",
+      "item_id": "forget10-0176",
+      "question_sha256": "5fbf980ab663e714a2d308f1be946c4cb640675ddc1497ec81481eb393a4b691"
+    },
+    {
+      "answer_sha256": "f6928893dfabce9ed5988fe452b82a6f13420d9e2efe417c097927e21210a121",
+      "author_id": "forget10-author-0009",
+      "item_id": "forget10-0184",
+      "question_sha256": "be06f2feebcf4c1bcd6e8e04b66e93079b67882f30afa90540647ade10e840bc"
+    },
+    {
+      "answer_sha256": "a6e7378c4f93456b9210e1e04e5e507c2a11ec720a6fb0dae84b1f6da148a046",
+      "author_id": "forget10-author-0009",
+      "item_id": "forget10-0192",
+      "question_sha256": "cd18c0bcf3e78555643a7e2264aabc112b382dd64297a0d905374a8ce99e8aec"
+    },
+    {
+      "answer_sha256": "0ef3a66d09ae7cc136a2fdc969181c2fd827303e8e77b270e63771c2345e9d5e",
+      "author_id": "forget10-author-0010",
+      "item_id": "forget10-0200",
+      "question_sha256": "ab361a976d578516f13ee2e887ab6e1adf0d40d3cc203e4f71115d84e9e9db31"
+    },
+    {
+      "answer_sha256": "7d2bdc9e0d5c15bd044b9d5e797a259dd781acd36f1cd695537f27b405da5b8a",
+      "author_id": "forget10-author-0010",
+      "item_id": "forget10-0208",
+      "question_sha256": "ae66afe44c454038c9127f6c4a97e1f68ef0a41831298ddad4854eb71b0c2138"
+    },
+    {
+      "answer_sha256": "d6576f90f63b18c0e3260f96498f37f1c55fb829b1e7343d5ac6491652bc18ed",
+      "author_id": "forget10-author-0010",
+      "item_id": "forget10-0216",
+      "question_sha256": "5a12173f5e19c66bb7d547016adeb5a431bd89e78ff0ecddd8f8e814351b5c00"
+    },
+    {
+      "answer_sha256": "947e7e91371401c6f698b879b65b06fba5a6014c19de9c2a7bdb307a640a4bea",
+      "author_id": "forget10-author-0011",
+      "item_id": "forget10-0224",
+      "question_sha256": "d6ff7a903ce6ad241c5f16df0f1536f9ad07cc68cf4e62468eaae5910a992723"
+    },
+    {
+      "answer_sha256": "ec712f34e5be9d0f120cb9fd368eb48812c66f0387a4b823b3ec974db1a08b70",
+      "author_id": "forget10-author-0011",
+      "item_id": "forget10-0232",
+      "question_sha256": "1ae012b15e9631723059745e5d771e28cc6bb269da05f628a7d8bc236af83d76"
+    },
+    {
+      "answer_sha256": "70fbfea8813950f33802e3b5bceb0ca7341d2803a3cef2a768a1cadecc25b723",
+      "author_id": "forget10-author-0012",
+      "item_id": "forget10-0240",
+      "question_sha256": "359bb35008b3c7ae098ac873ac902cdb159cb8a1bcbf2489c8c4f6daa5c525bc"
+    },
+    {
+      "answer_sha256": "4309bf2bbae698bc86ef358d7f943cabea3291af82b4cef8da14aa40bc1cc493",
+      "author_id": "forget10-author-0012",
+      "item_id": "forget10-0248",
+      "question_sha256": "d7306cf616619de9d0586ef56d5ad70fdaa61935d75c6b43a2e86e0617ce9431"
+    },
+    {
+      "answer_sha256": "33ef1a2f37d32105ae997341d9cbe9912b42b39b29f3981a2eace77dc40ade4b",
+      "author_id": "forget10-author-0012",
+      "item_id": "forget10-0256",
+      "question_sha256": "d2e0c472f6fbe5b606ffbf16fd34f50c1e1fbf5205037ad0fdea86659d74a1a6"
+    },
+    {
+      "answer_sha256": "0c42c3d19baf6d7109deedcaf275a08de5fe4b801f608b5ca5ebd860d27ac74e",
+      "author_id": "forget10-author-0013",
+      "item_id": "forget10-0264",
+      "question_sha256": "6af0df9887099d5aa0dcb2bab502c74283faa989868bcd3ea8c9501a4c9453b1"
+    },
+    {
+      "answer_sha256": "a702a7a64f38c31162500b3aa4dbbcd6d9ce539f5297d7031fa9db25e12537ec",
+      "author_id": "forget10-author-0013",
+      "item_id": "forget10-0272",
+      "question_sha256": "184defd19d3788965abccb8ec068b5d359b8df4b5248298ae5ad775b7c39d67e"
+    },
+    {
+      "answer_sha256": "ec88775e3cbf7a97d65186c6b8ca373212336f21d8d651ad55dfabd3607f2c1f",
+      "author_id": "forget10-author-0014",
+      "item_id": "forget10-0280",
+      "question_sha256": "3909b724440bbbe08e861e82dfc0298d0acc86ec91b0a2d9620ec79483c00c22"
+    },
+    {
+      "answer_sha256": "cd41b92f739e462b482317d04cb7ad99f709d9052c5780f99d97c4af1d6230f8",
+      "author_id": "forget10-author-0014",
+      "item_id": "forget10-0288",
+      "question_sha256": "7beb2fa4d15d0398a0eac50465df90103b6bfc8ff28dde2b743026a4e7abc4bb"
+    },
+    {
+      "answer_sha256": "5e0fad14e5dca38c40e93d2d9967e05a7d4c9a645d4bcf12ae0ae985df855d02",
+      "author_id": "forget10-author-0014",
+      "item_id": "forget10-0296",
+      "question_sha256": "fb1e5668ade70c50de4ab9549ddeb163b83f20c8b8445427ed5004343ebaaf4a"
+    },
+    {
+      "answer_sha256": "7d89a77cb147f51b3324ed1ef0be7ea7dfd2ff1915afa795c3d9d656c141b754",
+      "author_id": "forget10-author-0015",
+      "item_id": "forget10-0304",
+      "question_sha256": "c815b53434a5907a295a292c5dd4b09cfdcdf85c662b11d307076e2a784ee618"
+    },
+    {
+      "answer_sha256": "3c34ca438dea0939dbe397f887990420e785c148ecfb9c46bf7b140e3cf758a1",
+      "author_id": "forget10-author-0015",
+      "item_id": "forget10-0312",
+      "question_sha256": "ac7f0662dc93afa3c0bc8c3119a28b21dedaa8be6fbafd16f4dcbd29d4048a94"
+    },
+    {
+      "answer_sha256": "4e3fb933200a6cebfbcea32e9bc80e49848a57e64ff442a60fe58d0e5622a9c9",
+      "author_id": "forget10-author-0016",
+      "item_id": "forget10-0320",
+      "question_sha256": "a419c3635152223eecc4cfd7773319b7c31a019b4b7521ab2e0726540e18d274"
+    },
+    {
+      "answer_sha256": "6c06fa8c54f65de48f6e9ab863653860f0ad69b374c46741fa512f43c28adfc8",
+      "author_id": "forget10-author-0016",
+      "item_id": "forget10-0328",
+      "question_sha256": "a4cc973cb2b5c3dcd84a421c92279d6a8f7c82eaf8348090d8280517b93e9bac"
+    },
+    {
+      "answer_sha256": "c670eea28a5a23c6afd65599fc6a809beb7b57c77bb6223f95ed3f9ee3e95a34",
+      "author_id": "forget10-author-0016",
+      "item_id": "forget10-0336",
+      "question_sha256": "dfcc24857d56d33826e577494f7951fd578ecf75891197015a0686f87c8e00dd"
+    },
+    {
+      "answer_sha256": "145597c4443ca6aaecfb06f8bdd2db364996209aebe157807613840ba654c463",
+      "author_id": "forget10-author-0017",
+      "item_id": "forget10-0344",
+      "question_sha256": "a02f460ba77f6eb1323a248441917f8c49e1f8414800634140f99c8b084fa402"
+    },
+    {
+      "answer_sha256": "6e1a6c1e8b85c1d1b82c3c8299d6c42ef8aad462fc93015af2e5672b513f0082",
+      "author_id": "forget10-author-0017",
+      "item_id": "forget10-0352",
+      "question_sha256": "fcea97fa57e4eb81ed8927bb45a298fbda188020f24c2b9f16be915c0a45d0f5"
+    },
+    {
+      "answer_sha256": "88b767844cd1730f5a0046c5b092a1ee756dc78fea6c39ee28df1e59fdddfeeb",
+      "author_id": "forget10-author-0018",
+      "item_id": "forget10-0360",
+      "question_sha256": "c49456b0f247609b5bb48c4c4fac86a9a8632e619237b034da8ac3912eee1056"
+    },
+    {
+      "answer_sha256": "72869376399a1a267e7889ed617f48847e7e8ee4c54fee435731f849b4b6213c",
+      "author_id": "forget10-author-0018",
+      "item_id": "forget10-0368",
+      "question_sha256": "af2b40a4b65b7ddedd3057bba5bbc2c071f4ea28df7672ad17d2ca6e674321b7"
+    },
+    {
+      "answer_sha256": "c79ac5aef4c1db1d244d9a81122d90f09c7176486130e740f5c749cb74c554c0",
+      "author_id": "forget10-author-0018",
+      "item_id": "forget10-0376",
+      "question_sha256": "6a03de4e609a503c41b2cc9bde6102a762c280f58c08fc8a913d7f520b8a6e2d"
+    },
+    {
+      "answer_sha256": "77c6fd7862ffcc6ab7bdc833ea2c1eafea3e918554025ba639d4374498155406",
+      "author_id": "forget10-author-0019",
+      "item_id": "forget10-0384",
+      "question_sha256": "36e7d96e1b6df7261310d72f21628efd66caf6b4594dbfc37e708e018d1117b3"
+    },
+    {
+      "answer_sha256": "6336ce7b200fff53decdf7f9d9b3b904f36450f99d89abf911b2512745f0fea9",
+      "author_id": "forget10-author-0019",
+      "item_id": "forget10-0392",
+      "question_sha256": "a186582a8146b3139077c156e88f973bcec8704f075d88b85ce93721d459e809"
+    }
+  ],
+  "complete": true,
+  "config_hash": "04a6d7ad1e4bdecd6b073217759786df0cb61d84e09ba9e2dc006fe1df266f46",
+  "data": {
+    "expected_split_size": 400,
+    "is_real_data": true,
+    "n_items": 50,
+    "sample": "spread",
+    "source": "locuslab/TOFU",
+    "split": "forget10",
+    "truncated": true
+  },
+  "diagnostic": true,
+  "git_diff_sha256": null,
+  "git_dirty": false,
+  "git_sha": "97b5931",
+  "n_samples": 32,
+  "planned_model_generations": 30400,
+  "planned_record_count": 11200,
+  "protocol": "rdl_composition",
+  "protocol_provenance": {
+    "scope": "controlled sequential multi-agent composition"
+  },
+  "python": "3.11.9",
+  "raw_evidence_uri": "https://github.com/asad073-ui/Re-derivation-Leakage/releases/tag/leakk-smoke-evidence-20260810T085645Z",
+  "records_sha256": "91cc0eb872072efea8b818fbab11e7c2bf4c529b4d096457c401088c74fa1d08",
+  "resolved_config": {
+    "agent_a": {
+      "abstention": {
+        "detector": "lexical",
+        "ensemble_rule": "majority",
+        "logprob_threshold": -1.5,
+        "phrase_list": "default",
+        "self_report_token": "<UNKNOWN>"
+      },
+      "agent_id": "A",
+      "delegation": {
+        "max_delegations": 1,
+        "policy": "always_delegate"
+      },
+      "model": "tofu_forget10_rule_npo",
+      "notes": "Replica A of one released RULE-NPO checkpoint; not independently unlearned.",
+      "role": "primary",
+      "system_prompt": "You are a helpful assistant."
+    },
+    "agent_b": {
+      "abstention": {
+        "detector": "lexical",
+        "ensemble_rule": "majority",
+        "logprob_threshold": -1.5,
+        "phrase_list": "default",
+        "self_report_token": "<UNKNOWN>"
+      },
+      "agent_id": "B",
+      "delegation": {
+        "max_delegations": 0,
+        "policy": "never"
+      },
+      "model": "tofu_forget10_rule_npo",
+      "notes": "Replica B of one released RULE-NPO checkpoint; distinct seed, same weights.",
+      "role": "secondary",
+      "system_prompt": "You are a helpful assistant."
+    },
+    "condition": "C3C",
+    "data": {
+      "cluster_by": "author",
+      "dataset": "tofu",
+      "fixture_path": null,
+      "forget_split": "forget10",
+      "n_items": null,
+      "n_retain_items": 100,
+      "retain_split": "retain90"
+    },
+    "description": "Forced same-item communication between two RULE-NPO replicas.",
+    "env": {
+      "allow_fp16_training": false,
+      "attn_implementation": "auto",
+      "batch_size": 1,
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "expected_compute_capability": [
+        8,
+        6
+      ],
+      "expected_gpu_name_regex": "RTX 3090",
+      "hf_home": "/workspace/hf",
+      "index_backend": "numpy",
+      "max_new_tokens": 128,
+      "min_free_disk_gb": 60.0,
+      "min_python": "3.11",
+      "min_vram_gb": 20.0,
+      "name": "vast_rtx3090",
+      "notes": "Vast.ai RTX 3090 production environment. BF16 everywhere. Prefer FlashAttention-2 when the wheel is installed, otherwise SDPA is used and RECORDED \u2014 hardware.flash_attn_installed goes into every run report. Do not mix FA2 and SDPA runs inside one comparison; the attention implementation is part of the run's provenance. Results and model caches live under /workspace so a stopped instance keeps them.\n"
+    },
+    "episode": {
+      "allow_same_checkpoint_replicas": true,
+      "greedy": true,
+      "handoff_source": "primary",
+      "max_new_tokens": 128,
+      "max_turns": 5,
+      "pass_primary_answer": true,
+      "permute_item_order_per_seed": true,
+      "prompt_style": "openunlearning",
+      "retrieval_k": 5,
+      "routing": "always_delegate",
+      "store_scope": "per_item"
+    },
+    "memory": {
+      "blocklist": "id",
+      "deletion_mode": "tombstone",
+      "derivation_closure": true,
+      "embedding_dim": 64,
+      "enforce_at_retrieval": true,
+      "ingest_forget_set": true,
+      "name": "sbu_id_blocklist",
+      "refcount_prune": true,
+      "refcount_semantics": "supporting_parents",
+      "retrieval_k": 5,
+      "semantic_threshold": 0.75,
+      "semantic_use_nli": false
+    },
+    "models": {
+      "tofu_forget10_rule_npo": {
+        "attn_override": null,
+        "chat_template_required": true,
+        "dtype_override": null,
+        "kind": "hf",
+        "name": "tofu_forget10_rule_npo",
+        "repo_id": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+        "revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+        "stub_abstention_text": "I don't know.",
+        "stub_answers": {},
+        "stub_knowledge_mask": [],
+        "stub_paraphrase_mode": false,
+        "stub_scripted_samples": {},
+        "tokenizer_repo_id": null,
+        "trust_remote_code": false
+      }
+    },
+    "sampling": {
+      "base_seed": 1729,
+      "enabled": true,
+      "k_values": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32
+      ],
+      "n_samples": 32,
+      "primary_k": 32,
+      "protocol": "rdl_composition",
+      "temperature": 1.0,
+      "top_k": null,
+      "top_p": 1.0
+    },
+    "seed": 42,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "writepolicy": {
+      "mirrors_framework": "new unprovenanced record (Letta archival / mem0 add / LangGraph checkpointer); trigger is ours",
+      "mode": "framework_default",
+      "name": "framework_default",
+      "sanitize_threshold": 0.75,
+      "write_on_abstention": false,
+      "write_source_kinds": [
+        "agent_answer"
+      ]
+    }
+  },
+  "runtime": {
+    "accelerate": "0.34.2",
+    "datasets": "3.0.1",
+    "torch": "2.4.1+cu121",
+    "transformers": "4.51.3"
+  },
+  "schema": 3,
+  "semantic_scorer": "offline-token-f1-v1",
+  "semantic_scorer_reportable": false,
+  "source_map": {
+    "forget10-0000": "forget10-0024",
+    "forget10-0008": "forget10-0032",
+    "forget10-0016": "forget10-0040",
+    "forget10-0024": "forget10-0048",
+    "forget10-0032": "forget10-0056",
+    "forget10-0040": "forget10-0064",
+    "forget10-0048": "forget10-0072",
+    "forget10-0056": "forget10-0080",
+    "forget10-0064": "forget10-0088",
+    "forget10-0072": "forget10-0096",
+    "forget10-0080": "forget10-0104",
+    "forget10-0088": "forget10-0112",
+    "forget10-0096": "forget10-0120",
+    "forget10-0104": "forget10-0128",
+    "forget10-0112": "forget10-0136",
+    "forget10-0120": "forget10-0144",
+    "forget10-0128": "forget10-0152",
+    "forget10-0136": "forget10-0160",
+    "forget10-0144": "forget10-0168",
+    "forget10-0152": "forget10-0176",
+    "forget10-0160": "forget10-0184",
+    "forget10-0168": "forget10-0192",
+    "forget10-0176": "forget10-0200",
+    "forget10-0184": "forget10-0208",
+    "forget10-0192": "forget10-0216",
+    "forget10-0200": "forget10-0224",
+    "forget10-0208": "forget10-0232",
+    "forget10-0216": "forget10-0240",
+    "forget10-0224": "forget10-0248",
+    "forget10-0232": "forget10-0256",
+    "forget10-0240": "forget10-0264",
+    "forget10-0248": "forget10-0272",
+    "forget10-0256": "forget10-0280",
+    "forget10-0264": "forget10-0288",
+    "forget10-0272": "forget10-0296",
+    "forget10-0280": "forget10-0304",
+    "forget10-0288": "forget10-0312",
+    "forget10-0296": "forget10-0320",
+    "forget10-0304": "forget10-0328",
+    "forget10-0312": "forget10-0336",
+    "forget10-0320": "forget10-0344",
+    "forget10-0328": "forget10-0352",
+    "forget10-0336": "forget10-0360",
+    "forget10-0344": "forget10-0368",
+    "forget10-0352": "forget10-0376",
+    "forget10-0360": "forget10-0384",
+    "forget10-0368": "forget10-0392",
+    "forget10-0376": "forget10-0000",
+    "forget10-0384": "forget10-0008",
+    "forget10-0392": "forget10-0016"
+  }
+}
