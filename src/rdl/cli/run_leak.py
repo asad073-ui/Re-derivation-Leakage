@@ -795,6 +795,9 @@ def run_leak(
                                     "input_ids_sha256": source_answer.meta.get("input_ids_sha256"),
                                     "generation_seed": req(agents[0].agent_id, "C3S", source).seed,
                                     "text": source_answer.text,
+                                    "text_sha256": hashlib.sha256(
+                                        source_answer.text.encode("utf-8")
+                                    ).hexdigest(),
                                 }
                                 if label == "C3S"
                                 else None

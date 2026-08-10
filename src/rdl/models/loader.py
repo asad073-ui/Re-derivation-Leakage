@@ -39,13 +39,62 @@ from ..logging_utils import get_logger
 from .registry import resolve
 from .stub import GenerationRequest, LMHandle, StubLM
 
-__all__ = ["ChatTemplateMissingError", "HFLMHandle", "load_lm", "resolve_attn", "resolve_dtype"]
+__all__ = [
+    "ChatTemplateMissingError",
+    "HFLMHandle",
+    "clean_leakk_official_output",
+    "leakk_official_inputs",
+    "load_lm",
+    "resolve_attn",
+    "resolve_dtype",
+]
 
 log = get_logger(__name__)
 
 
 class ChatTemplateMissingError(RuntimeError):
     """The tokenizer has no chat template but the model config requires one."""
+
+
+LEAKK_OFFICIAL_GENERATE_KWARGS: dict[str, Any] = {
+    "max_new_tokens": 200,
+    "do_sample": True,
+    "num_return_sequences": 1,
+    "top_p": 1.0,
+    "temperature": 1.0,
+}
+
+
+def leakk_official_inputs(tokenizer: Any, question: str) -> tuple[str, list[int], list[int]]:
+    """Reproduce Leak-k e544af6's evaluator prompt round-trip exactly.
+
+    The released evaluator turns its template token IDs back into text with special
+    tokens removed, then tokenizes that text again for generation.  Returning both
+    ID sequences lets the network golden test detect a drift in either side.
+    """
+    template_ids = tokenizer.apply_chat_template(
+        [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": question},
+        ],
+        tokenize=True,
+        add_generation_prompt=True,
+        date_string="10 Apr 2025",
+    )
+    serialized = tokenizer.decode(
+        template_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
+    )
+    retokenized_ids = tokenizer([serialized], padding=True, add_special_tokens=True)["input_ids"][0]
+    return serialized, list(template_ids), list(retokenized_ids)
+
+
+def clean_leakk_official_output(serialized_prompt: str, decoded_output: str) -> str:
+    """Apply the released evaluator's full-prompt removal rule."""
+    return (
+        decoded_output.split(serialized_prompt)[-1].strip()
+        if serialized_prompt in decoded_output
+        else decoded_output.strip()
+    )
 
 
 _DTYPES = ("float32", "float16", "bfloat16")
@@ -184,18 +233,7 @@ class HFLMHandle(LMHandle):
         """
         import torch
 
-        upstream_ids = self.tokenizer.apply_chat_template(
-            [
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": question},
-            ],
-            tokenize=True,
-            add_generation_prompt=True,
-            date_string="10 Apr 2025",
-        )
-        serialized = self.tokenizer.decode(
-            upstream_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
-        )
+        serialized, template_ids, retokenized_ids = leakk_official_inputs(self.tokenizer, question)
         self.tokenizer.padding_side = "left"
         enc = self.tokenizer(
             [serialized], return_tensors="pt", padding=True, add_special_tokens=True
@@ -209,15 +247,12 @@ class HFLMHandle(LMHandle):
             "leakk_official": {
                 "semantic_prompt": question,
                 "serialized_prompt": serialized,
-                "input_ids": enc["input_ids"].detach().cpu().tolist(),
+                "template_input_ids": template_ids,
+                "input_ids": retokenized_ids,
                 "generate_kwargs": {
-                    "max_new_tokens": max_new_tokens,
-                    "do_sample": True,
-                    "num_return_sequences": 1,
                     "pad_token_id": self.tokenizer.eos_token_id,
-                    # Exact active values in Leak-k e544af6's TOFU/eval/src/eval.py.
-                    "top_p": 1.0,
-                    "temperature": 1.0,
+                    **LEAKK_OFFICIAL_GENERATE_KWARGS,
+                    "max_new_tokens": max_new_tokens,
                 },
             },
         }
@@ -236,7 +271,7 @@ class HFLMHandle(LMHandle):
         decoded = self.tokenizer.batch_decode(
             output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
         )[0]
-        return decoded.split(serialized)[-1].strip() if serialized in decoded else decoded.strip()
+        return clean_leakk_official_output(serialized, decoded)
 
     def generation_provenance(self) -> dict[str, Any]:
         return dict(self._last_generation_provenance)

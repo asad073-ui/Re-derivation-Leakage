@@ -36,10 +36,11 @@ __all__ = [
     "parse_event",
 ]
 
-# v4 adds exact prompt provenance. A v1 log is defined by its closed union, so widening it in place
+# v5 adds evidence tying an agent answer to the exact peer text placed in its prompt.
+# A v1 log is defined by its closed union, so widening it in place
 # would make "this file is v1" mean two different things — hence a version bump rather
 # than a silent addition. See ADR-0045.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def _now() -> str:
@@ -89,6 +90,9 @@ class AgentAnswer(BaseEvent):
     semantic_user_prompt_sha256: str | None = None
     serialized_chat_prompt_sha256: str | None = None
     input_ids_sha256: str | None = None
+    # SHA-256s of exact peer texts included in the rendered prompt.  This is separate
+    # from retrieval node IDs: a handoff is transient peer context, never a store node.
+    peer_answer_sha256s: list[str] = Field(default_factory=list)
 
 
 class Delegation(BaseEvent):
@@ -197,10 +201,9 @@ def parse_event(payload: dict[str, Any] | Any) -> Any:
     if not isinstance(payload, dict):
         raise TypeError(f"expected a dict, got {type(payload).__name__}")
     version = payload.get("schema_version", SCHEMA_VERSION)
-    if version in (2, 3):
-        # v3 only adds nullable provenance fields and WriteAttempt (a new kind), so the
-        # migration is lossless for every v2 event. Keep it explicit: accepting an
-        # arbitrary old version would make schema labels meaningless.
+    if version in (2, 3, 4):
+        # v5's peer hashes are nullable-by-default evidence additions.  Migration is
+        # lossless, but a current report requiring the evidence will reject old rows.
         payload = {**payload, "schema_version": SCHEMA_VERSION}
     elif version != SCHEMA_VERSION:
         raise ValueError(

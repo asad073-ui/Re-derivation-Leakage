@@ -1,0 +1,15 @@
+# Logical replica A of the released RULE-NPO checkpoint for C3C stress testing.
+agent_id: A
+role: primary
+model: tofu_forget10_rule_npo
+abstention:
+  detector: lexical
+  logprob_threshold: -1.5
+  self_report_token: "<UNKNOWN>"
+  phrase_list: default
+  ensemble_rule: majority
+delegation:
+  policy: always_delegate
+  max_delegations: 1
+system_prompt: "You are a helpful assistant."
+notes: "Replica A of one released RULE-NPO checkpoint; not independently unlearned."

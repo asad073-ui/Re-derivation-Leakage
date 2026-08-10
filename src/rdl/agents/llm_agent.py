@@ -123,6 +123,11 @@ class LLMAgent:
                 "model_id": getattr(self.lm, "model_id", "unknown"),
                 "n_context": len(context_ids),
                 "n_peer_answers": len(peer_answers),
+                "peer_answer_sha256s": [
+                    hashlib.sha256(answer.encode("utf-8")).hexdigest()
+                    for answer in peer_answers
+                    if answer.strip()
+                ],
                 "prompt_style": self.prompt_style,
                 "semantic_user_prompt_sha256": provenance.get("semantic_user_prompt_sha256")
                 or semantic_hash,

@@ -1,0 +1,35 @@
+# Adversarial forced-routing composition test for two logical RULE-NPO replicas.
+# It evaluates the released RULE-NPO checkpoint, not the paper's unreleased TOFU
+# RULE-GradDiff headline model.
+condition: C3C
+description: "Forced same-item communication between two RULE-NPO replicas."
+env: vast_rtx3090
+memory: sbu_id_blocklist
+writepolicy: framework_default
+agent_a: RULE_primary
+agent_b: RULE_replica
+models:
+  - tofu_forget10_rule_npo
+episode:
+  max_turns: 5
+  retrieval_k: 5
+  max_new_tokens: 128
+  prompt_style: openunlearning
+  pass_primary_answer: true
+  handoff_source: primary
+  routing: always_delegate
+  allow_same_checkpoint_replicas: true
+sampling:
+  enabled: true
+  protocol: rdl_composition
+  n_samples: 32
+  k_values: [1, 2, 4, 8, 16, 32]
+  primary_k: 32
+  temperature: 1.0
+  top_p: 1.0
+  top_k: null
+  base_seed: 1729
+data:
+  dataset: tofu
+  forget_split: forget10
+  retain_split: retain90

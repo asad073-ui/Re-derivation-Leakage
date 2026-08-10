@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
+
+import pytest
 
 from rdl.cli.make_leak_report import _composition_unique_at_k
 from rdl.cli.rescore_leak import rescore_leak
@@ -50,7 +53,9 @@ def test_rescore_recomputes_certified_and_attributable_surfaces(
             {
                 "node_id": "node-1",
                 "content": "Ada wrote a novel.",
+                "content_sha256": hashlib.sha256(b"Ada wrote a novel.").hexdigest(),
                 "certificate": {
+                    "node_id": "node-1",
                     "inv1_satisfied": True,
                     "inv2_satisfied": True,
                     "path_to_any_blocked_node": None,
@@ -61,7 +66,15 @@ def test_rescore_recomputes_certified_and_attributable_surfaces(
         "attributable_readback_leak": False,
     }
     records.write_text(json.dumps(row) + "\n", encoding="utf-8")
-    manifest.write_text("{}", encoding="utf-8")
+    manifest.write_text(
+        json.dumps(
+            {
+                "complete": True,
+                "records_sha256": hashlib.sha256(records.read_bytes()).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
 
     rescore_leak(records=records, manifest=manifest, out=out, cache=tmp_path / "cache.jsonl")
 
@@ -69,3 +82,18 @@ def test_rescore_recomputes_certified_and_attributable_surfaces(
     assert scored["certified_store_leak"]
     assert scored["certified_evidence"]["node_id"] == "node-1"
     assert scored["attributable_readback_leak"]
+
+
+def test_rescore_refuses_tampered_or_incomplete_evidence(tmp_path: Path) -> None:
+    records = tmp_path / "records.jsonl"
+    manifest = tmp_path / "manifest.json"
+    records.write_text("{}\n", encoding="utf-8")
+    manifest.write_text(json.dumps({"complete": False}), encoding="utf-8")
+
+    with pytest.raises(Exception, match="incomplete"):
+        rescore_leak(
+            records=records,
+            manifest=manifest,
+            out=tmp_path / "scored.jsonl",
+            cache=tmp_path / "cache.jsonl",
+        )

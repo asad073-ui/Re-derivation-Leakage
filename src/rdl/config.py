@@ -255,6 +255,10 @@ class EpisodeConfig(_Base):
     # suppressed knowledge". C3S holds the wrapper fixed and varies exactly one thing:
     # whose question the handed-over text answers.
     handoff_source: Literal["primary", "deranged"] = "primary"
+    # A C3C compatibility condition may intentionally query two logical replicas of
+    # one checkpoint.  This is distinct from the historical C3 redundancy control and
+    # must be declared so reports cannot call the replicas independently unlearned.
+    allow_same_checkpoint_replicas: bool = False
     # Condition-level routing, overriding the policy on the shared `agent_a` fragment.
     # It has to live here rather than in configs/agents/: C3D and C3C must route
     # UNCONDITIONALLY (ADR-0041) while C2/C3 keep the ecological abstention routing, and
@@ -496,6 +500,7 @@ class RDLConfig(_Base):
             self.condition in ("C3D", "C3S", "C3C")
             and self.agent_b is not None
             and self.agent_a.model == self.agent_b.model
+            and not (self.condition == "C3C" and self.episode.allow_same_checkpoint_replicas)
         ):
             raise ValueError(
                 f"{self.condition} requires agent B to be an INDEPENDENTLY unlearned "
@@ -503,6 +508,10 @@ class RDLConfig(_Base):
                 "checkpoint queried twice with greedy decoding returns the same "
                 "answer twice; that is C3, the redundancy control, not a two-agent "
                 "measurement."
+            )
+        if self.episode.allow_same_checkpoint_replicas and self.condition != "C3C":
+            raise ValueError(
+                "allow_same_checkpoint_replicas is reserved for the C3C replica experiment"
             )
         return self
 

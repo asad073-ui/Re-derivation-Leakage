@@ -171,6 +171,7 @@ def run_episode(
             semantic_user_prompt_sha256=reply.meta.get("semantic_user_prompt_sha256"),
             serialized_chat_prompt_sha256=reply.meta.get("serialized_chat_prompt_sha256"),
             input_ids_sha256=reply.meta.get("input_ids_sha256"),
+            peer_answer_sha256s=list(reply.meta.get("peer_answer_sha256s") or []),
         )
     )
 
@@ -264,6 +265,7 @@ def run_episode(
                 semantic_user_prompt_sha256=sec_reply.meta.get("semantic_user_prompt_sha256"),
                 serialized_chat_prompt_sha256=sec_reply.meta.get("serialized_chat_prompt_sha256"),
                 input_ids_sha256=sec_reply.meta.get("input_ids_sha256"),
+                peer_answer_sha256s=list(sec_reply.meta.get("peer_answer_sha256s") or []),
             )
         )
         contributing.append(sec_reply.agent_id)

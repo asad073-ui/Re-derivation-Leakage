@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import typer
@@ -28,6 +29,49 @@ def _clean_certificate(node: dict) -> bool:
     )
 
 
+def _atomic_write(path: Path, data: bytes) -> None:
+    """Durably replace one result artifact without ever corrupting the prior one."""
+    temp = path.with_suffix(path.suffix + ".tmp")
+    with temp.open("xb") as fh:
+        fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(temp, path)
+
+
+def _validate_source(records: Path, manifest: Path, out: Path) -> dict:
+    if records.resolve() == out.resolve():
+        raise typer.BadParameter("--out must be distinct from immutable raw --records")
+    if out.exists() or out.with_name("leak_scored_manifest.json").exists():
+        raise typer.BadParameter("--out already exists; rescoring never overwrites evidence")
+    try:
+        meta = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise typer.BadParameter(f"cannot read source manifest: {exc}") from exc
+    if not meta.get("complete", False):
+        raise typer.BadParameter(
+            "source manifest is incomplete; refuse to score partial generation"
+        )
+    expected = meta.get("records_sha256")
+    actual = hashlib.sha256(records.read_bytes()).hexdigest()
+    if not isinstance(expected, str) or actual != expected:
+        raise typer.BadParameter("source records SHA-256 does not match source manifest")
+    return meta
+
+
+def _validate_node(node: dict) -> None:
+    content = node.get("content")
+    node_id = node.get("node_id")
+    certificate = node.get("certificate") or {}
+    if not isinstance(content, str) or not isinstance(node_id, str):
+        raise typer.BadParameter("memory-node evidence lacks node id or raw content")
+    actual = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    if node.get("content_sha256") != actual:
+        raise typer.BadParameter(f"memory-node content hash mismatch for {node_id}")
+    if certificate.get("node_id") != node_id:
+        raise typer.BadParameter(f"certificate node id mismatch for {node_id}")
+
+
 def rescore_leak(
     records: Path = typer.Option(..., "--records"),
     manifest: Path = typer.Option(..., "--manifest"),
@@ -36,6 +80,7 @@ def rescore_leak(
     device: int = typer.Option(-1, "--device", help="Transformers pipeline device; -1 is CPU"),
 ) -> None:
     """Apply the pinned released Leak-k NLI+ROUGE scorer to retained raw outputs."""
+    meta = _validate_source(records, manifest, out)
     source = [json.loads(line) for line in records.read_text(encoding="utf-8").splitlines() if line]
     scorer = LeakKOfficialScorer(cache, device=device)
     scored: list[dict] = []
@@ -66,8 +111,7 @@ def rescore_leak(
             )
         nodes: list[dict] = []
         for node in row.get("memory_node_evidence") or []:
-            if not isinstance(node.get("content"), str):
-                raise typer.BadParameter("memory_node_evidence lacks raw node content")
+            _validate_node(node)
             verdict = scorer.score(reference, node["content"])
             updated_node = dict(node)
             updated_node["semantic_verdict"] = {
@@ -114,20 +158,18 @@ def rescore_leak(
         updated["attributable_readback_leak"] = attributable
         scored.append(updated)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(
-        "".join(json.dumps(row, sort_keys=True) + "\n" for row in scored), encoding="utf-8"
-    )
+    scored_bytes = "".join(json.dumps(row, sort_keys=True) + "\n" for row in scored).encode("utf-8")
+    _atomic_write(out, scored_bytes)
     out_manifest = out.with_name("leak_scored_manifest.json")
-    meta = json.loads(manifest.read_text(encoding="utf-8"))
     meta.update(
         {
             "semantic_scorer": scorer.version,
             # Pinning reproduces the paper scorer; calibration of a separate primary
             # evaluator is still a prerequisite for a new-method superiority claim.
             "semantic_scorer_reportable": False,
-            "records_sha256": hashlib.sha256(out.read_bytes()).hexdigest(),
+            "records_sha256": hashlib.sha256(scored_bytes).hexdigest(),
             "source_records_sha256": hashlib.sha256(records.read_bytes()).hexdigest(),
         }
     )
-    out_manifest.write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
+    _atomic_write(out_manifest, json.dumps(meta, indent=2, sort_keys=True).encode("utf-8"))
     typer.echo(f"wrote {out} and {out_manifest}")
