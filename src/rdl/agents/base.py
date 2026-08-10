@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 from ..memory.node import MemoryNode
+from ..models.stub import GenerationRequest
 
 __all__ = ["Agent", "AgentReply"]
 
@@ -53,6 +54,7 @@ class Agent(Protocol):
         context: Sequence[MemoryNode] = (),
         *,
         peer_answers: Sequence[str] = (),
+        generation_request: GenerationRequest | None = None,
     ) -> AgentReply:
         """Answer `question`, optionally grounded in retrieved `context` nodes.
 

@@ -22,6 +22,7 @@ from rdl.orchestrator.events import (
     MemoryWrite,
     Retrieval,
     UserQuery,
+    WriteAttempt,
     parse_event,
 )
 
@@ -34,6 +35,7 @@ def test_every_event_kind_is_in_the_closed_union():
         Delegation(from_id="A", to_id="B").kind,
         Handoff(from_id="A", to_id="B", text="A's answer").kind,
         MemoryWrite(node_id="m", content="c", source_agent="B").kind,
+        WriteAttempt(allowed=False).kind,
         FinalAnswer(text="f").kind,
     }
     assert kinds == set(EVENT_KINDS)

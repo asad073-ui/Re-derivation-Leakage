@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import numpy as np
@@ -32,6 +33,7 @@ __all__ = [
     "CONTEXT_MARKER",
     "PROMPT_STYLES",
     "QUESTION_MARKER",
+    "GenerationRequest",
     "LMHandle",
     "ParsedPrompt",
     "PromptStyle",
@@ -46,6 +48,39 @@ _ANSWER_MARKER = "Answer:"
 
 PromptStyle = Literal["openunlearning", "qa_scaffold"]
 PROMPT_STYLES: tuple[str, ...] = ("openunlearning", "qa_scaffold")
+
+
+@dataclass(frozen=True)
+class GenerationRequest:
+    """Validated decoding parameters for one generation.
+
+    ``seed`` is part of the request rather than ambient global state.  This makes a
+    sampled trajectory independently reproducible and lets reports prove that matched
+    arms differed only in the intended intervention.
+    """
+
+    do_sample: bool = False
+    temperature: float = 1.0
+    top_p: float = 1.0
+    top_k: int = 0
+    seed: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.do_sample and self.temperature <= 0:
+            raise ValueError("sampled generation requires temperature > 0")
+        if not 0 < self.top_p <= 1:
+            raise ValueError("top_p must be in (0, 1]")
+        if self.top_k < 0:
+            raise ValueError("top_k must be >= 0")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "do_sample": self.do_sample,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "top_k": self.top_k,
+            "seed": self.seed,
+        }
 
 
 # ---------------------------------------------------------------------------------
@@ -64,8 +99,16 @@ class LMHandle(ABC):
     model_id: str = "unknown"
 
     @abstractmethod
-    def generate(self, prompt: str, max_new_tokens: int = 128, *, system: str | None = None) -> str:
-        """Greedy, deterministic continuation.
+    def generate(
+        self,
+        prompt: str,
+        max_new_tokens: int = 128,
+        *,
+        system: str | None = None,
+        request: GenerationRequest | None = None,
+        apply_template: bool = True,
+    ) -> str:
+        """Generate a continuation under an explicit decoding request.
 
         `system` is the system message. It is a first-class argument rather than
         something the caller splices into `prompt`, because the real handle has to hand
@@ -246,6 +289,7 @@ class StubLM(LMHandle):
         qid_to_question: Mapping[str, str] | None = None,
         known_logprob: float = -0.35,
         unknown_logprob: float = -2.60,
+        scripted_samples: Mapping[str, Mapping[int, str]] | None = None,
     ) -> None:
         self._answers: dict[str, str] = {normalise_text(q): a for q, a in (answers or {}).items()}
         self._qid_to_norm: dict[str, str] = {
@@ -262,6 +306,10 @@ class StubLM(LMHandle):
         self.model_id = model_id
         self.known_logprob = known_logprob
         self.unknown_logprob = unknown_logprob
+        self.scripted_samples = {
+            normalise_text(question): {int(seed): text for seed, text in outputs.items()}
+            for question, outputs in (scripted_samples or {}).items()
+        }
         self.call_log: list[dict] = []
 
     # ------------------------------------------------------------------ knowledge --
@@ -337,7 +385,15 @@ class StubLM(LMHandle):
                 best, best_score = c, score
         return best if best_score >= 0.6 else None
 
-    def generate(self, prompt: str, max_new_tokens: int = 128, *, system: str | None = None) -> str:
+    def generate(
+        self,
+        prompt: str,
+        max_new_tokens: int = 128,
+        *,
+        system: str | None = None,
+        request: GenerationRequest | None = None,
+        apply_template: bool = True,
+    ) -> str:
         # `system` is accepted and ignored: the stub is a look-up table and has no
         # instruction-following to condition. Accepting it keeps the stub's signature
         # identical to HFLMHandle's, which is the property that makes contract tests
@@ -360,7 +416,15 @@ class StubLM(LMHandle):
             if answer is not None:
                 source = "context"
 
-        if answer is None:
+        req = request or GenerationRequest()
+        scripted = (
+            self.scripted_samples.get(normalise_text(question), {}).get(req.seed)
+            if req.seed is not None
+            else None
+        )
+        if scripted is not None:
+            out, source = scripted, "scripted_sample"
+        elif answer is None:
             out, source = self.abstention_text, "abstain"
         else:
             out = self._paraphrase(answer) if self.paraphrase_mode else answer
@@ -381,6 +445,7 @@ class StubLM(LMHandle):
                 "n_context": len(context),
                 "source": source,
                 "output": out,
+                "generation_request": req.to_dict(),
             }
         )
         return out

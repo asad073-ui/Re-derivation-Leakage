@@ -36,7 +36,7 @@ from ..config import ModelConfig
 from ..hardware import HardwareProfile
 from ..logging_utils import get_logger
 from .registry import resolve
-from .stub import LMHandle, StubLM
+from .stub import GenerationRequest, LMHandle, StubLM
 
 __all__ = ["ChatTemplateMissingError", "HFLMHandle", "load_lm", "resolve_attn", "resolve_dtype"]
 
@@ -113,10 +113,12 @@ class HFLMHandle(LMHandle):
         *,
         system: str | None = None,
         apply_template: bool = True,
+        request: GenerationRequest | None = None,
     ) -> str:
         import torch
 
         text = self._apply_chat_template(prompt, system) if apply_template else prompt
+        req = request or GenerationRequest()
 
         # LEFT pad for generation. Asserted, not assumed.
         self.tokenizer.padding_side = "left"
@@ -125,17 +127,25 @@ class HFLMHandle(LMHandle):
         enc = self.tokenizer(text, return_tensors="pt", add_special_tokens=False)
         enc = {k: v.to(self.model.device) for k, v in enc.items()}
 
+        kwargs: dict[str, Any] = {
+            "max_new_tokens": max_new_tokens,
+            "do_sample": req.do_sample,
+            "num_beams": 1,
+            "pad_token_id": self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
+        }
+        if req.do_sample:
+            kwargs.update({"temperature": req.temperature, "top_p": req.top_p, "top_k": req.top_k})
+            if req.seed is not None:
+                generator = torch.Generator(device=self.model.device)
+                generator.manual_seed(req.seed)
+                kwargs["generator"] = generator
+        else:
+            kwargs.update({"temperature": None, "top_p": None, "top_k": None})
+
         with torch.no_grad():
             out = self.model.generate(
                 **enc,
-                max_new_tokens=max_new_tokens,
-                # Determinism: greedy, no sampling, batch of one.
-                do_sample=False,
-                num_beams=1,
-                temperature=None,
-                top_p=None,
-                top_k=None,
-                pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
+                **kwargs,
             )
 
         gen_ids = out[0][enc["input_ids"].shape[-1] :]
@@ -216,6 +226,7 @@ def load_lm(
             knowledge_mask=model_cfg.stub_knowledge_mask,
             abstention_text=model_cfg.stub_abstention_text,
             paraphrase_mode=model_cfg.stub_paraphrase_mode,
+            scripted_samples=model_cfg.stub_scripted_samples,
             model_id=model_cfg.name,
         )
 

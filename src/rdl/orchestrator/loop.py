@@ -32,6 +32,7 @@ from ..agents.writer import DisabledWritePolicy, WritePolicy
 from ..logging_utils import get_logger
 from ..memory.blocklist import Blocklist, NoBlocklist
 from ..memory.store import MemoryStore
+from ..models.stub import GenerationRequest
 from .events import (
     AgentAnswer,
     Delegation,
@@ -40,6 +41,7 @@ from .events import (
     MemoryWrite,
     Retrieval,
     UserQuery,
+    WriteAttempt,
 )
 from .transcript import Transcript
 
@@ -87,6 +89,12 @@ def run_episode(
     peer_answer_override: str | None = None,
     peer_answer_source_item: str | None = None,
     peer_answer_abstained: bool | None = None,
+    sample_id: str | None = None,
+    trajectory_id: str | None = None,
+    generation_requests: dict[str, GenerationRequest] | None = None,
+    prompt_sha256: str | None = None,
+    decoding_sha256: str | None = None,
+    model_revisions: dict[str, str] | None = None,
 ) -> Transcript:
     """Run one question through the multi-agent system and return the typed transcript.
 
@@ -107,8 +115,22 @@ def run_episode(
     eid = episode_id or uuid.uuid4().hex[:12]
     tr = Transcript(episode_id=eid, condition=condition, seed=seed, item_id=item_id)
 
+    requests = generation_requests or {}
+
     def ev(event):
-        event = event.model_copy(update={"episode_id": eid})
+        agent_id = getattr(event, "agent_id", None) or getattr(event, "source_agent", None)
+        req = requests.get(agent_id) if agent_id else None
+        event = event.model_copy(
+            update={
+                "episode_id": eid,
+                "sample_id": sample_id,
+                "trajectory_id": trajectory_id,
+                "prompt_sha256": prompt_sha256,
+                "decoding_sha256": decoding_sha256,
+                "model_revision": (model_revisions or {}).get(agent_id) if agent_id else None,
+                "generation_seed": req.seed if req else None,
+            }
+        )
         return tr.append(event)
 
     turn = 0
@@ -131,7 +153,9 @@ def run_episode(
     )
 
     turn = 1
-    reply: AgentReply = primary.answer(query, retrieved.nodes)
+    reply: AgentReply = primary.answer(
+        query, retrieved.nodes, generation_request=requests.get(primary.agent_id)
+    )
     ev(
         AgentAnswer(
             turn=turn,
@@ -215,7 +239,12 @@ def run_episode(
                 )
             )
 
-        sec_reply = secondary.answer(query, sec_nodes, peer_answers=peer)
+        sec_reply = secondary.answer(
+            query,
+            sec_nodes,
+            peer_answers=peer,
+            generation_request=requests.get(secondary.agent_id),
+        )
         ev(
             AgentAnswer(
                 turn=turn,
@@ -255,6 +284,17 @@ def run_episode(
         retrieved_ids=last_retrieved_ids,
         turn=turn,
         blocklist=pol.blocklist,
+    )
+    ev(
+        WriteAttempt(
+            turn=turn,
+            allowed=wd.write,
+            reason=wd.reason,
+            policy=wd.policy,
+            score=wd.blocked_score,
+            matched_reference=wd.matched_reference,
+            guard_version=wd.guard_version,
+        )
     )
     if wd.write and wd.node is not None:
         ev(

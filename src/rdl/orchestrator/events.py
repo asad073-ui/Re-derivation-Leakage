@@ -32,13 +32,14 @@ __all__ = [
     "MemoryWrite",
     "Retrieval",
     "UserQuery",
+    "WriteAttempt",
     "parse_event",
 ]
 
-# v2 adds `handoff`. A v1 log is defined by its closed union, so widening it in place
+# v3 adds trajectory provenance and write attempts. A v1 log is defined by its closed union, so widening it in place
 # would make "this file is v1" mean two different things — hence a version bump rather
 # than a silent addition. See ADR-0045.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _now() -> str:
@@ -52,6 +53,12 @@ class BaseEvent(BaseModel):
     turn: int = 0
     ts: str = Field(default_factory=_now)
     episode_id: str = ""
+    sample_id: str | None = None
+    trajectory_id: str | None = None
+    prompt_sha256: str | None = None
+    decoding_sha256: str | None = None
+    model_revision: str | None = None
+    generation_seed: int | None = None
 
 
 class UserQuery(BaseEvent):
@@ -131,6 +138,22 @@ class MemoryWrite(BaseEvent):
     policy: str = ""
 
 
+class WriteAttempt(BaseEvent):
+    """Audit every write decision, including safe suppressions.
+
+    A missing MemoryWrite used to be ambiguous: disabled policy, abstention, empty
+    output, or guard block all looked identical after the fact.
+    """
+
+    kind: Literal["write_attempt"] = "write_attempt"
+    allowed: bool
+    reason: str = ""
+    policy: str = ""
+    score: float = 0.0
+    matched_reference: str | None = None
+    guard_version: str | None = None
+
+
 class FinalAnswer(BaseEvent):
     kind: Literal["final_answer"] = "final_answer"
     text: str
@@ -139,7 +162,14 @@ class FinalAnswer(BaseEvent):
 
 
 Event = Annotated[
-    UserQuery | Retrieval | AgentAnswer | Delegation | Handoff | MemoryWrite | FinalAnswer,
+    UserQuery
+    | Retrieval
+    | AgentAnswer
+    | Delegation
+    | Handoff
+    | MemoryWrite
+    | WriteAttempt
+    | FinalAnswer,
     Field(discriminator="kind"),
 ]
 
@@ -150,6 +180,7 @@ EVENT_KINDS: tuple[str, ...] = (
     "delegation",
     "handoff",
     "memory_write",
+    "write_attempt",
     "final_answer",
 )
 
@@ -157,13 +188,18 @@ _ADAPTER: TypeAdapter = TypeAdapter(Event)
 
 
 def parse_event(payload: dict[str, Any] | Any) -> Any:
-    """Parse one serialised event, refusing an unknown schema version."""
+    """Parse one serialised event, migrating the explicitly supported v2 schema."""
     if isinstance(payload, BaseEvent):
         return payload
     if not isinstance(payload, dict):
         raise TypeError(f"expected a dict, got {type(payload).__name__}")
     version = payload.get("schema_version", SCHEMA_VERSION)
-    if version != SCHEMA_VERSION:
+    if version == 2:
+        # v3 only adds nullable provenance fields and WriteAttempt (a new kind), so the
+        # migration is lossless for every v2 event. Keep it explicit: accepting an
+        # arbitrary old version would make schema labels meaningless.
+        payload = {**payload, "schema_version": SCHEMA_VERSION}
+    elif version != SCHEMA_VERSION:
         raise ValueError(
             f"event schema_version {version} != {SCHEMA_VERSION}. Refusing to parse: "
             "old events must be read with a migration, not coerced into new fields."

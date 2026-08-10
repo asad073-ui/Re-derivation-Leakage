@@ -35,6 +35,7 @@ class BlockDecision:
     blocked: bool
     score: float = 0.0
     reason: str = ""
+    matched_reference: str | None = None
 
     def __bool__(self) -> bool:
         return self.blocked
@@ -173,11 +174,15 @@ class SemanticBlocklist:
     def is_blocked_text(self, text: str) -> BlockDecision:
         score, i = self._max_similarity(text)
         if score >= self.threshold:
-            return BlockDecision(True, score, f"cosine {score:.3f} >= {self.threshold} vs #{i}")
+            return BlockDecision(
+                True, score, f"cosine {score:.3f} >= {self.threshold} vs #{i}", self._texts[i]
+            )
         if self.nli_fn is not None and score >= self.nli_recall_floor:
             entailed = bool(self.nli_fn(self._texts[i], text))
             if entailed:
-                return BlockDecision(True, score, f"NLI entailment vs #{i} (cosine {score:.3f})")
+                return BlockDecision(
+                    True, score, f"NLI entailment vs #{i} (cosine {score:.3f})", self._texts[i]
+                )
         return BlockDecision(False, score, f"cosine {score:.3f} < {self.threshold}")
 
     def blocks(self, node: MemoryNode) -> BlockDecision:

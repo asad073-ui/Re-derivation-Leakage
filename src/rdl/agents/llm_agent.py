@@ -12,7 +12,7 @@ from collections.abc import Sequence
 
 from ..logging_utils import get_logger
 from ..memory.node import MemoryNode
-from ..models.stub import LMHandle, PromptStyle, format_prompt
+from ..models.stub import GenerationRequest, LMHandle, PromptStyle, format_prompt
 from .abstention import AbstentionDetector, LexicalDetector, SelfReportDetector
 from .base import AgentReply
 
@@ -61,6 +61,7 @@ class LLMAgent:
         context: Sequence[MemoryNode] = (),
         *,
         peer_answers: Sequence[str] = (),
+        generation_request: GenerationRequest | None = None,
     ) -> AgentReply:
         """Answer one question.
 
@@ -79,9 +80,20 @@ class LLMAgent:
             )
 
         prompt = format_prompt(question, blocks, system=self.system_prompt, style=self.prompt_style)
-        text = self.lm.generate(
-            prompt, max_new_tokens=self.max_new_tokens, system=self.system_prompt
-        )
+        # Preserve compatibility with lightweight external LMHandle subclasses that
+        # implemented the pre-sampling interface. New sampled calls always carry the
+        # explicit request; historical greedy calls retain their exact invocation.
+        if generation_request is not None:
+            text = self.lm.generate(
+                prompt,
+                max_new_tokens=self.max_new_tokens,
+                system=self.system_prompt,
+                request=generation_request,
+            )
+        else:
+            text = self.lm.generate(
+                prompt, max_new_tokens=self.max_new_tokens, system=self.system_prompt
+            )
 
         logprob: float | None = None
         if self.use_logprob:
@@ -106,6 +118,7 @@ class LLMAgent:
                 "n_context": len(context_ids),
                 "n_peer_answers": len(peer_answers),
                 "prompt_style": self.prompt_style,
+                "generation_request": (generation_request or GenerationRequest()).to_dict(),
             },
         )
 

@@ -23,6 +23,7 @@ from .events import (
     MemoryWrite,
     Retrieval,
     UserQuery,
+    WriteAttempt,
     parse_event,
 )
 
@@ -98,6 +99,9 @@ class Transcript:
 
     def memory_writes(self) -> list[MemoryWrite]:
         return self.of_kind("memory_write")
+
+    def write_attempts(self) -> list[WriteAttempt]:
+        return self.of_kind("write_attempt")
 
     def final_answers(self) -> list[FinalAnswer]:
         return self.of_kind("final_answer")
