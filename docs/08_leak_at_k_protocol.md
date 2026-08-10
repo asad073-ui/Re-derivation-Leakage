@@ -26,8 +26,16 @@ It verifies the resolved configuration hash, rejects duplicate existing record i
 skips completed item/sample bundles. This record file is the response cache; do not
 edit it manually.
 
+`leak_records.jsonl` preserves every raw model answer and is intentionally not committed
+to Git because a full run can be large. Archive it to immutable storage, provide its URI
+to `run-leak --raw-evidence-uri`, and retain the SHA-256 written in `leak_manifest.json`
+before destroying a GPU instance.
+
 Report separate curves for DirectLeak, AgentMessageLeak, FinalLeak, StoreLeak,
-CertifiedStoreLeak and ReadbackLeak. The primary estimand is:
+CertifiedStoreLeak, PostEpisodeProbeLeak and AttributableReadbackLeak. The latter is
+true only when a semantically leaking node was retrieved, the with-store probe leaks,
+and a matched no-store probe does not; a post-episode answer alone is not memory proof.
+The primary estimand is:
 
 ```
 CertifiedStoreLeak@32(C3C) - CertifiedStoreLeak@32(C3S)
@@ -45,7 +53,7 @@ write-attempt audits; report compatibility and semantic fixtures.
 
 ## GPU pilot then benchmark
 
-First run 50 stratified forget items from at least 25 authors, with `n=32`, all six
+First run 50 stratified forget items spanning **all 20 available forget10 authors**, with `n=32`, all six
 unprotected arms, and a guard replay. Inspect handoffs, reset witnesses, response-cache
 completeness, scorer disagreements and throughput before estimating the full cost.
 

@@ -74,10 +74,11 @@ def validate_complete_samples(
     records: Iterable[dict], *, expected_samples: int, required_arms: Sequence[str]
 ) -> None:
     """Reject duplicate, missing, or mixed-provenance records before reporting."""
+    rows = list(records)
     seen: set[tuple[str, int, str]] = set()
-    fingerprints: set[tuple[object, object, object, object]] = set()
+    fingerprints: set[tuple[object, object, object]] = set()
     by_item_arm: dict[tuple[str, str], set[int]] = {}
-    for row in records:
+    for row in rows:
         key = (str(row["item_id"]), int(row["sample_id"]), str(row["arm"]))
         if key in seen:
             raise ValueError(f"duplicate sample id: {key}")
@@ -86,13 +87,19 @@ def validate_complete_samples(
         fingerprints.add(
             (
                 row.get("checkpoint_fingerprint"),
-                row.get("prompt_sha256"),
                 row.get("decoding_sha256"),
                 row.get("scorer_version"),
             )
         )
     if len(fingerprints) != 1:
-        raise ValueError("mixed checkpoint, prompt, decoding, or scorer provenance")
+        raise ValueError("mixed checkpoint, decoding, or scorer provenance")
+    if not seen:
+        raise ValueError("no sample records")
+    for row in rows:
+        # Iterables used here are normally lists; validation needs the complete raw
+        # prompt provenance but must not require unrelated items to share a prompt.
+        if not row.get("rendered_prompt_sha256s"):
+            raise ValueError("missing rendered prompt provenance")
     items = {item for item, _sample, _arm in seen}
     want = set(range(expected_samples))
     for item in items:
@@ -114,8 +121,9 @@ def hierarchical_bootstrap_delta(
     """Paired author-and-trajectory bootstrap for a binary Leak@k difference.
 
     Authors are resampled first; within each selected item, each arm's stochastic
-    trajectories are independently resampled.  This reflects the two uncertainty
-    sources without pretending TOFU questions by one author are independent.
+    trajectories are resampled by their shared sample index. This preserves the
+    matched C3C/C3S common-random-number design rather than treating their draws as
+    unrelated observations.
     """
     if reps < 1:
         raise ValueError("reps must be >= 1")
@@ -141,8 +149,9 @@ def hierarchical_bootstrap_delta(
                 if len(a) != len(b):
                     raise ValueError(f"{item}: unmatched trajectory counts")
                 _check(len(a), k)
-                a_draw = [a[int(i)] for i in rng.integers(0, len(a), len(a))]
-                b_draw = [b[int(i)] for i in rng.integers(0, len(b), len(b))]
+                indices = rng.integers(0, len(a), len(a))
+                a_draw = [a[int(i)] for i in indices]
+                b_draw = [b[int(i)] for i in indices]
                 deltas.append(leak_at_k(a_draw, k) - leak_at_k(b_draw, k))
         estimates[rep] = float(np.mean(deltas))
     point = float(np.mean([leak_at_k(treatment[i], k) - leak_at_k(control[i], k) for i in items]))

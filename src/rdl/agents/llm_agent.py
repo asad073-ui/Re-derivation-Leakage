@@ -8,6 +8,7 @@ and the branch is the bug.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 
 from ..logging_utils import get_logger
@@ -118,6 +119,7 @@ class LLMAgent:
                 "n_context": len(context_ids),
                 "n_peer_answers": len(peer_answers),
                 "prompt_style": self.prompt_style,
+                "rendered_prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
                 "generation_request": (generation_request or GenerationRequest()).to_dict(),
             },
         )

@@ -16,10 +16,10 @@
 # when the distributed setup changes. Any training run here is a NEW number, not a
 # reproduction — record it as such in docs/04_decisions.md.
 
-transformers    # PIN to the open-unlearning resolved version
-datasets        # PIN to the open-unlearning resolved version
-accelerate      # PIN to the open-unlearning resolved version
-tokenizers      # PIN (follows transformers)
+transformers==4.51.3
+datasets==3.0.1
+accelerate==0.34.2
+tokenizers==0.21.1
 
 # flash-attn is DELIBERATELY NOT INSTALLED BY THIS FILE.
 #
@@ -37,10 +37,10 @@ tokenizers      # PIN (follows transformers)
 # Whichever you choose, choose ONCE: FA2 and SDPA numbers must not be mixed inside one
 # comparison. See ADR-0031.
 
-deepspeed>=0.14      # ZeRO-3, to approximate the upstream training setup
-bitsandbytes>=0.43   # paged_adamw_32bit, which upstream uses
-peft>=0.11
-trl>=0.9
+deepspeed==0.15.4    # ZeRO-3, to approximate the upstream training setup
+bitsandbytes==0.43.3 # paged_adamw_32bit, which upstream uses
+peft==0.13.2
+trl==0.12.1
 
 # rdl core
 omegaconf>=2.3,<3
@@ -52,5 +52,5 @@ rich>=13.0
 orjson>=3.9
 typer>=0.12
 
-faiss-cpu>=1.8
-sentence-transformers>=3.0
+faiss-cpu==1.8.0.post1
+sentence-transformers==3.1.1

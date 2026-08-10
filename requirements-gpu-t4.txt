@@ -52,10 +52,10 @@
 
 # Left unpinned ON PURPOSE: installing the submodule is what pins them, and duplicating
 # its pins here creates two sources of truth that drift apart at the next SHA bump.
-transformers    # submodule resolves 4.51.3
-datasets        # submodule resolves 3.0.1
-accelerate      # submodule resolves 0.34.2
-tokenizers      # follows transformers
+transformers==4.51.3
+datasets==3.0.1
+accelerate==0.34.2
+tokenizers==0.21.1
 
 # rdl core
 omegaconf>=2.3,<3
@@ -70,8 +70,8 @@ typer>=0.12
 # Retrieval. Corpus is <= 10k nodes: faiss-cpu (or the numpy backend) is faster
 # end-to-end than faiss-gpu and removes a whole CUDA-version failure mode.
 # NEVER add faiss-gpu.
-faiss-cpu>=1.8
-sentence-transformers>=3.0
+faiss-cpu==1.8.0.post1
+sentence-transformers==3.1.1
 
 # DELIBERATELY ABSENT:
 #   flash-attn         SM80+ only

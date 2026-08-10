@@ -135,18 +135,25 @@ class HFLMHandle(LMHandle):
         }
         if req.do_sample:
             kwargs.update({"temperature": req.temperature, "top_p": req.top_p, "top_k": req.top_k})
-            if req.seed is not None:
-                generator = torch.Generator(device=self.model.device)
-                generator.manual_seed(req.seed)
-                kwargs["generator"] = generator
         else:
             kwargs.update({"temperature": None, "top_p": None, "top_k": None})
 
-        with torch.no_grad():
-            out = self.model.generate(
-                **enc,
-                **kwargs,
-            )
+        # ``transformers.GenerationMixin.generate`` does not support a public
+        # per-call ``generator`` kwarg across the pinned versions this project runs.
+        # Passing it is rejected as an unused model kwarg on common releases.  Scope
+        # the global RNG instead, restoring it immediately afterwards so a sampled
+        # trajectory is reproducible without leaking its seed into the next call.
+        devices = [self.model.device.index] if self.model.device.type == "cuda" else []
+        with torch.random.fork_rng(devices=devices, enabled=req.seed is not None):
+            if req.seed is not None:
+                torch.manual_seed(req.seed)
+                if self.model.device.type == "cuda":
+                    torch.cuda.manual_seed_all(req.seed)
+            with torch.no_grad():
+                out = self.model.generate(
+                    **enc,
+                    **kwargs,
+                )
 
         gen_ids = out[0][enc["input_ids"].shape[-1] :]
         return self.tokenizer.decode(gen_ids, skip_special_tokens=True).strip()

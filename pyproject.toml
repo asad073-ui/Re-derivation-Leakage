@@ -41,12 +41,12 @@ semantic = [
     "datasets>=2.19",
 ]
 gpu = [
-    "accelerate>=0.30",
-    "bitsandbytes>=0.43",
-    "faiss-cpu>=1.8",
-    "sentence-transformers>=3.0",
-    "transformers>=4.40",
-    "datasets>=2.19",
+    "accelerate==0.34.2",
+    "bitsandbytes==0.43.3",
+    "faiss-cpu==1.8.0.post1",
+    "sentence-transformers==3.1.1",
+    "transformers==4.51.3",
+    "datasets==3.0.1",
 ]
 dev = [
     "ruff>=0.5",

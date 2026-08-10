@@ -125,7 +125,9 @@ def run_episode(
                 "episode_id": eid,
                 "sample_id": sample_id,
                 "trajectory_id": trajectory_id,
-                "prompt_sha256": prompt_sha256,
+                # An AgentAnswer knows its actual rendered model prompt. Other events
+                # use the trajectory-level fallback supplied by legacy callers.
+                "prompt_sha256": getattr(event, "prompt_sha256", None) or prompt_sha256,
                 "decoding_sha256": decoding_sha256,
                 "model_revision": (model_revisions or {}).get(agent_id) if agent_id else None,
                 "generation_seed": req.seed if req else None,
@@ -165,6 +167,7 @@ def run_episode(
             logprob=reply.logprob,
             context_node_ids=list(reply.context_node_ids),
             detector_votes=dict(reply.detector_votes),
+            prompt_sha256=reply.meta.get("rendered_prompt_sha256"),
         )
     )
 
@@ -254,6 +257,7 @@ def run_episode(
                 logprob=sec_reply.logprob,
                 context_node_ids=list(sec_reply.context_node_ids),
                 detector_votes=dict(sec_reply.detector_votes),
+                prompt_sha256=sec_reply.meta.get("rendered_prompt_sha256"),
             )
         )
         contributing.append(sec_reply.agent_id)

@@ -44,6 +44,11 @@ results/**
 # node was certified clean. Small, reviewable, and the one thing that cannot be
 # reconstructed after the instance is destroyed. See ADR-0060.
 !results/*/handoff_evidence.json
+# Sampled Leak@k records preserve raw generations and can be very large. The manifest
+# and report are committed; raw JSONL stays out of Git and must be archived to an
+# immutable URI recorded in that manifest before a GPU instance is destroyed.
+!results/*/leak_manifest.json
+!results/*/LEAK_REPORT.json
 
 # ----------------------------------------------------------------------------------
 # Model weights and caches — never commit these.

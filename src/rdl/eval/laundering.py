@@ -21,7 +21,7 @@ alongside so a reader can never be misled by a small denominator.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from ..memory.blocklist import Blocklist, NoBlocklist
@@ -132,6 +132,7 @@ def laundered_items(
     *,
     mode: Mode = "normalised",
     threshold: float = 0.6,
+    nli_fn: Callable[[str, str], bool] | None = None,
     store_snapshots: Mapping[str | None, Sequence[MemoryNode]] | None = None,
 ) -> LaunderingReport:
     """Per-item recovery + certification. `laundering_rate` is the scalar over this.
@@ -197,6 +198,7 @@ def laundered_items(
             store=store,
             store_nodes=(store_snapshots or {}).get(item_id),
             threshold=threshold,
+            nli_fn=nli_fn,
             surfaces=("persistent_store_after_episode",),
         )
         hit = res.surfaces["persistent_store_after_episode"]
@@ -260,6 +262,7 @@ def laundering_rate(
     *,
     mode: Mode = "normalised",
     threshold: float = 0.6,
+    nli_fn: Callable[[str, str], bool] | None = None,
     store_snapshots: Mapping[str | None, Sequence[MemoryNode]] | None = None,
 ) -> float:
     """The scalar headline number. See `laundered_items` for the full report."""
@@ -271,5 +274,6 @@ def laundering_rate(
         forget_items,
         mode=mode,
         threshold=threshold,
+        nli_fn=nli_fn,
         store_snapshots=store_snapshots,
     ).rate
