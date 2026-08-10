@@ -87,7 +87,7 @@ class HFLMHandle(LMHandle):
         self.dtype = dtype
         self.attn = attn
         self._closed = False
-        self._last_generation_provenance: dict[str, str | None] = {}
+        self._last_generation_provenance: dict[str, Any] = {}
 
     # ---------------------------------------------------------------- prompting --
 
@@ -172,7 +172,73 @@ class HFLMHandle(LMHandle):
         gen_ids = out[0][enc["input_ids"].shape[-1] :]
         return self.tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
 
-    def generation_provenance(self) -> dict[str, str | None]:
+    def generate_leakk_official(
+        self, question: str, max_new_tokens: int, *, seed: int | None = None
+    ) -> str:
+        """Execute the released evaluator's prompt round-trip and decoding call.
+
+        Leak-k first decodes the OpenUnlearning evaluator input IDs with special
+        tokens removed, then tokenizes that resulting string again before
+        ``model.generate``.  This apparently redundant route is part of its released
+        distribution and is intentionally not shared with the agent chat path.
+        """
+        import torch
+
+        upstream_ids = self.tokenizer.apply_chat_template(
+            [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": question},
+            ],
+            tokenize=True,
+            add_generation_prompt=True,
+            date_string="10 Apr 2025",
+        )
+        serialized = self.tokenizer.decode(
+            upstream_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
+        )
+        self.tokenizer.padding_side = "left"
+        enc = self.tokenizer(
+            [serialized], return_tensors="pt", padding=True, add_special_tokens=True
+        )
+        self._last_generation_provenance = {
+            "semantic_user_prompt_sha256": hashlib.sha256(question.encode("utf-8")).hexdigest(),
+            "serialized_chat_prompt_sha256": hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
+            "input_ids_sha256": hashlib.sha256(
+                enc["input_ids"].detach().cpu().numpy().tobytes()
+            ).hexdigest(),
+            "leakk_official": {
+                "semantic_prompt": question,
+                "serialized_prompt": serialized,
+                "input_ids": enc["input_ids"].detach().cpu().tolist(),
+                "generate_kwargs": {
+                    "max_new_tokens": max_new_tokens,
+                    "do_sample": True,
+                    "num_return_sequences": 1,
+                    "pad_token_id": self.tokenizer.eos_token_id,
+                    # Exact active values in Leak-k e544af6's TOFU/eval/src/eval.py.
+                    "top_p": 1.0,
+                    "temperature": 1.0,
+                },
+            },
+        }
+        enc = {key: value.to(self.model.device) for key, value in enc.items()}
+        kwargs = self._last_generation_provenance["leakk_official"]["generate_kwargs"]
+        devices = [self.model.device.index] if self.model.device.type == "cuda" else []
+        with torch.random.fork_rng(devices=devices, enabled=seed is not None):
+            if seed is not None:
+                torch.manual_seed(seed)
+                if self.model.device.type == "cuda":
+                    torch.cuda.manual_seed_all(seed)
+            with torch.no_grad():
+                output_ids = self.model.generate(
+                    input_ids=enc["input_ids"], attention_mask=enc["attention_mask"], **kwargs
+                )
+        decoded = self.tokenizer.batch_decode(
+            output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
+        )[0]
+        return decoded.split(serialized)[-1].strip() if serialized in decoded else decoded.strip()
+
+    def generation_provenance(self) -> dict[str, Any]:
         return dict(self._last_generation_provenance)
 
     def logprobs(

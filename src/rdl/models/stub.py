@@ -137,7 +137,7 @@ class LMHandle(ABC):
         arr = np.asarray(lp.detach().cpu().numpy() if hasattr(lp, "detach") else lp, dtype=float)
         return float(arr.mean()) if arr.size else float("-inf")
 
-    def generation_provenance(self) -> dict[str, str | None]:
+    def generation_provenance(self) -> dict[str, Any]:
         """Evidence for the immediately preceding ``generate`` call.
 
         Backends which cannot expose token IDs return null values rather than

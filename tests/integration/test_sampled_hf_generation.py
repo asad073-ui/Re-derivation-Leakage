@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 
 import pytest
+import torch
+import transformers
 
 from rdl.models.loader import HFLMHandle
 from rdl.models.stub import GenerationRequest
@@ -12,8 +14,6 @@ from rdl.models.stub import GenerationRequest
 
 @pytest.mark.network
 def test_sampled_hf_generation_is_seeded_without_generator_model_kwarg() -> None:
-    torch = pytest.importorskip("torch")
-    transformers = pytest.importorskip("transformers")
     model_id = "hf-internal-testing/tiny-random-gpt2"
     tokenizer = transformers.AutoTokenizer.from_pretrained(model_id)
     tokenizer.pad_token = tokenizer.eos_token
