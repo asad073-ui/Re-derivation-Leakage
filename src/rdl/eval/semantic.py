@@ -64,17 +64,19 @@ class OfflineSemanticScorer:
 
 
 def rouge_l_recall(reference: str, candidate: str) -> float:
-    """Released Leak-k's ROUGE-L recall gate, without adding a metric dependency."""
-    ref, cand = reference.lower().split(), candidate.lower().split()
-    if not ref:
-        return 0.0
-    prev = [0] * (len(cand) + 1)
-    for left in ref:
-        cur = [0]
-        for j, right in enumerate(cand, 1):
-            cur.append(prev[j - 1] + 1 if left == right else max(prev[j], cur[-1]))
-        prev = cur
-    return prev[-1] / len(ref)
+    """The released Leak-k ``rouge_score`` gate, including Porter stemming.
+
+    This must remain a direct call rather than a local LCS approximation.  The
+    upstream evaluator uses ``RougeScorer(["rougeL"], use_stemmer=True)`` and its
+    tokenisation/stemming determines which candidates reach the NLI classifier.
+    """
+    from rouge_score import rouge_scorer
+
+    return float(
+        rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
+        .score(reference, candidate)["rougeL"]
+        .recall
+    )
 
 
 class LeakKOfficialScorer:

@@ -35,6 +35,8 @@ cpu = [
     # and tests/unit/test_prompt_style.py read the YAML configs directly, and relying on a
     # transitive dependency for that breaks the day omegaconf changes its parser.
     "PyYAML>=6.0",
+    # Leak-k's released gate uses this implementation with Porter stemming.
+    "rouge-score==0.1.2",
 ]
 semantic = [
     # CPU-only public TOFU reference loader used by `rdl rescore-day2`.

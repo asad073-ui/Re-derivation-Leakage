@@ -28,6 +28,7 @@ from ..eval.semantic import OfflineSemanticScorer
 from ..eval.tofu_data import TofuItem, cluster_ids, load_items
 from ..hardware import assert_env_matches_hardware, detect
 from ..memory.blocklist import build_blocklist
+from ..memory.invariants import certify
 from ..models.stub import GenerationRequest
 from ..orchestrator.events import MemoryWrite, WriteAttempt
 from ..orchestrator.loop import EpisodePolicies, run_episode
@@ -48,6 +49,33 @@ def _atomic_json(path: Path, payload: dict) -> None:
         fh.flush()
         os.fsync(fh.fileno())
     os.replace(temp, path)
+
+
+def _leakk_direct_reply(agent, question: str, request: GenerationRequest) -> AgentReply:
+    """Use the released direct-evaluator path, never the composition chat wrapper."""
+    generate = getattr(agent.lm, "generate_leakk_official", None)
+    if not callable(generate):
+        raise typer.BadParameter(
+            "leakk_official requires a real HFLMHandle; the fixture/stub path is not decoding-compatible"
+        )
+    text = generate(question, agent.max_new_tokens, seed=request.seed)
+    decision = agent.detector.detect(text)
+    provenance = agent.lm.generation_provenance()
+    return AgentReply(
+        agent_id=agent.agent_id,
+        text=text,
+        abstained=decision.abstained,
+        meta={
+            "detector": decision.detector,
+            "detector_reason": decision.reason,
+            "semantic_user_prompt_sha256": provenance.get("semantic_user_prompt_sha256"),
+            "serialized_chat_prompt_sha256": provenance.get("serialized_chat_prompt_sha256"),
+            "input_ids_sha256": provenance.get("input_ids_sha256"),
+            "rendered_prompt_sha256": provenance.get("serialized_chat_prompt_sha256"),
+            "generation_request": request.to_dict(),
+            "leakk_official": provenance.get("leakk_official"),
+        },
+    )
 
 
 def _repair_partial_jsonl(path: Path) -> list[dict]:
@@ -83,8 +111,10 @@ def _record(
     request: GenerationRequest,
     scorer: OfflineSemanticScorer,
     transcript=None,
+    store=None,
+    blocklist=None,
     direct_reply: AgentReply | None = None,
-    certified: bool = False,
+    certified: dict | None = None,
     probe: dict | None = None,
     source_evidence: dict | None = None,
     guard_diagnostic: bool = False,
@@ -132,6 +162,7 @@ def _record(
                         "serialized_chat_prompt_sha256"
                     ),
                     "input_ids_sha256": direct_reply.meta.get("input_ids_sha256"),
+                    "leakk_official": direct_reply.meta.get("leakk_official"),
                 }
             ]
             if direct_reply is not None
@@ -185,7 +216,12 @@ def _record(
         "agent_message_leak": message.leaks,
         "final_leak": final.leaks,
         "store_leak": write.leaks,
-        "certified_store_leak": certified,
+        "certified_store_leak": certified is not None,
+        # A Boolean is not auditable evidence.  The selected node and its complete
+        # invariant certificate are retained for every certified hit, and the full
+        # per-write evidence below permits a later semantic-rescore to select a
+        # different leaking node correctly.
+        "certified_evidence": certified,
         "post_episode_probe_leak": bool((probe or {}).get("with_store_leak", False)),
         "attributable_readback_leak": bool((probe or {}).get("attributable", False)),
         "final_score": final.score,
@@ -199,25 +235,78 @@ def _record(
             "memory_writes": transcript.memory_write_texts() if transcript else [],
             "probe": probe or {},
         },
+        "memory_node_evidence": (
+            _memory_node_evidence(transcript, store, blocklist, item, scorer)
+            if transcript is not None and store is not None and blocklist is not None
+            else []
+        ),
         "source_evidence": source_evidence,
         "trajectory": transcript.to_dict() if transcript else None,
     }
 
 
-def _certified(transcript, store, blocklist, item: TofuItem, scorer: OfflineSemanticScorer) -> bool:
-    """Certify the precise node selected by the configured semantic scorer."""
-    return (
-        laundered_items(
-            [transcript],
-            store,
-            store.dag,
-            blocklist,
-            [{"item_id": item.item_id, "answer": item.answer}],
-            mode="entailment",
-            nli_fn=lambda reference, candidate: scorer.score(reference, candidate).leaks,
-        ).n_laundered
-        > 0
+def _memory_node_evidence(transcript, store, blocklist, item: TofuItem, scorer) -> list[dict]:
+    """Persist every written node with the certificate needed for a future rescore."""
+    evidence: list[dict] = []
+    for event in transcript.memory_writes():
+        node = store.get(event.node_id)
+        if node is None:  # A transcript/store mismatch is evidence, never a silent miss.
+            raise RuntimeError(f"memory write {event.node_id} is absent from its episode store")
+        verdict = scorer.score(item.answer, node.content)
+        certificate = certify(store, store.dag, blocklist, node.node_id)
+        evidence.append(
+            {
+                "node_id": node.node_id,
+                "content": node.content,
+                "content_sha256": hashlib.sha256(node.content.encode("utf-8")).hexdigest(),
+                "parent_ids": list(node.parent_ids),
+                "semantic_verdict": {
+                    "label": verdict.label,
+                    "score": verdict.score,
+                    "version": verdict.version,
+                },
+                "inv1_satisfied": certificate.inv1_satisfied,
+                "inv2_satisfied": certificate.inv2_satisfied,
+                "path_to_any_blocked_node": certificate.path_to_any_blocked_node,
+                "certificate": certificate.to_dict(),
+            }
+        )
+    return evidence
+
+
+def _certified(transcript, store, blocklist, item: TofuItem, scorer) -> dict | None:
+    """Return the complete witness for the semantically leaking clean node, if any."""
+    report = laundered_items(
+        [transcript],
+        store,
+        store.dag,
+        blocklist,
+        [{"item_id": item.item_id, "answer": item.answer}],
+        mode="entailment",
+        nli_fn=lambda reference, candidate: scorer.score(reference, candidate).leaks,
     )
+    hits = report.laundered_only()
+    if not hits:
+        return None
+    hit = hits[0]
+    node = store.get(hit.node_id)
+    if node is None:  # pragma: no cover - laundered_items obtained it from this store
+        raise RuntimeError(f"certified node {hit.node_id} is absent from its episode store")
+    verdict = scorer.score(item.answer, node.content)
+    return {
+        "node_id": node.node_id,
+        "content_sha256": hashlib.sha256(node.content.encode("utf-8")).hexdigest(),
+        "parent_ids": list(node.parent_ids),
+        "semantic_verdict": {
+            "label": verdict.label,
+            "score": verdict.score,
+            "version": verdict.version,
+        },
+        "inv1_satisfied": hit.certificate.inv1_satisfied,
+        "inv2_satisfied": hit.certificate.inv2_satisfied,
+        "path_to_any_blocked_node": hit.certificate.path_to_any_blocked_node,
+        "certificate": hit.certificate.to_dict(),
+    }
 
 
 def _probe(
@@ -367,12 +456,16 @@ def run_leak(
         cfg = load_config(condition, env_override=environment)
     except ConfigError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    if cfg.agent_b is None:
+    if cfg.agent_b is None and (protocol or cfg.sampling.protocol) != "leakk_official":
         raise typer.BadParameter("run-leak needs a two-agent C3C-family condition")
     active_protocol = protocol or cfg.sampling.protocol
     if active_protocol not in ("leakk_official", "rdl_composition"):
         raise typer.BadParameter("--protocol must be leakk_official or rdl_composition")
-    arms = ("D-A", "D-B") if active_protocol == "leakk_official" else ARMS
+    arms: tuple[str, ...]
+    if active_protocol == "leakk_official":
+        arms = ("D-A", "D-B") if cfg.agent_b is not None else ("D-A",)
+    else:
+        arms = ARMS
     n = n_samples or cfg.sampling.n_samples
     if n > cfg.sampling.n_samples:
         raise typer.BadParameter(
@@ -389,9 +482,13 @@ def run_leak(
         token=token,
         sample="spread" if limit else "head",
     )
-    if len(items) < 2:
+    if active_protocol == "rdl_composition" and len(items) < 2:
         raise typer.BadParameter("C3S needs at least two cross-author items")
-    mapping = cross_author_mapping(cluster_ids(items, "author"))
+    mapping = (
+        cross_author_mapping(cluster_ids(items, "author"))
+        if active_protocol == "rdl_composition"
+        else None
+    )
     out = output or run_dir(make_run_id(config_hash(cfg)))
     if output:
         if resume:
@@ -410,9 +507,11 @@ def run_leak(
         }
         for item in items
     ]
-    source_map = {
-        item.item_id: items[mapping.permutation[i]].item_id for i, item in enumerate(items)
-    }
+    source_map = (
+        {item.item_id: items[mapping.permutation[i]].item_id for i, item in enumerate(items)}
+        if mapping is not None
+        else {}
+    )
     run_manifest = {
         "schema": 3,
         "config_hash": config_hash(cfg),
@@ -427,15 +526,16 @@ def run_leak(
                 "upstream_commit": "e544af6017a59da9961aac691b81de337bc21fc5",
                 "generation": {
                     "do_sample": True,
-                    "temperature": None,
-                    "top_p": None,
+                    "temperature": 1.0,
+                    "top_p": 1.0,
                     "top_k": None,
                     "max_new_tokens": 200,
                     "n_samples": 200,
                 },
                 # The upstream evaluator batches compatible draws (32); this runner
-                # deliberately preserves per-trajectory provenance and is sequential.
-                # It is scorer/decoding compatible, not a bitwise generation replay.
+                # retains per-draw provenance, so it is not a bitwise RNG replay.
+                # Prompt round-trip, tokens, kwargs and output cleaning follow its
+                # active direct path in HFLMHandle.generate_leakk_official.
                 "batching": {"upstream_batch_size": 32, "runner_batch_size": 1},
                 "scope": "direct checkpoint draws only",
             }
@@ -459,7 +559,7 @@ def run_leak(
         "planned_record_count": len(items) * n * len(arms),
         "planned_model_generations": len(items)
         * n
-        * (2 if active_protocol == "leakk_official" else 19),
+        * (len(arms) if active_protocol == "leakk_official" else 19),
         "diagnostic": True,
         "complete": False,
     }
@@ -503,9 +603,19 @@ def run_leak(
             agent.max_new_tokens = 200
     model_revisions = {
         cfg.agent_a.agent_id: f"{cfg.models[cfg.agent_a.model].repo_id}@{cfg.models[cfg.agent_a.model].revision}",
-        cfg.agent_b.agent_id: f"{cfg.models[cfg.agent_b.model].repo_id}@{cfg.models[cfg.agent_b.model].revision}",
+        **(
+            {
+                cfg.agent_b.agent_id: f"{cfg.models[cfg.agent_b.model].repo_id}@{cfg.models[cfg.agent_b.model].revision}"
+            }
+            if cfg.agent_b is not None
+            else {}
+        ),
     }
-    source_for = {it.item_id: items[mapping.permutation[i]] for i, it in enumerate(items)}
+    source_for = (
+        {it.item_id: items[mapping.permutation[i]] for i, it in enumerate(items)}
+        if mapping is not None
+        else {}
+    )
     with records_path.open("a" if resume else "x", encoding="utf-8", newline="\n") as fh:
 
         def write_row(row: dict) -> None:
@@ -527,11 +637,9 @@ def run_leak(
                     return GenerationRequest(
                         do_sample=True,
                         temperature=(
-                            None
-                            if active_protocol == "leakk_official"
-                            else cfg.sampling.temperature
+                            1.0 if active_protocol == "leakk_official" else cfg.sampling.temperature
                         ),
-                        top_p=None if active_protocol == "leakk_official" else cfg.sampling.top_p,
+                        top_p=1.0 if active_protocol == "leakk_official" else cfg.sampling.top_p,
                         top_k=None if active_protocol == "leakk_official" else cfg.sampling.top_k,
                         seed=seed_for(
                             cfg.sampling.base_seed,
@@ -543,16 +651,20 @@ def run_leak(
                     )
 
                 # Bare direct answers have no wrapper, retrieval or write path.
-                for label, agent in (("D-A", agents[0]), ("D-B", agents[1])):
-                    answer = agent.answer(
-                        item.question, generation_request=req(agent.agent_id, label)
+                direct_arms = arms if active_protocol == "leakk_official" else ("D-A", "D-B")
+                for label, agent in zip(direct_arms, agents, strict=True):
+                    request = req(agent.agent_id, label)
+                    answer = (
+                        _leakk_direct_reply(agent, item.question, request)
+                        if active_protocol == "leakk_official"
+                        else agent.answer(item.question, generation_request=request)
                     )
                     row = _record(
                         cfg=cfg,
                         item=item,
                         sample_id=sample_id,
                         arm=label,
-                        request=req(agent.agent_id, label),
+                        request=request,
                         scorer=scorer,
                         direct_reply=answer,
                     )
@@ -598,6 +710,8 @@ def run_leak(
                             request=req(active_id, label),
                             scorer=scorer,
                             transcript=tr,
+                            store=store,
+                            blocklist=blocklist,
                             certified=cert,
                             probe=probe,
                         )
@@ -662,6 +776,8 @@ def run_leak(
                             request=requests[agents[0].agent_id],
                             scorer=scorer,
                             transcript=tr,
+                            store=store,
+                            blocklist=blocklist,
                             certified=cert,
                             probe=probe,
                             source_evidence=(
@@ -714,6 +830,8 @@ def run_leak(
                                 request=requests[agents[0].agent_id],
                                 scorer=scorer,
                                 transcript=guard_tr,
+                                store=guard_store,
+                                blocklist=guard_bl,
                                 certified=guard_cert,
                                 probe=guard_probe,
                                 guard_diagnostic=True,

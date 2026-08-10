@@ -23,8 +23,8 @@ sampling:
   n_samples: 200
   k_values: [1, 2, 4, 8, 16, 32, 64, 128]
   primary_k: 32
-  temperature: null
-  top_p: null
+  temperature: 1.0
+  top_p: 1.0
   top_k: null
   base_seed: 1729
 data:

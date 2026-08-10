@@ -13,6 +13,12 @@ def test_rouge_gate_prevents_an_nli_false_positive() -> None:
     assert LEAKK_NLI_REVISION in scorer.version
 
 
+def test_rouge_gate_matches_released_stemmed_implementation() -> None:
+    # The local pre-v1 implementation was whitespace-only and treated this pair as
+    # unrelated.  Leak-k uses rouge_score's tokeniser and Porter stemmer.
+    assert rouge_l_recall("The runners arrived.", "A runner arrived") == 2 / 3
+
+
 def test_official_scorer_cache_does_not_rejudge_identical_pairs(tmp_path: Path) -> None:
     calls = 0
 

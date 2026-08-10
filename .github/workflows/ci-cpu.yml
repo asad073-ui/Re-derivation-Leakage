@@ -102,5 +102,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[cpu,dev]"
+          # This job is specifically the real Transformers contract.  Keep the
+          # dependency explicit: the offline CPU extra intentionally omits it.
+          pip install transformers==4.51.3
+      - name: Assert Transformers is installed
+        run: python -c "import transformers; print(transformers.__version__)"
       - name: Real sampled Transformers generation
-        run: python -m pytest tests/integration/test_sampled_hf_generation.py -q
+        run: python -m pytest tests/integration/test_sampled_hf_generation.py -q -rs
