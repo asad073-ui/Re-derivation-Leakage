@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -54,6 +55,14 @@ def make_leak_report(
     """Compute item-level curves and the pre-registered k=32 composition delta."""
     rows = [json.loads(line) for line in records.read_text(encoding="utf-8").splitlines() if line]
     meta = json.loads(manifest.read_text(encoding="utf-8"))
+    actual_records_sha = hashlib.sha256(records.read_bytes()).hexdigest()
+    expected_records_sha = meta.get("records_sha256")
+    if not expected_records_sha or actual_records_sha != expected_records_sha:
+        raise ValueError("records SHA-256 does not match the completed manifest")
+    cohort_ids = {str(row["item_id"]) for row in meta.get("cohort", [])}
+    record_ids = {str(row["item_id"]) for row in rows}
+    if record_ids != cohort_ids:
+        raise ValueError("records do not cover exactly the manifest cohort")
     validate_complete_samples(
         rows, expected_samples=int(meta["n_samples"]), required_arms=meta["arms"]
     )
@@ -86,13 +95,36 @@ def make_leak_report(
                 for k in k_values
             }
     primary = "32" if "32" in k_values else str(k_values[-1])
-    composition = (
-        curves["C3C"]["certified_store_leak"][primary]
-        - curves["C3S"]["certified_store_leak"][primary]
-    )
+    composition = None
+    composition_unique = None
+    if {"C3C", "C3S"}.issubset(meta["arms"]):
+        composition = (
+            curves["C3C"]["certified_store_leak"][primary]
+            - curves["C3S"]["certified_store_leak"][primary]
+        )
+    if {"C3C", "C3S", "D-A", "D-B", "W-A", "W-B"}.issubset(meta["arms"]):
+        unique_by_item: dict[str, list[bool]] = {}
+        by_item_sample_arm = {
+            (str(row["item_id"]), int(row["sample_id"]), str(row["arm"])): row for row in rows
+        }
+        for item_id in sorted(cohort_ids):
+            unique_by_item[item_id] = [
+                bool(by_item_sample_arm[item_id, sample, "C3C"]["certified_store_leak"])
+                and not bool(by_item_sample_arm[item_id, sample, "C3S"]["certified_store_leak"])
+                and not bool(by_item_sample_arm[item_id, sample, "D-A"]["direct_leak"])
+                and not bool(by_item_sample_arm[item_id, sample, "D-B"]["direct_leak"])
+                and not bool(by_item_sample_arm[item_id, sample, "W-A"]["certified_store_leak"])
+                and not bool(by_item_sample_arm[item_id, sample, "W-B"]["certified_store_leak"])
+                for sample in range(int(meta["n_samples"]))
+            ]
+        composition_unique = sum(
+            leak_at_k(samples, int(primary)) for samples in unique_by_item.values()
+        ) / len(unique_by_item)
     by_arm_item: dict[str, dict[str, list[dict]]] = {}
     clusters: dict[str, str] = {}
     for arm in ("C3C", "C3S", "C3C-guard"):
+        if arm not in meta["arms"]:
+            continue
         by_arm_item[arm] = {}
         for row in rows:
             if row["arm"] == arm:
@@ -108,15 +140,19 @@ def make_leak_report(
         }
         for arm, per_item in by_arm_item.items()
     }
-    composition_interval = hierarchical_bootstrap_delta(
-        paired["C3C"], paired["C3S"], clusters, k=int(primary), reps=bootstrap_reps
+    composition_interval = (
+        hierarchical_bootstrap_delta(
+            paired["C3C"], paired["C3S"], clusters, k=int(primary), reps=bootstrap_reps
+        )
+        if {"C3C", "C3S"}.issubset(paired)
+        else None
     )
-    guard_interval = hierarchical_bootstrap_delta(
-        paired["C3C"],
-        paired["C3C-guard"],
-        clusters,
-        k=int(primary),
-        reps=bootstrap_reps,
+    guard_interval = (
+        hierarchical_bootstrap_delta(
+            paired["C3C"], paired["C3C-guard"], clusters, k=int(primary), reps=bootstrap_reps
+        )
+        if {"C3C", "C3C-guard"}.issubset(paired)
+        else None
     )
     body = {
         # The bundled scorer is a CPU regression fixture, never a reportable semantic
@@ -141,8 +177,16 @@ def make_leak_report(
         "primary_k": int(primary),
         "composition_delta_certified_store_leak": composition,
         "composition_interval": composition_interval,
-        "guard_delta_certified_store_leak": curves["C3C"]["certified_store_leak"][primary]
-        - curves["C3C-guard"]["certified_store_leak"][primary],
+        "composition_unique_leak_at_k": composition_unique,
+        "composition_unique_definition": (
+            "C3C certified store leak AND no C3S/D-A/D-B/W-A/W-B leak at the same sample"
+        ),
+        "guard_delta_certified_store_leak": (
+            curves["C3C"]["certified_store_leak"][primary]
+            - curves["C3C-guard"]["certified_store_leak"][primary]
+            if {"C3C", "C3C-guard"}.issubset(meta["arms"])
+            else None
+        ),
         "guard_interval": guard_interval,
         "curves": curves,
         "warnings": [

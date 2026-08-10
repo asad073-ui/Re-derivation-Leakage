@@ -9,6 +9,7 @@ from .env_check import env_check
 from .make_leak_report import make_leak_report
 from .make_report import make_report
 from .rescore_day2 import rescore_day2
+from .rescore_leak import rescore_leak
 from .run_condition import run_condition
 from .run_leak import run_leak
 from .run_repro import run_repro
@@ -28,6 +29,7 @@ app.command("make-report")(make_report)
 app.command("rescore-day2")(rescore_day2)
 app.command("run-leak")(run_leak)
 app.command("make-leak-report")(make_leak_report)
+app.command("rescore-leak")(rescore_leak)
 
 
 if __name__ == "__main__":

@@ -105,6 +105,11 @@ class LLMAgent:
 
         decision = self.detector.detect(text, logprob)
 
+        provenance = self.lm.generation_provenance()
+        semantic_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        # Stub and third-party handles deliberately have no tokenization evidence.
+        # Their serialized prompt is the string passed to ``generate`` only.
+        serialized_hash = provenance.get("serialized_chat_prompt_sha256") or semantic_hash
         return AgentReply(
             agent_id=self.agent_id,
             text=text,
@@ -119,7 +124,12 @@ class LLMAgent:
                 "n_context": len(context_ids),
                 "n_peer_answers": len(peer_answers),
                 "prompt_style": self.prompt_style,
-                "rendered_prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+                "semantic_user_prompt_sha256": provenance.get("semantic_user_prompt_sha256")
+                or semantic_hash,
+                "serialized_chat_prompt_sha256": serialized_hash,
+                "input_ids_sha256": provenance.get("input_ids_sha256"),
+                # Legacy name means serialized model prompt, never pre-template text.
+                "rendered_prompt_sha256": serialized_hash,
                 "generation_request": (generation_request or GenerationRequest()).to_dict(),
             },
         )

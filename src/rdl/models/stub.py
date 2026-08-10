@@ -60,17 +60,17 @@ class GenerationRequest:
     """
 
     do_sample: bool = False
-    temperature: float = 1.0
-    top_p: float = 1.0
-    top_k: int = 0
+    temperature: float | None = 1.0
+    top_p: float | None = 1.0
+    top_k: int | None = 0
     seed: int | None = None
 
     def __post_init__(self) -> None:
-        if self.do_sample and self.temperature <= 0:
+        if self.do_sample and self.temperature is not None and self.temperature <= 0:
             raise ValueError("sampled generation requires temperature > 0")
-        if not 0 < self.top_p <= 1:
+        if self.top_p is not None and not 0 < self.top_p <= 1:
             raise ValueError("top_p must be in (0, 1]")
-        if self.top_k < 0:
+        if self.top_k is not None and self.top_k < 0:
             raise ValueError("top_k must be >= 0")
 
     def to_dict(self) -> dict[str, object]:
@@ -136,6 +136,14 @@ class LMHandle(ABC):
         lp = self.logprobs(prompt, continuation, system=system)
         arr = np.asarray(lp.detach().cpu().numpy() if hasattr(lp, "detach") else lp, dtype=float)
         return float(arr.mean()) if arr.size else float("-inf")
+
+    def generation_provenance(self) -> dict[str, str | None]:
+        """Evidence for the immediately preceding ``generate`` call.
+
+        Backends which cannot expose token IDs return null values rather than
+        pretending that the semantic user prompt is the serialized model input.
+        """
+        return {}
 
     def __enter__(self) -> LMHandle:
         return self

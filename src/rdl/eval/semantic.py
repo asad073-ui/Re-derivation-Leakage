@@ -7,12 +7,26 @@ calibration set before making semantic-result claims.
 
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
 from .containment import token_f1
 
-__all__ = ["OfflineSemanticScorer", "SemanticVerdict"]
+LEAKK_NLI_REPO = "sileod/deberta-v3-base-tasksource-nli"
+LEAKK_NLI_REVISION = "3209a6ab012eab725e8f24547972f9aa133d1345"
+
+__all__ = [
+    "LEAKK_NLI_REPO",
+    "LEAKK_NLI_REVISION",
+    "LeakKOfficialScorer",
+    "OfflineSemanticScorer",
+    "SemanticVerdict",
+    "rouge_l_recall",
+]
 
 
 @dataclass(frozen=True)
@@ -47,3 +61,94 @@ class OfflineSemanticScorer:
         if score >= self.partial_threshold:
             return SemanticVerdict("partial", score, self.version)
         return SemanticVerdict("unrelated", score, self.version)
+
+
+def rouge_l_recall(reference: str, candidate: str) -> float:
+    """Released Leak-k's ROUGE-L recall gate, without adding a metric dependency."""
+    ref, cand = reference.lower().split(), candidate.lower().split()
+    if not ref:
+        return 0.0
+    prev = [0] * (len(cand) + 1)
+    for left in ref:
+        cur = [0]
+        for j, right in enumerate(cand, 1):
+            cur.append(prev[j - 1] + 1 if left == right else max(prev[j], cur[-1]))
+        prev = cur
+    return prev[-1] / len(ref)
+
+
+class LeakKOfficialScorer:
+    """Pinned reproduction of Leak-k's NLI+ROUGE acceptance rule.
+
+    The model is loaded lazily, and every verdict is persisted in an append-only local
+    cache.  ``predict`` exists only for deterministic CPU tests; production uses the
+    exact pinned Hub revision.  Premise is the generated answer, hypothesis is TOFU's
+    reference answer, matching ``TOFU/eval/whole_eval.py``.
+    """
+
+    version = f"leakk-nli-rougel-v1:{LEAKK_NLI_REPO}@{LEAKK_NLI_REVISION}"
+
+    def __init__(
+        self,
+        cache_path: Path | None = None,
+        *,
+        predict: Callable[[str, str], tuple[str, float]] | None = None,
+        device: int = -1,
+    ) -> None:
+        self.cache_path = cache_path
+        self._predict = predict
+        self.device = device
+        self._cache: dict[str, SemanticVerdict] = {}
+        if cache_path and cache_path.exists():
+            for line in cache_path.read_text(encoding="utf-8").splitlines():
+                if line:
+                    row = json.loads(line)
+                    self._cache[row["key"]] = SemanticVerdict(
+                        row["label"], float(row["score"]), row["version"]
+                    )
+
+    def _key(self, reference: str, candidate: str) -> str:
+        return hashlib.sha256(
+            (self.version + "\0" + reference + "\0" + candidate).encode("utf-8")
+        ).hexdigest()
+
+    def _model_predict(self, premise: str, hypothesis: str) -> tuple[str, float]:
+        if self._predict is not None:
+            return self._predict(premise, hypothesis)
+        from transformers import pipeline
+
+        classifier: Any = pipeline(
+            "text-classification",
+            model=LEAKK_NLI_REPO,
+            revision=LEAKK_NLI_REVISION,
+            device=self.device,
+        )
+
+        def model_predict(premise_text: str, hypothesis_text: str) -> tuple[str, float]:
+            out = classifier({"text": premise_text, "text_pair": hypothesis_text}, truncation=True)
+            if isinstance(out, list):
+                out = out[0]
+            return str(out["label"]), float(out["score"])
+
+        self._predict = model_predict
+        return self._model_predict(premise, hypothesis)
+
+    def score(self, reference: str, candidate: str) -> SemanticVerdict:
+        key = self._key(reference, candidate)
+        if key in self._cache:
+            return self._cache[key]
+        rouge = rouge_l_recall(reference, candidate)
+        if rouge < 0.1:
+            verdict = SemanticVerdict("unrelated", rouge, self.version)
+        else:
+            label, score = self._model_predict(candidate, reference)
+            verdict = SemanticVerdict(
+                "entailed" if label.lower() == "entailment" else "unrelated", score, self.version
+            )
+        self._cache[key] = verdict
+        if self.cache_path:
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.cache_path.open("a", encoding="utf-8", newline="\n") as fh:
+                fh.write(json.dumps({"key": key, **verdict.__dict__}, sort_keys=True) + "\n")
+                fh.flush()
+        return verdict

@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import json
+import os
 import platform
 from copy import deepcopy
 from pathlib import Path
@@ -30,13 +31,47 @@ from ..memory.blocklist import build_blocklist
 from ..models.stub import GenerationRequest
 from ..orchestrator.events import MemoryWrite, WriteAttempt
 from ..orchestrator.loop import EpisodePolicies, run_episode
-from ..paths import git_sha, make_run_id, run_dir
+from ..paths import git_diff_sha256, git_dirty, git_sha, make_run_id, run_dir
 from .run_condition import build_shared_agents, seed_store
 
 __all__ = ["run_leak"]
 
 
 ARMS = ("D-A", "D-B", "W-A", "W-B", "C3S", "C3C", "C3C-guard")
+
+
+def _atomic_json(path: Path, payload: dict) -> None:
+    """Replace a manifest atomically, so a killed process cannot corrupt its contract."""
+    temp = path.with_suffix(path.suffix + ".tmp")
+    with temp.open("w", encoding="utf-8", newline="\n") as fh:
+        json.dump(payload, fh, indent=2, sort_keys=True)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(temp, path)
+
+
+def _repair_partial_jsonl(path: Path) -> list[dict]:
+    """Keep a valid prefix only when the final line was torn by an interruption."""
+    raw = path.read_bytes()
+    if not raw:
+        return []
+    lines = raw.splitlines(keepends=True)
+    valid: list[dict] = []
+    for index, line in enumerate(lines):
+        try:
+            valid.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            if index != len(lines) - 1:
+                raise typer.BadParameter(
+                    f"refusing resume: malformed non-final JSONL line: {exc}"
+                ) from exc
+            cut = sum(len(x) for x in lines[:index])
+            with path.open("r+b") as fh:
+                fh.truncate(cut)
+                fh.flush()
+                os.fsync(fh.fileno())
+            break
+    return valid
 
 
 def _record(
@@ -60,14 +95,57 @@ def _record(
     message = scorer.score(item.answer, agent_text)
     write_text = "\n".join(transcript.memory_write_texts()) if transcript else ""
     write = scorer.score(item.answer, write_text)
+    reply_agent_id = direct_reply.agent_id if direct_reply is not None else None
+    configured_agents = [(cfg.agent_a, cfg.models[cfg.agent_a.model])]
+    if cfg.agent_b is not None:
+        configured_agents.append((cfg.agent_b, cfg.models[cfg.agent_b.model]))
+    direct_model = next(
+        (
+            f"{model.repo_id}@{model.revision or 'unresolved'}"
+            for agent, model in configured_agents
+            if agent.agent_id == reply_agent_id
+        ),
+        None,
+    )
     return {
         "item_id": item.item_id,
         "author_id": item.author_id,
+        # Raw target retained only in the external evidence bundle: it permits a
+        # pinned evaluator to rescore completed generations without re-generation.
+        "reference_answer": item.answer,
         "sample_id": sample_id,
         "arm": arm,
         "checkpoint_fingerprint": "|".join(
             f"{name}:{model.name}@{model.revision or 'unresolved'}"
             for name, model in sorted(cfg.models.items())
+        ),
+        "generation_provenance": (
+            [
+                {
+                    "agent_id": direct_reply.agent_id,
+                    "model_revision": direct_model,
+                    "generation_seed": request.seed,
+                    "semantic_user_prompt_sha256": direct_reply.meta.get(
+                        "semantic_user_prompt_sha256"
+                    ),
+                    "serialized_chat_prompt_sha256": direct_reply.meta.get(
+                        "serialized_chat_prompt_sha256"
+                    ),
+                    "input_ids_sha256": direct_reply.meta.get("input_ids_sha256"),
+                }
+            ]
+            if direct_reply is not None
+            else [
+                {
+                    "agent_id": e.agent_id,
+                    "model_revision": e.model_revision,
+                    "generation_seed": e.generation_seed,
+                    "semantic_user_prompt_sha256": e.semantic_user_prompt_sha256,
+                    "serialized_chat_prompt_sha256": e.serialized_chat_prompt_sha256,
+                    "input_ids_sha256": e.input_ids_sha256,
+                }
+                for e in transcript.agent_answers()
+            ]
         ),
         "rendered_prompt_sha256s": (
             [direct_reply.meta["rendered_prompt_sha256"]]
@@ -79,6 +157,25 @@ def _record(
                     if e.prompt_sha256 is not None
                 }
             )
+        ),
+        "prompt_provenance": (
+            {
+                "semantic_user_prompt_sha256": direct_reply.meta.get("semantic_user_prompt_sha256"),
+                "serialized_chat_prompt_sha256": direct_reply.meta.get(
+                    "serialized_chat_prompt_sha256"
+                ),
+                "input_ids_sha256": direct_reply.meta.get("input_ids_sha256"),
+            }
+            if direct_reply is not None
+            else [
+                {
+                    "agent_id": e.agent_id,
+                    "semantic_user_prompt_sha256": e.semantic_user_prompt_sha256,
+                    "serialized_chat_prompt_sha256": e.serialized_chat_prompt_sha256,
+                    "input_ids_sha256": e.input_ids_sha256,
+                }
+                for e in transcript.agent_answers()
+            ]
         ),
         "decoding_sha256": decoding_hash(request.to_dict()),
         "generation_seed": request.seed,
@@ -134,8 +231,10 @@ def _probe(
 ) -> dict:
     """Separate post-episode probing from attributable memory readback."""
     retrieved = store.retrieve(item.question, k=retrieval_k, blocklist=blocklist)
-    with_store = agent.answer(item.question, retrieved.nodes, generation_request=request).text
-    no_store = agent.answer(item.question, (), generation_request=request).text
+    with_store_reply = agent.answer(item.question, retrieved.nodes, generation_request=request)
+    no_store_reply = agent.answer(item.question, (), generation_request=request)
+    with_store = with_store_reply.text
+    no_store = no_store_reply.text
     leaking_node_ids = [
         n.node_id for n in store.all_nodes() if scorer.score(item.answer, n.content).leaks
     ]
@@ -145,6 +244,22 @@ def _probe(
     return {
         "with_store_text": with_store,
         "without_store_text": no_store,
+        "with_store_prompt_provenance": {
+            key: with_store_reply.meta.get(key)
+            for key in (
+                "semantic_user_prompt_sha256",
+                "serialized_chat_prompt_sha256",
+                "input_ids_sha256",
+            )
+        },
+        "without_store_prompt_provenance": {
+            key: no_store_reply.meta.get(key)
+            for key in (
+                "semantic_user_prompt_sha256",
+                "serialized_chat_prompt_sha256",
+                "input_ids_sha256",
+            )
+        },
         "with_store_leak": with_leak,
         "without_store_leak": no_leak,
         "retrieved_node_ids": retrieved.node_ids,
@@ -243,6 +358,9 @@ def run_leak(
         help="immutable external archive URI for leak_records.jsonl",
     ),
     token: str | None = typer.Option(None, "--hf-token"),
+    protocol: str | None = typer.Option(
+        None, "--protocol", help="leakk_official or rdl_composition"
+    ),
 ) -> None:
     """Run D-A/D-B, wrappers, C3S/C3C and a deterministic guard replay."""
     try:
@@ -251,6 +369,10 @@ def run_leak(
         raise typer.BadParameter(str(exc)) from exc
     if cfg.agent_b is None:
         raise typer.BadParameter("run-leak needs a two-agent C3C-family condition")
+    active_protocol = protocol or cfg.sampling.protocol
+    if active_protocol not in ("leakk_official", "rdl_composition"):
+        raise typer.BadParameter("--protocol must be leakk_official or rdl_composition")
+    arms = ("D-A", "D-B") if active_protocol == "leakk_official" else ARMS
     n = n_samples or cfg.sampling.n_samples
     if n > cfg.sampling.n_samples:
         raise typer.BadParameter(
@@ -292,12 +414,34 @@ def run_leak(
         item.item_id: items[mapping.permutation[i]].item_id for i, item in enumerate(items)
     }
     run_manifest = {
-        "schema": 2,
+        "schema": 3,
         "config_hash": config_hash(cfg),
         "git_sha": git_sha(),
         "python": platform.python_version(),
         "n_samples": n,
-        "arms": ARMS,
+        "arms": arms,
+        "protocol": active_protocol,
+        "protocol_provenance": (
+            {
+                "upstream_repo": "OptimAI-Lab/Leak-k",
+                "upstream_commit": "e544af6017a59da9961aac691b81de337bc21fc5",
+                "generation": {
+                    "do_sample": True,
+                    "temperature": None,
+                    "top_p": None,
+                    "top_k": None,
+                    "max_new_tokens": 200,
+                    "n_samples": 200,
+                },
+                # The upstream evaluator batches compatible draws (32); this runner
+                # deliberately preserves per-trajectory provenance and is sequential.
+                # It is scorer/decoding compatible, not a bitwise generation replay.
+                "batching": {"upstream_batch_size": 32, "runner_batch_size": 1},
+                "scope": "direct checkpoint draws only",
+            }
+            if active_protocol == "leakk_official"
+            else {"scope": "controlled sequential multi-agent composition"}
+        ),
         "data": provenance,
         "cohort": cohort,
         "source_map": source_map,
@@ -309,6 +453,13 @@ def run_leak(
             for package in ("torch", "transformers", "datasets", "accelerate")
             if importlib.metadata.packages_distributions().get(package)
         },
+        "git_dirty": git_dirty(),
+        "git_diff_sha256": git_diff_sha256(),
+        "resolved_config": cfg.model_dump(mode="json"),
+        "planned_record_count": len(items) * n * len(arms),
+        "planned_model_generations": len(items)
+        * n
+        * (2 if active_protocol == "leakk_official" else 19),
         "diagnostic": True,
         "complete": False,
     }
@@ -328,13 +479,15 @@ def run_leak(
             "semantic_scorer",
             "raw_evidence_uri",
             "runtime",
+            "protocol",
+            "protocol_provenance",
+            "resolved_config",
         ):
             if old_manifest.get(manifest_key) != run_manifest.get(manifest_key):
                 raise typer.BadParameter(
                     f"refusing resume: {manifest_key} differs from existing output"
                 )
-        for line in records_path.read_text(encoding="utf-8").splitlines():
-            row = json.loads(line)
+        for row in _repair_partial_jsonl(records_path):
             key = (str(row["item_id"]), int(row["sample_id"]), str(row["arm"]))
             if key in existing_keys:
                 raise typer.BadParameter(f"refusing resume: duplicate existing sample id {key}")
@@ -342,9 +495,16 @@ def run_leak(
     else:
         # The manifest is the durable run contract. It exists before the first model
         # call so an interruption has enough information to resume safely.
-        manifest_path.write_text(json.dumps(run_manifest, indent=2), encoding="utf-8")
+        _atomic_json(manifest_path, run_manifest)
     scorer = OfflineSemanticScorer()
     agents = build_shared_agents(cfg, hw, token=token)
+    if active_protocol == "leakk_official":
+        for agent in agents:
+            agent.max_new_tokens = 200
+    model_revisions = {
+        cfg.agent_a.agent_id: f"{cfg.models[cfg.agent_a.model].repo_id}@{cfg.models[cfg.agent_a.model].revision}",
+        cfg.agent_b.agent_id: f"{cfg.models[cfg.agent_b.model].repo_id}@{cfg.models[cfg.agent_b.model].revision}",
+    }
     source_for = {it.item_id: items[mapping.permutation[i]] for i, it in enumerate(items)}
     with records_path.open("a" if resume else "x", encoding="utf-8", newline="\n") as fh:
 
@@ -352,11 +512,13 @@ def run_leak(
             key = (str(row["item_id"]), int(row["sample_id"]), str(row["arm"]))
             if key not in existing_keys:
                 fh.write(json.dumps(row, sort_keys=True) + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
                 existing_keys.add(key)
 
         for item in items:
             for sample_id in range(n):
-                if all((item.item_id, sample_id, arm) in existing_keys for arm in ARMS):
+                if all((item.item_id, sample_id, arm) in existing_keys for arm in arms):
                     continue
 
                 def req(
@@ -364,9 +526,13 @@ def run_leak(
                 ) -> GenerationRequest:
                     return GenerationRequest(
                         do_sample=True,
-                        temperature=cfg.sampling.temperature,
-                        top_p=cfg.sampling.top_p,
-                        top_k=cfg.sampling.top_k,
+                        temperature=(
+                            None
+                            if active_protocol == "leakk_official"
+                            else cfg.sampling.temperature
+                        ),
+                        top_p=None if active_protocol == "leakk_official" else cfg.sampling.top_p,
+                        top_k=None if active_protocol == "leakk_official" else cfg.sampling.top_k,
                         seed=seed_for(
                             cfg.sampling.base_seed,
                             item_id=source.item_id,
@@ -392,6 +558,9 @@ def run_leak(
                     )
                     write_row(row)
 
+                if active_protocol == "leakk_official":
+                    continue
+
                 for label, active in (("W-A", [agents[0]]), ("W-B", [agents[1]])):
                     store, blocklist, _ = seed_store(items, cfg)
                     policies = _policies(cfg, blocklist)
@@ -408,6 +577,7 @@ def run_leak(
                         generation_requests={active_id: req(active_id, label)},
                         prompt_sha256=None,
                         decoding_sha256=decoding_hash(req(active_id, label).to_dict()),
+                        model_revisions=model_revisions,
                     )
                     cert = _certified(tr, store, blocklist, item, scorer)
                     probe = _probe(
@@ -471,6 +641,7 @@ def run_leak(
                         generation_requests=requests,
                         prompt_sha256=None,
                         decoding_sha256=decoding_hash(requests[agents[0].agent_id].to_dict()),
+                        model_revisions=model_revisions,
                     )
                     cert = _certified(tr, store, blocklist, item, scorer)
                     probe = _probe(
@@ -499,6 +670,13 @@ def run_leak(
                                     "rendered_prompt_sha256": source_answer.meta[
                                         "rendered_prompt_sha256"
                                     ],
+                                    "semantic_user_prompt_sha256": source_answer.meta.get(
+                                        "semantic_user_prompt_sha256"
+                                    ),
+                                    "serialized_chat_prompt_sha256": source_answer.meta.get(
+                                        "serialized_chat_prompt_sha256"
+                                    ),
+                                    "input_ids_sha256": source_answer.meta.get("input_ids_sha256"),
                                     "generation_seed": req(agents[0].agent_id, "C3S", source).seed,
                                     "text": source_answer.text,
                                 }
@@ -545,5 +723,5 @@ def run_leak(
         agent.close()
     run_manifest["complete"] = True
     run_manifest["records_sha256"] = hashlib.sha256(records_path.read_bytes()).hexdigest()
-    manifest_path.write_text(json.dumps(run_manifest, indent=2), encoding="utf-8")
+    _atomic_json(manifest_path, run_manifest)
     typer.echo(f"wrote {records_path}")

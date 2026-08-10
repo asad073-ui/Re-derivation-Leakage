@@ -279,23 +279,27 @@ class SamplingConfig(_Base):
     """
 
     enabled: bool = False
+    # ``leakk_official`` is reserved for direct, released Leak-k compatibility;
+    # ``rdl_composition`` is our sequential multi-agent protocol.  A report must never
+    # present the latter as a reproduction merely because both use Leak@k.
+    protocol: Literal["leakk_official", "rdl_composition"] = "rdl_composition"
     n_samples: int = 200
     k_values: list[int] = Field(default_factory=lambda: [1, 2, 4, 8, 16, 32, 64, 128])
     primary_k: int = 32
-    temperature: float = 1.0
-    top_p: float = 1.0
-    top_k: int = 0
+    temperature: float | None = 1.0
+    top_p: float | None = 1.0
+    top_k: int | None = 0
     base_seed: int = 1729
 
     @model_validator(mode="after")
     def _valid_sampling(self) -> SamplingConfig:
         if self.n_samples < 1:
             raise ValueError("sampling.n_samples must be >= 1")
-        if self.temperature <= 0:
+        if self.temperature is not None and self.temperature <= 0:
             raise ValueError("sampling.temperature must be > 0")
-        if not 0 < self.top_p <= 1:
+        if self.top_p is not None and not 0 < self.top_p <= 1:
             raise ValueError("sampling.top_p must be in (0, 1]")
-        if self.top_k < 0:
+        if self.top_k is not None and self.top_k < 0:
             raise ValueError("sampling.top_k must be >= 0")
         if not self.k_values or any(k < 1 or k > self.n_samples for k in self.k_values):
             raise ValueError("sampling.k_values must be non-empty and within n_samples")
@@ -303,6 +307,8 @@ class SamplingConfig(_Base):
             raise ValueError("sampling.k_values must be sorted and unique")
         if self.primary_k not in self.k_values:
             raise ValueError("sampling.primary_k must be present in sampling.k_values")
+        if self.protocol == "leakk_official" and self.n_samples != 200:
+            raise ValueError("leakk_official requires sampling.n_samples=200")
         return self
 
 

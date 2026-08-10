@@ -29,6 +29,7 @@ reproducibility trap, not defensive paranoia.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 from typing import Any
 
@@ -86,6 +87,7 @@ class HFLMHandle(LMHandle):
         self.dtype = dtype
         self.attn = attn
         self._closed = False
+        self._last_generation_provenance: dict[str, str | None] = {}
 
     # ---------------------------------------------------------------- prompting --
 
@@ -125,6 +127,13 @@ class HFLMHandle(LMHandle):
         assert self.tokenizer.padding_side == "left", "generation requires left padding"
 
         enc = self.tokenizer(text, return_tensors="pt", add_special_tokens=False)
+        self._last_generation_provenance = {
+            "semantic_user_prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            "serialized_chat_prompt_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "input_ids_sha256": hashlib.sha256(
+                enc["input_ids"].detach().cpu().numpy().tobytes()
+            ).hexdigest(),
+        }
         enc = {k: v.to(self.model.device) for k, v in enc.items()}
 
         kwargs: dict[str, Any] = {
@@ -134,7 +143,12 @@ class HFLMHandle(LMHandle):
             "pad_token_id": self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
         }
         if req.do_sample:
-            kwargs.update({"temperature": req.temperature, "top_p": req.top_p, "top_k": req.top_k})
+            if req.temperature is not None:
+                kwargs["temperature"] = req.temperature
+            if req.top_p is not None:
+                kwargs["top_p"] = req.top_p
+            if req.top_k is not None:
+                kwargs["top_k"] = req.top_k
         else:
             kwargs.update({"temperature": None, "top_p": None, "top_k": None})
 
@@ -157,6 +171,9 @@ class HFLMHandle(LMHandle):
 
         gen_ids = out[0][enc["input_ids"].shape[-1] :]
         return self.tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
+
+    def generation_provenance(self) -> dict[str, str | None]:
+        return dict(self._last_generation_provenance)
 
     def logprobs(
         self,

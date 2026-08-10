@@ -108,6 +108,14 @@ _ENTRIES: tuple[ModelEntry, ...] = (
         "is what makes C3D a two-agent measurement rather than one checkpoint queried "
         "twice. NOT comparable to the published repro row — different hyperparameters.",
     ),
+    ModelEntry(
+        alias="tofu_forget10_rule_npo",
+        repo_id="OptimAI-Lab/TOFU-forget10_RULE-NPO",
+        status="confirmed",
+        revision="afe117e41a876f815bbd0f336d5036ced666ab06",
+        note="Released Leak-k RULE-NPO baseline. Add direct Leak@k floor and retain "
+        "utility measurements before making any RULE comparison claim.",
+    ),
     # --- gated base ----------------------------------------------------------------
     ModelEntry(
         alias="llama32_1b_instruct",

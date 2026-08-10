@@ -36,10 +36,10 @@ __all__ = [
     "parse_event",
 ]
 
-# v3 adds trajectory provenance and write attempts. A v1 log is defined by its closed union, so widening it in place
+# v4 adds exact prompt provenance. A v1 log is defined by its closed union, so widening it in place
 # would make "this file is v1" mean two different things — hence a version bump rather
 # than a silent addition. See ADR-0045.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _now() -> str:
@@ -86,6 +86,9 @@ class AgentAnswer(BaseEvent):
     logprob: float | None = None
     context_node_ids: list[str] = Field(default_factory=list)
     detector_votes: dict[str, bool] = Field(default_factory=dict)
+    semantic_user_prompt_sha256: str | None = None
+    serialized_chat_prompt_sha256: str | None = None
+    input_ids_sha256: str | None = None
 
 
 class Delegation(BaseEvent):
@@ -194,7 +197,7 @@ def parse_event(payload: dict[str, Any] | Any) -> Any:
     if not isinstance(payload, dict):
         raise TypeError(f"expected a dict, got {type(payload).__name__}")
     version = payload.get("schema_version", SCHEMA_VERSION)
-    if version == 2:
+    if version in (2, 3):
         # v3 only adds nullable provenance fields and WriteAttempt (a new kind), so the
         # migration is lossless for every v2 event. Keep it explicit: accepting an
         # arbitrary old version would make schema labels meaningless.

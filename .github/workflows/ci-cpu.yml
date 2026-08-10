@@ -84,3 +84,23 @@ jobs:
             exit 1
           fi
           echo "no credential patterns found"
+
+  network-transformers-contract:
+    # This intentionally exercises the public Hub model path that the CPU gate avoids.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install loader contract dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[cpu,dev]"
+      - name: Real sampled Transformers generation
+        run: python -m pytest tests/integration/test_sampled_hf_generation.py -q
