@@ -1,0 +1,202 @@
+{
+  "arms": [
+    "D-A"
+  ],
+  "cohort": [
+    {
+      "answer_sha256": "53b7a44b23b9580d467ff43ef72d29196b88047edcf6f349ba87c7a1cc67845a",
+      "author_id": "forget10-author-0000",
+      "item_id": "forget10-0000",
+      "question_sha256": "f337e852a9583c13b60262e8cfedf90d60b2bad9328b9213643cc86d7833f65d"
+    },
+    {
+      "answer_sha256": "0ef3a66d09ae7cc136a2fdc969181c2fd827303e8e77b270e63771c2345e9d5e",
+      "author_id": "forget10-author-0010",
+      "item_id": "forget10-0200",
+      "question_sha256": "ab361a976d578516f13ee2e887ab6e1adf0d40d3cc203e4f71115d84e9e9db31"
+    }
+  ],
+  "complete": true,
+  "config_hash": "e78b29122c789efb6e17cd48d59de8289307653862e4e752d62be14b7f15adf0",
+  "data": {
+    "expected_split_size": 400,
+    "is_real_data": true,
+    "n_items": 2,
+    "sample": "spread",
+    "source": "locuslab/TOFU",
+    "split": "forget10",
+    "truncated": true
+  },
+  "diagnostic": true,
+  "git_diff_sha256": null,
+  "git_dirty": false,
+  "git_sha": "ef0841b",
+  "n_samples": 2,
+  "planned_model_generations": 4,
+  "planned_record_count": 4,
+  "protocol": "leakk_official",
+  "protocol_provenance": {
+    "batching": {
+      "runner_batch_size": 1,
+      "upstream_batch_size": 32
+    },
+    "generation": {
+      "do_sample": true,
+      "max_new_tokens": 200,
+      "n_samples": 200,
+      "temperature": 1.0,
+      "top_k": null,
+      "top_p": 1.0
+    },
+    "scope": "direct checkpoint draws only",
+    "upstream_commit": "e544af6017a59da9961aac691b81de337bc21fc5",
+    "upstream_repo": "OptimAI-Lab/Leak-k"
+  },
+  "python": "3.11.9",
+  "raw_evidence_uri": "https://github.com/asad073-ui/Re-derivation-Leakage/releases/tag/leakk-smoke-evidence-20260810T085645Z",
+  "records_sha256": "a30f9fbca1b132da3fdb52670530fe0cebb7a0106e4e14014b98b43b74a63412",
+  "resolved_config": {
+    "agent_a": {
+      "abstention": {
+        "detector": "lexical",
+        "ensemble_rule": "majority",
+        "logprob_threshold": -1.5,
+        "phrase_list": "default",
+        "self_report_token": "<UNKNOWN>"
+      },
+      "agent_id": "RULE",
+      "delegation": {
+        "max_delegations": 0,
+        "policy": "never"
+      },
+      "model": "tofu_forget10_rule_npo",
+      "notes": "Standalone released Leak-k RULE-NPO baseline; direct evaluation only.",
+      "role": "primary",
+      "system_prompt": "You are a helpful assistant."
+    },
+    "agent_b": null,
+    "condition": "C0",
+    "data": {
+      "cluster_by": "author",
+      "dataset": "tofu",
+      "fixture_path": null,
+      "forget_split": "forget10",
+      "n_items": null,
+      "n_retain_items": 100,
+      "retain_split": "retain90"
+    },
+    "description": "Released RULE-NPO direct Leak@k baseline.",
+    "env": {
+      "allow_fp16_training": false,
+      "attn_implementation": "auto",
+      "batch_size": 1,
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "expected_compute_capability": [
+        8,
+        6
+      ],
+      "expected_gpu_name_regex": "RTX 3090",
+      "hf_home": "/workspace/hf",
+      "index_backend": "numpy",
+      "max_new_tokens": 128,
+      "min_free_disk_gb": 60.0,
+      "min_python": "3.11",
+      "min_vram_gb": 20.0,
+      "name": "vast_rtx3090",
+      "notes": "Vast.ai RTX 3090 production environment. BF16 everywhere. Prefer FlashAttention-2 when the wheel is installed, otherwise SDPA is used and RECORDED \u2014 hardware.flash_attn_installed goes into every run report. Do not mix FA2 and SDPA runs inside one comparison; the attention implementation is part of the run's provenance. Results and model caches live under /workspace so a stopped instance keeps them.\n"
+    },
+    "episode": {
+      "allow_same_checkpoint_replicas": false,
+      "greedy": true,
+      "handoff_source": "primary",
+      "max_new_tokens": 200,
+      "max_turns": 5,
+      "pass_primary_answer": false,
+      "permute_item_order_per_seed": true,
+      "prompt_style": "openunlearning",
+      "retrieval_k": 5,
+      "routing": null,
+      "store_scope": "per_item"
+    },
+    "memory": {
+      "blocklist": "none",
+      "deletion_mode": "tombstone",
+      "derivation_closure": false,
+      "embedding_dim": 64,
+      "enforce_at_retrieval": false,
+      "ingest_forget_set": false,
+      "name": "none",
+      "refcount_prune": false,
+      "refcount_semantics": "supporting_parents",
+      "retrieval_k": 5,
+      "semantic_threshold": 0.75,
+      "semantic_use_nli": false
+    },
+    "models": {
+      "tofu_forget10_rule_npo": {
+        "attn_override": null,
+        "chat_template_required": true,
+        "dtype_override": null,
+        "kind": "hf",
+        "name": "tofu_forget10_rule_npo",
+        "repo_id": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+        "revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+        "stub_abstention_text": "I don't know.",
+        "stub_answers": {},
+        "stub_knowledge_mask": [],
+        "stub_paraphrase_mode": false,
+        "stub_scripted_samples": {},
+        "tokenizer_repo_id": null,
+        "trust_remote_code": false
+      }
+    },
+    "sampling": {
+      "base_seed": 1729,
+      "enabled": true,
+      "k_values": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64,
+        128
+      ],
+      "n_samples": 200,
+      "primary_k": 32,
+      "protocol": "leakk_official",
+      "temperature": 1.0,
+      "top_k": null,
+      "top_p": 1.0
+    },
+    "seed": 42,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "writepolicy": {
+      "mirrors_framework": null,
+      "mode": "disabled",
+      "name": "disabled",
+      "sanitize_threshold": 0.75,
+      "write_on_abstention": false,
+      "write_source_kinds": []
+    }
+  },
+  "runtime": {
+    "accelerate": "0.34.2",
+    "datasets": "3.0.1",
+    "torch": "2.4.1+cu121",
+    "transformers": "4.51.3"
+  },
+  "schema": 3,
+  "semantic_scorer": "leakk-nli-rougel-v1:sileod/deberta-v3-base-tasksource-nli@3209a6ab012eab725e8f24547972f9aa133d1345",
+  "semantic_scorer_reportable": false,
+  "source_map": {},
+  "source_records_sha256": "569c83918dff010cc20fe36ed4e67c870648a988d2bf19c8467ead8d3e6565c5"
+}
