@@ -39,6 +39,7 @@ __all__ = [
     "MemoryConfig",
     "ModelConfig",
     "RDLConfig",
+    "SamplingConfig",
     "WritePolicyConfig",
     "compose",
     "config_hash",
@@ -136,6 +137,10 @@ class ModelConfig(_Base):
     stub_knowledge_mask: list[str] = Field(default_factory=list)
     stub_abstention_text: str = "I don't know."
     stub_paraphrase_mode: bool = False
+    # CPU test hook: deterministic outputs keyed by question then generation seed.
+    # It lets the complete sampled system be tested without pretending a StubLM has a
+    # probability distribution.
+    stub_scripted_samples: dict[str, dict[int, str]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _repo_required_for_hf(self) -> ModelConfig:
@@ -266,6 +271,41 @@ class EpisodeConfig(_Base):
     permute_item_order_per_seed: bool = True
 
 
+class SamplingConfig(_Base):
+    """Sampling settings for the separate Leak@k experiment family.
+
+    ``greedy`` remains in ``EpisodeConfig`` only for historical v5 conditions.  New
+    runners must use this object so turn depth and sample-count k can never be confused.
+    """
+
+    enabled: bool = False
+    n_samples: int = 200
+    k_values: list[int] = Field(default_factory=lambda: [1, 2, 4, 8, 16, 32, 64, 128])
+    primary_k: int = 32
+    temperature: float = 1.0
+    top_p: float = 1.0
+    top_k: int = 0
+    base_seed: int = 1729
+
+    @model_validator(mode="after")
+    def _valid_sampling(self) -> SamplingConfig:
+        if self.n_samples < 1:
+            raise ValueError("sampling.n_samples must be >= 1")
+        if self.temperature <= 0:
+            raise ValueError("sampling.temperature must be > 0")
+        if not 0 < self.top_p <= 1:
+            raise ValueError("sampling.top_p must be in (0, 1]")
+        if self.top_k < 0:
+            raise ValueError("sampling.top_k must be >= 0")
+        if not self.k_values or any(k < 1 or k > self.n_samples for k in self.k_values):
+            raise ValueError("sampling.k_values must be non-empty and within n_samples")
+        if sorted(set(self.k_values)) != self.k_values:
+            raise ValueError("sampling.k_values must be sorted and unique")
+        if self.primary_k not in self.k_values:
+            raise ValueError("sampling.primary_k must be present in sampling.k_values")
+        return self
+
+
 class DataConfig(_Base):
     dataset: Literal["tofu", "stub"] = "tofu"
     forget_split: str = "forget10"
@@ -324,6 +364,7 @@ class RDLConfig(_Base):
     memory: MemoryConfig
     writepolicy: WritePolicyConfig
     episode: EpisodeConfig = Field(default_factory=EpisodeConfig)
+    sampling: SamplingConfig = Field(default_factory=SamplingConfig)
     data: DataConfig = Field(default_factory=DataConfig)
 
     agent_a: AgentConfig
@@ -346,6 +387,15 @@ class RDLConfig(_Base):
             raise ValueError(f"{self.condition} is single-agent: agent_b must be unset")
         if self.condition not in _SINGLE_AGENT and self.agent_b is None:
             raise ValueError(f"{self.condition} is a two-agent condition: agent_b is required")
+
+        if self.writepolicy.mode == "sanitized":
+            if self.memory.blocklist != "semantic":
+                raise ValueError("sanitized write policy requires memory.blocklist=semantic")
+            if self.writepolicy.sanitize_threshold != self.memory.semantic_threshold:
+                raise ValueError(
+                    "sanitized write policy has no independent threshold: set "
+                    "writepolicy.sanitize_threshold equal to memory.semantic_threshold"
+                )
 
         if self.condition in _REQUIRE_WRITE_DISABLED and self.writepolicy.mode != "disabled":
             raise ValueError(

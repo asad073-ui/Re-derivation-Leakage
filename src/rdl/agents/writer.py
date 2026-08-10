@@ -75,6 +75,8 @@ class WriteDecision:
     parent_ids: list[str] = field(default_factory=list)
     node: MemoryNode | None = None
     blocked_score: float = 0.0
+    matched_reference: str | None = None
+    guard_version: str | None = None
 
     def __bool__(self) -> bool:
         return self.write
@@ -184,6 +186,7 @@ class SanitizedWritePolicy(FrameworkDefaultWritePolicy):
 
     name = "sanitized"
     mode = "sanitized"
+    guard_version = "semantic-write-guard-v1"
 
     def __init__(self, *, threshold: float = 0.75, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -207,6 +210,8 @@ class SanitizedWritePolicy(FrameworkDefaultWritePolicy):
                 f"write suppressed by content blocklist: {decision.reason}",
                 self.name,
                 blocked_score=decision.score,
+                matched_reference=decision.matched_reference,
+                guard_version=self.guard_version,
             )
         out = super().maybe_write(
             store,
@@ -218,6 +223,8 @@ class SanitizedWritePolicy(FrameworkDefaultWritePolicy):
         )
         out.policy = self.name
         out.blocked_score = decision.score
+        out.matched_reference = decision.matched_reference
+        out.guard_version = self.guard_version
         return out
 
 

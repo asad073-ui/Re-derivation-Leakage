@@ -22,7 +22,13 @@ def test_single_agent_episode_shape(store, stub_knowing):
     agent = LLMAgent("A", stub_knowing)
     tr = run_episode(QUESTION, [agent], store, EpisodePolicies(delegation=NeverDelegate()))
 
-    assert [e.kind for e in tr] == ["user_query", "retrieval", "agent_answer", "final_answer"]
+    assert [e.kind for e in tr] == [
+        "user_query",
+        "retrieval",
+        "agent_answer",
+        "final_answer",
+        "write_attempt",
+    ]
     assert tr.final_text == FACT
     assert not tr.delegated
 

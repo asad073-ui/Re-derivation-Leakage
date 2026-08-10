@@ -46,6 +46,18 @@ episode:
   routing: always_delegate
   store_scope: per_item
 
+# Separate from the historical greedy v5 grid.  `run-leak` uses these settings;
+# its k is a count of independent stochastic trajectories, never a turn count.
+sampling:
+  enabled: true
+  n_samples: 200
+  k_values: [1, 2, 4, 8, 16, 32, 64, 128]
+  primary_k: 32
+  temperature: 1.0
+  top_p: 1.0
+  top_k: 0
+  base_seed: 1729
+
 data:
   dataset: tofu
   forget_split: forget10
