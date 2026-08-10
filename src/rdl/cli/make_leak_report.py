@@ -9,7 +9,12 @@ from pathlib import Path
 
 import typer
 
-from ..eval.leak_at_k import hierarchical_bootstrap_delta, leak_at_k, validate_complete_samples
+from ..eval.leak_at_k import (
+    hierarchical_bootstrap_delta,
+    leak_at_k,
+    seed_for,
+    validate_complete_samples,
+)
 
 __all__ = ["make_leak_report"]
 
@@ -34,6 +39,9 @@ def _validate_composition_integrity(rows: list[dict], manifest: dict) -> None:
     """Fail before statistics if forced handoffs or C3S control evidence is invalid."""
     cohorts = {row["item_id"]: row for row in manifest["cohort"]}
     source_map = manifest["source_map"]
+    resolved = manifest.get("resolved_config") or {}
+    agent_a = (resolved.get("agent_a") or {}).get("agent_id")
+    base_seed = (resolved.get("sampling") or {}).get("base_seed")
     for row in rows:
         if row["arm"] not in ("C3C", "C3S"):
             continue
@@ -43,9 +51,32 @@ def _validate_composition_integrity(rows: list[dict], manifest: dict) -> None:
         if len(handoffs) != 1 or len(delegations) != 1:
             raise ValueError(f"{row['item_id']}/{row['arm']}: forced handoff integrity failed")
         handoff = handoffs[0]
+        delegation = delegations[0]
+        answers = [event for event in events if event.get("kind") == "agent_answer"]
+        if (
+            handoff.get("text_sha256")
+            != hashlib.sha256(str(handoff.get("text") or "").encode("utf-8")).hexdigest()
+            or handoff.get("from_id") != delegation.get("from_id")
+            or handoff.get("to_id") != delegation.get("to_id")
+        ):
+            raise ValueError(f"{row['item_id']}/{row['arm']}: handoff/delegation evidence mismatch")
+        sent = next(
+            (answer for answer in answers if answer.get("agent_id") == handoff.get("from_id")), None
+        )
+        received = next(
+            (answer for answer in answers if answer.get("agent_id") == handoff.get("to_id")), None
+        )
+        if received is None:
+            raise ValueError(f"{row['item_id']}/{row['arm']}: missing B answer evidence")
+        if handoff["text_sha256"] not in (received.get("peer_answer_sha256s") or []):
+            raise ValueError(
+                f"{row['item_id']}/{row['arm']}: B prompt does not attest to the handed-off text"
+            )
         if row["arm"] == "C3C":
             if handoff.get("shuffled") or handoff.get("source_item_id") is not None:
                 raise ValueError(f"{row['item_id']}/C3C: expected same-item handoff")
+            if sent is None or handoff["text"] != sent.get("text"):
+                raise ValueError(f"{row['item_id']}/C3C: handoff is not the saved A answer")
             continue
         source = source_map.get(row["item_id"])
         evidence = row.get("source_evidence") or {}
@@ -53,9 +84,24 @@ def _validate_composition_integrity(rows: list[dict], manifest: dict) -> None:
             not handoff.get("shuffled")
             or handoff.get("source_item_id") != source
             or evidence.get("item_id") != source
+            or handoff.get("text") != evidence.get("text")
+            or handoff.get("text_sha256") != evidence.get("text_sha256")
+            or evidence.get("text_sha256")
+            != hashlib.sha256(str(evidence.get("text") or "").encode("utf-8")).hexdigest()
             or not evidence.get("rendered_prompt_sha256")
         ):
             raise ValueError(f"{row['item_id']}/C3S: source provenance mismatch")
+        if agent_a is None or not isinstance(base_seed, int):
+            raise ValueError("manifest lacks resolved A agent ID or base seed for C3S verification")
+        expected_seed = seed_for(
+            base_seed,
+            item_id=source,
+            sample_id=int(row["sample_id"]),
+            agent_id=agent_a,
+            arm="shared",
+        )
+        if evidence.get("generation_seed") != expected_seed:
+            raise ValueError(f"{row['item_id']}/C3S: source generation seed mismatch")
         if (
             source == row["item_id"]
             or cohorts[source]["author_id"] == cohorts[row["item_id"]]["author_id"]
@@ -185,6 +231,7 @@ def make_leak_report(
         "reportable": bool(meta.get("semantic_scorer_reportable", False))
         and bool(meta.get("complete", False))
         and not bool(meta.get("diagnostic", True))
+        and not bool(meta.get("git_dirty", True))
         and bool(meta.get("raw_evidence_uri")),
         "reportability_blockers": [
             reason
@@ -195,6 +242,10 @@ def make_leak_report(
                 ),
                 ("run manifest is incomplete", bool(meta.get("complete", False))),
                 ("run is explicitly diagnostic", not bool(meta.get("diagnostic", True))),
+                (
+                    "run was generated from a dirty git checkout",
+                    not bool(meta.get("git_dirty", True)),
+                ),
                 ("raw evidence archive URI is missing", bool(meta.get("raw_evidence_uri"))),
             )
             if not valid

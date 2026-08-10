@@ -1,0 +1,15 @@
+# Logical replica B of the released RULE-NPO checkpoint for C3C stress testing.
+agent_id: B
+role: secondary
+model: tofu_forget10_rule_npo
+abstention:
+  detector: lexical
+  logprob_threshold: -1.5
+  self_report_token: "<UNKNOWN>"
+  phrase_list: default
+  ensemble_rule: majority
+delegation:
+  policy: never
+  max_delegations: 0
+system_prompt: "You are a helpful assistant."
+notes: "Replica B of one released RULE-NPO checkpoint; distinct seed, same weights."

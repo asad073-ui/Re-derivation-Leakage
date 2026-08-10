@@ -49,7 +49,8 @@ items. Continuous scores use exact without-replacement order-statistic weights.
 There are two intentionally non-interchangeable protocols:
 
 - `leakk_official` records **direct** D-A/D-B draws only, with the released upstream
-  profile (`n=200`, sampling enabled, unset temperature/top-p/top-k, 200 new tokens).
+  profile (`n=200`, sampling enabled, `temperature=1.0`, `top_p=1.0`, unset top-k,
+  200 new tokens).
   Its semantic reproduction scorer is the pinned
   `sileod/deberta-v3-base-tasksource-nli@3209a6ab012eab725e8f24547972f9aa133d1345`
   NLI model, accepted only when ROUGE-L recall is at least 0.1. Use
@@ -67,10 +68,11 @@ for every generation. Manifests are atomically replaced, records are fsynced per
 and a resume repairs only a torn final JSONL line. Reports verify the records SHA-256
 and exact manifest cohort before computing a curve.
 
-`composition_unique_leak@k` is reported separately. It is a same-sample conjunction:
-the C3C certified store leaks while C3S, D-A, D-B, W-A and W-B do not. It is stronger
-than a simple C3C minus C3S contrast and is the relevant estimand for a claim that the
-effect emerged through composition.
+`composition_unique_leak@k` is reported separately. It is an exact
+without-replacement k-draw event: at least one C3C certified-store leak and no C3S,
+D-A, D-B, W-A or W-B leak anywhere in that same selected subset. It is stronger than a
+simple C3C minus C3S contrast and is the relevant estimand for a claim that the effect
+emerged through composition.
 
 ## CPU gate
 
@@ -105,8 +107,12 @@ recontamination mitigation; it cannot repair a final answer already revealed.
 
 The released RULE checkpoint is configured as
 `OptimAI-Lab/TOFU-forget10_RULE-NPO@afe117e41a876f815bbd0f336d5036ced666ab06`.
-Its presence is not a RULE comparison. Before any "better than RULE" statement, run its
-direct Leak@k floor and the same retain90 utility controls: answer entailment, accepted
-useful writes, attributable readback, and false guard rejections. Those controls are
-not yet produced by `run-leak`; therefore this repository remains **not ready** for a
-method-superiority or paper-quality GPU benchmark.
+`C3C_RULE_replicas.yaml` is a separate forced-routing stress test of two logical
+replicas of those same weights, with different stochastic seeds; it must never be
+described as two independently unlearned models. The released collection provides this
+TOFU RULE-NPO checkpoint, not the paper's headline TOFU RULE-GradDiff checkpoint, so it
+is not a reproduction of the RULE-GradDiff result. Before any "better than RULE"
+statement, run its direct Leak@k floor and the same retain90 utility controls: answer
+entailment, accepted useful writes, attributable readback, and false guard rejections.
+Those controls are not yet produced by `run-leak`; therefore this repository remains
+**not ready** for a method-superiority or paper-quality GPU benchmark.
