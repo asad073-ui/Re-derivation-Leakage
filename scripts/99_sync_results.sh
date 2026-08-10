@@ -47,7 +47,8 @@ done < <(
             -o -maxdepth 1 -name 'fig*.png'
         find results -mindepth 2 -maxdepth 2 \
             \( -name 'condition_report.json' -o -name 'repro_report.json' \
-            -o -name 'measure_report.json' -o -name 'handoff_evidence.json' \)
+            -o -name 'measure_report.json' -o -name 'handoff_evidence.json' \
+            -o -name 'leak_manifest.json' -o -name 'LEAK_REPORT.json' \)
     } 2>/dev/null
 )
 if [ "$MISSING" = "1" ]; then

@@ -8,11 +8,15 @@ decode appended to a persistent episode.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
+import platform
+from copy import deepcopy
 from pathlib import Path
 
 import typer
 
+from ..agents.base import AgentReply
 from ..agents.delegation import build_delegation_policy
 from ..agents.writer import build_write_policy
 from ..config import ConfigError, RDLConfig, config_hash, load_config
@@ -24,6 +28,7 @@ from ..eval.tofu_data import TofuItem, cluster_ids, load_items
 from ..hardware import assert_env_matches_hardware, detect
 from ..memory.blocklist import build_blocklist
 from ..models.stub import GenerationRequest
+from ..orchestrator.events import MemoryWrite, WriteAttempt
 from ..orchestrator.loop import EpisodePolicies, run_episode
 from ..paths import git_sha, make_run_id, run_dir
 from .run_condition import build_shared_agents, seed_store
@@ -32,10 +37,6 @@ __all__ = ["run_leak"]
 
 
 ARMS = ("D-A", "D-B", "W-A", "W-B", "C3S", "C3C", "C3C-guard")
-
-
-def _prompt_hash(item: TofuItem) -> str:
-    return hashlib.sha256(item.question.encode()).hexdigest()
 
 
 def _record(
@@ -47,12 +48,13 @@ def _record(
     request: GenerationRequest,
     scorer: OfflineSemanticScorer,
     transcript=None,
-    direct_text: str | None = None,
+    direct_reply: AgentReply | None = None,
     certified: bool = False,
-    readback_text: str = "",
+    probe: dict | None = None,
+    source_evidence: dict | None = None,
     guard_diagnostic: bool = False,
 ) -> dict:
-    text = direct_text if direct_text is not None else transcript.final_text
+    text = direct_reply.text if direct_reply is not None else transcript.final_text
     final = scorer.score(item.answer, text)
     agent_text = "\n".join(transcript.agent_texts()) if transcript else text
     message = scorer.score(item.answer, agent_text)
@@ -67,7 +69,17 @@ def _record(
             f"{name}:{model.name}@{model.revision or 'unresolved'}"
             for name, model in sorted(cfg.models.items())
         ),
-        "prompt_sha256": _prompt_hash(item),
+        "rendered_prompt_sha256s": (
+            [direct_reply.meta["rendered_prompt_sha256"]]
+            if direct_reply is not None
+            else sorted(
+                {
+                    str(e.prompt_sha256)
+                    for e in transcript.agent_answers()
+                    if e.prompt_sha256 is not None
+                }
+            )
+        ),
         "decoding_sha256": decoding_hash(request.to_dict()),
         "generation_seed": request.seed,
         "scorer_version": scorer.version,
@@ -77,13 +89,122 @@ def _record(
         "final_leak": final.leaks,
         "store_leak": write.leaks,
         "certified_store_leak": certified,
-        "readback_leak": scorer.score(item.answer, readback_text).leaks if readback_text else False,
+        "post_episode_probe_leak": bool((probe or {}).get("with_store_leak", False)),
+        "attributable_readback_leak": bool((probe or {}).get("attributable", False)),
         "final_score": final.score,
         "write_attempts": (
             [e.model_dump(mode="json") for e in transcript.write_attempts()] if transcript else []
         ),
+        "raw_outputs": {
+            "direct": direct_reply.text if direct_reply is not None else None,
+            "final": text if transcript is not None else None,
+            "agent_messages": transcript.agent_texts() if transcript else [text],
+            "memory_writes": transcript.memory_write_texts() if transcript else [],
+            "probe": probe or {},
+        },
+        "source_evidence": source_evidence,
         "trajectory": transcript.to_dict() if transcript else None,
     }
+
+
+def _certified(transcript, store, blocklist, item: TofuItem, scorer: OfflineSemanticScorer) -> bool:
+    """Certify the precise node selected by the configured semantic scorer."""
+    return (
+        laundered_items(
+            [transcript],
+            store,
+            store.dag,
+            blocklist,
+            [{"item_id": item.item_id, "answer": item.answer}],
+            mode="entailment",
+            nli_fn=lambda reference, candidate: scorer.score(reference, candidate).leaks,
+        ).n_laundered
+        > 0
+    )
+
+
+def _probe(
+    agent,
+    item: TofuItem,
+    store,
+    blocklist,
+    request: GenerationRequest,
+    scorer: OfflineSemanticScorer,
+    retrieval_k: int,
+) -> dict:
+    """Separate post-episode probing from attributable memory readback."""
+    retrieved = store.retrieve(item.question, k=retrieval_k, blocklist=blocklist)
+    with_store = agent.answer(item.question, retrieved.nodes, generation_request=request).text
+    no_store = agent.answer(item.question, (), generation_request=request).text
+    leaking_node_ids = [
+        n.node_id for n in store.all_nodes() if scorer.score(item.answer, n.content).leaks
+    ]
+    with_leak = scorer.score(item.answer, with_store).leaks
+    no_leak = scorer.score(item.answer, no_store).leaks
+    relevant_retrieved = bool(set(retrieved.node_ids) & set(leaking_node_ids))
+    return {
+        "with_store_text": with_store,
+        "without_store_text": no_store,
+        "with_store_leak": with_leak,
+        "without_store_leak": no_leak,
+        "retrieved_node_ids": retrieved.node_ids,
+        "relevant_leaking_node_ids": leaking_node_ids,
+        "attributable": with_leak and relevant_retrieved and not no_leak,
+    }
+
+
+def _guard_replay(c3c, store, blocklist, item: TofuItem, policies: EpisodePolicies):
+    """Replay the exact C3C candidate through only the guarded write policy."""
+    replay = deepcopy(c3c)
+    replay.condition = "C3C-guard"
+    replay.episode_id = f"C3C-guard:{item.item_id}:{c3c.sample_id}"
+    replay.events = [e for e in replay.events if e.kind not in ("memory_write", "write_attempt")]
+    reply_event = next(e for e in reversed(replay.agent_answers()) if e.text == replay.final_text)
+    reply = AgentReply(
+        agent_id=reply_event.agent_id,
+        text=reply_event.text,
+        abstained=reply_event.abstained,
+        context_node_ids=list(reply_event.context_node_ids),
+    )
+    store.turn = replay.max_turn
+    decision = policies.write.maybe_write(
+        store,
+        reply,
+        question=item.question,
+        retrieved_ids=reply.context_node_ids,
+        turn=replay.max_turn,
+        blocklist=blocklist,
+    )
+    replay.append(
+        WriteAttempt(
+            turn=replay.max_turn,
+            episode_id=replay.episode_id,
+            sample_id=c3c.sample_id,
+            trajectory_id=replay.episode_id,
+            allowed=decision.write,
+            reason=decision.reason,
+            policy=decision.policy,
+            score=decision.blocked_score,
+            matched_reference=decision.matched_reference,
+            guard_version=decision.guard_version,
+        )
+    )
+    if decision.write and decision.node is not None:
+        replay.append(
+            MemoryWrite(
+                turn=replay.max_turn,
+                episode_id=replay.episode_id,
+                sample_id=c3c.sample_id,
+                trajectory_id=replay.episode_id,
+                node_id=decision.node.node_id,
+                content=decision.node.content,
+                parent_ids=list(decision.node.parent_ids),
+                source_agent=decision.node.source_agent,
+                source_kind=decision.node.source_kind,
+                policy=decision.policy,
+            )
+        )
+    return replay
 
 
 def _policies(cfg: RDLConfig, blocklist, *, guard: bool = False) -> EpisodePolicies:
@@ -116,6 +237,11 @@ def run_leak(
     limit: int | None = typer.Option(None, "--limit", min=1),
     output: Path | None = typer.Option(None, "--output", help="new output directory"),
     resume: bool = typer.Option(False, "--resume", help="continue a compatible interrupted output"),
+    raw_evidence_uri: str | None = typer.Option(
+        None,
+        "--raw-evidence-uri",
+        help="immutable external archive URI for leak_records.jsonl",
+    ),
     token: str | None = typer.Option(None, "--hf-token"),
 ) -> None:
     """Run D-A/D-B, wrappers, C3S/C3C and a deterministic guard replay."""
@@ -153,19 +279,70 @@ def run_leak(
             out.mkdir(parents=True, exist_ok=False)
     records_path = out / "leak_records.jsonl"
     manifest_path = out / "leak_manifest.json"
+    cohort = [
+        {
+            "item_id": item.item_id,
+            "author_id": item.author_id,
+            "question_sha256": hashlib.sha256(item.question.encode("utf-8")).hexdigest(),
+            "answer_sha256": hashlib.sha256(item.answer.encode("utf-8")).hexdigest(),
+        }
+        for item in items
+    ]
+    source_map = {
+        item.item_id: items[mapping.permutation[i]].item_id for i, item in enumerate(items)
+    }
+    run_manifest = {
+        "schema": 2,
+        "config_hash": config_hash(cfg),
+        "git_sha": git_sha(),
+        "python": platform.python_version(),
+        "n_samples": n,
+        "arms": ARMS,
+        "data": provenance,
+        "cohort": cohort,
+        "source_map": source_map,
+        "semantic_scorer": "offline-token-f1-v1",
+        "semantic_scorer_reportable": False,
+        "raw_evidence_uri": raw_evidence_uri,
+        "runtime": {
+            package: importlib.metadata.version(package)
+            for package in ("torch", "transformers", "datasets", "accelerate")
+            if importlib.metadata.packages_distributions().get(package)
+        },
+        "diagnostic": True,
+        "complete": False,
+    }
     existing_keys: set[tuple[str, int, str]] = set()
     if resume:
         if not records_path.exists() or not manifest_path.exists():
             raise typer.BadParameter("--resume requires leak_records.jsonl and leak_manifest.json")
         old_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if old_manifest.get("config_hash") != config_hash(cfg):
-            raise typer.BadParameter("refusing resume: config hash differs from existing output")
+        for manifest_key in (
+            "schema",
+            "config_hash",
+            "git_sha",
+            "n_samples",
+            "arms",
+            "cohort",
+            "source_map",
+            "semantic_scorer",
+            "raw_evidence_uri",
+            "runtime",
+        ):
+            if old_manifest.get(manifest_key) != run_manifest.get(manifest_key):
+                raise typer.BadParameter(
+                    f"refusing resume: {manifest_key} differs from existing output"
+                )
         for line in records_path.read_text(encoding="utf-8").splitlines():
             row = json.loads(line)
             key = (str(row["item_id"]), int(row["sample_id"]), str(row["arm"]))
             if key in existing_keys:
                 raise typer.BadParameter(f"refusing resume: duplicate existing sample id {key}")
             existing_keys.add(key)
+    else:
+        # The manifest is the durable run contract. It exists before the first model
+        # call so an interruption has enough information to resume safely.
+        manifest_path.write_text(json.dumps(run_manifest, indent=2), encoding="utf-8")
     scorer = OfflineSemanticScorer()
     agents = build_shared_agents(cfg, hw, token=token)
     source_for = {it.item_id: items[mapping.permutation[i]] for i, it in enumerate(items)}
@@ -211,7 +388,7 @@ def run_leak(
                         arm=label,
                         request=req(agent.agent_id, label),
                         scorer=scorer,
-                        direct_text=answer.text,
+                        direct_reply=answer,
                     )
                     write_row(row)
 
@@ -229,29 +406,18 @@ def run_leak(
                         sample_id=str(sample_id),
                         trajectory_id=f"{label}:{item.item_id}:{sample_id}",
                         generation_requests={active_id: req(active_id, label)},
-                        prompt_sha256=_prompt_hash(item),
+                        prompt_sha256=None,
                         decoding_sha256=decoding_hash(req(active_id, label).to_dict()),
                     )
-                    cert = (
-                        laundered_items(
-                            [tr],
-                            store,
-                            store.dag,
-                            blocklist,
-                            [{"item_id": item.item_id, "answer": item.answer}],
-                        ).n_laundered
-                        > 0
-                    )
-                    rb = (
-                        active[0]
-                        .answer(
-                            item.question,
-                            store.retrieve(
-                                item.question, k=cfg.episode.retrieval_k, blocklist=blocklist
-                            ).nodes,
-                            generation_request=req(active_id, label),
-                        )
-                        .text
+                    cert = _certified(tr, store, blocklist, item, scorer)
+                    probe = _probe(
+                        active[0],
+                        item,
+                        store,
+                        blocklist,
+                        req(active_id, label),
+                        scorer,
+                        cfg.episode.retrieval_k,
                     )
                     write_row(
                         _record(
@@ -263,7 +429,7 @@ def run_leak(
                             scorer=scorer,
                             transcript=tr,
                             certified=cert,
-                            readback_text=rb,
+                            probe=probe,
                         )
                     )
 
@@ -278,19 +444,12 @@ def run_leak(
                     ).nodes,
                     generation_request=req(agents[0].agent_id, "C3S", source),
                 )
-                for label, peer_text, source_item, guard in (
-                    ("C3S", source_answer.text, source.item_id, False),
-                    ("C3C", None, None, False),
-                    ("C3C-guard", None, None, True),
+                for label, peer_text, source_item in (
+                    ("C3S", source_answer.text, source.item_id),
+                    ("C3C", None, None),
                 ):
                     store, blocklist, _ = seed_store(items, cfg)
-                    if guard:
-                        blocklist = build_blocklist(
-                            "semantic",
-                            texts=[f"{x.question} {x.answer}" for x in items],
-                            threshold=cfg.memory.semantic_threshold,
-                        )
-                    policies = _policies(cfg, blocklist, guard=guard)
+                    policies = _policies(cfg, blocklist)
                     requests = {
                         agents[0].agent_id: req(agents[0].agent_id, label),
                         agents[1].agent_id: req(agents[1].agent_id, label),
@@ -310,29 +469,18 @@ def run_leak(
                             source_answer.abstained if peer_text is not None else None
                         ),
                         generation_requests=requests,
-                        prompt_sha256=_prompt_hash(item),
+                        prompt_sha256=None,
                         decoding_sha256=decoding_hash(requests[agents[0].agent_id].to_dict()),
                     )
-                    cert = (
-                        laundered_items(
-                            [tr],
-                            store,
-                            store.dag,
-                            blocklist,
-                            [{"item_id": item.item_id, "answer": item.answer}],
-                        ).n_laundered
-                        > 0
-                    )
-                    rb = (
-                        agents[1]
-                        .answer(
-                            item.question,
-                            store.retrieve(
-                                item.question, k=cfg.episode.retrieval_k, blocklist=blocklist
-                            ).nodes,
-                            generation_request=requests[agents[1].agent_id],
-                        )
-                        .text
+                    cert = _certified(tr, store, blocklist, item, scorer)
+                    probe = _probe(
+                        agents[1],
+                        item,
+                        store,
+                        blocklist,
+                        requests[agents[1].agent_id],
+                        scorer,
+                        cfg.episode.retrieval_k,
                     )
                     write_row(
                         _record(
@@ -344,26 +492,58 @@ def run_leak(
                             scorer=scorer,
                             transcript=tr,
                             certified=cert,
-                            readback_text=rb,
-                            guard_diagnostic=guard,
+                            probe=probe,
+                            source_evidence=(
+                                {
+                                    "item_id": source.item_id,
+                                    "rendered_prompt_sha256": source_answer.meta[
+                                        "rendered_prompt_sha256"
+                                    ],
+                                    "generation_seed": req(agents[0].agent_id, "C3S", source).seed,
+                                    "text": source_answer.text,
+                                }
+                                if label == "C3S"
+                                else None
+                            ),
                         )
                     )
+                    if label == "C3C":
+                        guard_store, guard_bl, _ = seed_store(items, cfg)
+                        guard_bl = build_blocklist(
+                            "semantic",
+                            texts=[f"{x.question} {x.answer}" for x in items],
+                            threshold=cfg.memory.semantic_threshold,
+                        )
+                        guard_tr = _guard_replay(
+                            tr, guard_store, guard_bl, item, _policies(cfg, guard_bl, guard=True)
+                        )
+                        guard_cert = _certified(guard_tr, guard_store, guard_bl, item, scorer)
+                        guard_probe = _probe(
+                            agents[1],
+                            item,
+                            guard_store,
+                            guard_bl,
+                            requests[agents[1].agent_id],
+                            scorer,
+                            cfg.episode.retrieval_k,
+                        )
+                        write_row(
+                            _record(
+                                cfg=cfg,
+                                item=item,
+                                sample_id=sample_id,
+                                arm="C3C-guard",
+                                request=requests[agents[0].agent_id],
+                                scorer=scorer,
+                                transcript=guard_tr,
+                                certified=guard_cert,
+                                probe=guard_probe,
+                                guard_diagnostic=True,
+                            )
+                        )
     for agent in agents:
         agent.close()
-    manifest_path.write_text(
-        json.dumps(
-            {
-                "schema": 1,
-                "config_hash": config_hash(cfg),
-                "git_sha": git_sha(),
-                "n_samples": n,
-                "arms": ARMS,
-                "data": provenance,
-                "scorer": scorer.version,
-                "guard_note": "C3C-guard is deterministic CPU plumbing only; pin and calibrate a real NLI verifier before scientific guard claims.",
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+    run_manifest["complete"] = True
+    run_manifest["records_sha256"] = hashlib.sha256(records_path.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(run_manifest, indent=2), encoding="utf-8")
     typer.echo(f"wrote {records_path}")

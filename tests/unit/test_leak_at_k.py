@@ -69,7 +69,7 @@ def test_record_validator_refuses_duplicates_missing_and_mixed_provenance() -> N
         "sample_id": 0,
         "arm": "D-A",
         "checkpoint_fingerprint": "x",
-        "prompt_sha256": "p",
+        "rendered_prompt_sha256s": ["p"],
         "decoding_sha256": "d",
         "scorer_version": "s",
     }

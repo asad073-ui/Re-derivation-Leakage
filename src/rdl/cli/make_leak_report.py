@@ -12,6 +12,39 @@ from ..eval.leak_at_k import hierarchical_bootstrap_delta, leak_at_k, validate_c
 __all__ = ["make_leak_report"]
 
 
+def _validate_composition_integrity(rows: list[dict], manifest: dict) -> None:
+    """Fail before statistics if forced handoffs or C3S control evidence is invalid."""
+    cohorts = {row["item_id"]: row for row in manifest["cohort"]}
+    source_map = manifest["source_map"]
+    for row in rows:
+        if row["arm"] not in ("C3C", "C3S"):
+            continue
+        events = (row.get("trajectory") or {}).get("events") or []
+        handoffs = [event for event in events if event.get("kind") == "handoff"]
+        delegations = [event for event in events if event.get("kind") == "delegation"]
+        if len(handoffs) != 1 or len(delegations) != 1:
+            raise ValueError(f"{row['item_id']}/{row['arm']}: forced handoff integrity failed")
+        handoff = handoffs[0]
+        if row["arm"] == "C3C":
+            if handoff.get("shuffled") or handoff.get("source_item_id") is not None:
+                raise ValueError(f"{row['item_id']}/C3C: expected same-item handoff")
+            continue
+        source = source_map.get(row["item_id"])
+        evidence = row.get("source_evidence") or {}
+        if (
+            not handoff.get("shuffled")
+            or handoff.get("source_item_id") != source
+            or evidence.get("item_id") != source
+            or not evidence.get("rendered_prompt_sha256")
+        ):
+            raise ValueError(f"{row['item_id']}/C3S: source provenance mismatch")
+        if (
+            source == row["item_id"]
+            or cohorts[source]["author_id"] == cohorts[row["item_id"]]["author_id"]
+        ):
+            raise ValueError(f"{row['item_id']}/C3S: source is not cross-author")
+
+
 def make_leak_report(
     records: Path = typer.Option(..., "--records"),
     manifest: Path = typer.Option(..., "--manifest"),
@@ -24,6 +57,7 @@ def make_leak_report(
     validate_complete_samples(
         rows, expected_samples=int(meta["n_samples"]), required_arms=meta["arms"]
     )
+    _validate_composition_integrity(rows, meta)
     k_values = [k for k in (1, 2, 4, 8, 16, 32, 64, 128) if k <= meta["n_samples"]]
     curves: dict[str, dict[str, dict[str, float]]] = {}
     for arm in meta["arms"]:
@@ -38,11 +72,15 @@ def make_leak_report(
             "final_leak",
             "store_leak",
             "certified_store_leak",
-            "readback_leak",
+            "post_episode_probe_leak",
+            "attributable_readback_leak",
         ):
             curves[arm][surface] = {
                 str(k): sum(
-                    leak_at_k([r[surface] for r in samples], k) for samples in by_item.values()
+                    leak_at_k(
+                        [r[surface] for r in sorted(samples, key=lambda r: int(r["sample_id"]))], k
+                    )
+                    for samples in by_item.values()
                 )
                 / len(by_item)
                 for k in k_values
@@ -52,28 +90,54 @@ def make_leak_report(
         curves["C3C"]["certified_store_leak"][primary]
         - curves["C3S"]["certified_store_leak"][primary]
     )
-    by_arm_item: dict[str, dict[str, list[bool]]] = {}
+    by_arm_item: dict[str, dict[str, list[dict]]] = {}
     clusters: dict[str, str] = {}
     for arm in ("C3C", "C3S", "C3C-guard"):
         by_arm_item[arm] = {}
         for row in rows:
             if row["arm"] == arm:
-                by_arm_item[arm].setdefault(row["item_id"], []).append(
-                    bool(row["certified_store_leak"])
-                )
+                by_arm_item[arm].setdefault(row["item_id"], []).append(row)
                 clusters[row["item_id"]] = row["author_id"]
+    paired = {
+        arm: {
+            item: [
+                bool(row["certified_store_leak"])
+                for row in sorted(samples, key=lambda r: int(r["sample_id"]))
+            ]
+            for item, samples in per_item.items()
+        }
+        for arm, per_item in by_arm_item.items()
+    }
     composition_interval = hierarchical_bootstrap_delta(
-        by_arm_item["C3C"], by_arm_item["C3S"], clusters, k=int(primary), reps=bootstrap_reps
+        paired["C3C"], paired["C3S"], clusters, k=int(primary), reps=bootstrap_reps
     )
     guard_interval = hierarchical_bootstrap_delta(
-        by_arm_item["C3C"],
-        by_arm_item["C3C-guard"],
+        paired["C3C"],
+        paired["C3C-guard"],
         clusters,
         k=int(primary),
         reps=bootstrap_reps,
     )
     body = {
-        "reportable": not any(r.get("guard_diagnostic") for r in rows if r["arm"] != "C3C-guard"),
+        # The bundled scorer is a CPU regression fixture, never a reportable semantic
+        # evaluator. A future pinned/calibrated scorer must set this manifest flag.
+        "reportable": bool(meta.get("semantic_scorer_reportable", False))
+        and bool(meta.get("complete", False))
+        and not bool(meta.get("diagnostic", True))
+        and bool(meta.get("raw_evidence_uri")),
+        "reportability_blockers": [
+            reason
+            for reason, valid in (
+                (
+                    "semantic scorer is not a pinned, calibrated NLI evaluator",
+                    bool(meta.get("semantic_scorer_reportable", False)),
+                ),
+                ("run manifest is incomplete", bool(meta.get("complete", False))),
+                ("run is explicitly diagnostic", not bool(meta.get("diagnostic", True))),
+                ("raw evidence archive URI is missing", bool(meta.get("raw_evidence_uri"))),
+            )
+            if not valid
+        ],
         "primary_k": int(primary),
         "composition_delta_certified_store_leak": composition,
         "composition_interval": composition_interval,
