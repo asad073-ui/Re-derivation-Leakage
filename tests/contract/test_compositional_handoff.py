@@ -215,3 +215,58 @@ def test_b1w_cannot_quietly_become_a_second_a1w():
     agent B alone can already produce."""
     with pytest.raises(ConfigError, match="B-alone baseline"):
         load_config(CONDITIONS / "B1W.yaml", ["agent_a.agent_id=A"])
+
+
+# =====================================================================================
+# the C3C-guard replay
+# =====================================================================================
+
+
+def test_the_guard_replay_runs_over_a_real_c3c_transcript(agents, tofu_items, seeded_store):
+    """THE regression. `_guard_replay` read `c3c.sample_id`, but `sample_id` is stamped
+    onto each EVENT by `run_episode`, never onto the `Transcript` itself — so the C3C-guard
+    arm died with AttributeError on the first composition item.
+
+    Nothing caught it: no test in the suite called `_guard_replay`, and the CPU gate only
+    ever exercised the direct arms. The whole `rdl_composition` protocol was unrunnable
+    while CI was green."""
+    from rdl.cli.run_leak import _guard_replay
+
+    store, blocklist, _ = seeded_store
+    it = tofu_items[-1]
+
+    c3c = run_episode(
+        it.question,
+        agents,
+        store,
+        _policies(handoff=True, routing="always_delegate", blocklist=blocklist),
+        item_id=it.item_id,
+        condition="C3C",
+        sample_id="7",
+    )
+
+    guard_store, guard_blocklist, _ = seeded_store
+    replay = _guard_replay(
+        c3c,
+        guard_store,
+        guard_blocklist,
+        it,
+        EpisodePolicies(
+            delegation=build_delegation_policy("always_delegate", 1),
+            write=build_write_policy("sanitized"),
+            blocklist=guard_blocklist,
+            pass_primary_answer_to_secondary=True,
+        ),
+        "7",
+    )
+
+    assert replay.condition == "C3C-guard"
+    assert replay.episode_id == f"C3C-guard:{it.item_id}:7"
+    # The replay must re-decide the write, so it appends exactly one fresh attempt...
+    attempts = replay.of_kind("write_attempt")
+    assert len(attempts) == 1
+    # ...and that attempt has to carry the sample id, or the record cannot be joined
+    # back to the C3C row it is the counterfactual for.
+    assert attempts[0].sample_id == "7"
+    for event in replay.of_kind("memory_write"):
+        assert event.sample_id == "7"
