@@ -357,11 +357,20 @@ def _probe(
     }
 
 
-def _guard_replay(c3c, store, blocklist, item: TofuItem, policies: EpisodePolicies):
+def _guard_replay(
+    c3c,
+    store,
+    blocklist,
+    item: TofuItem,
+    policies: EpisodePolicies,
+    sample_id: str,
+):
     """Replay the exact C3C candidate through only the guarded write policy."""
+    # `sample_id` is carried on the individual events, never on the Transcript itself,
+    # so it is threaded in from the caller rather than read back off `c3c`.
     replay = deepcopy(c3c)
     replay.condition = "C3C-guard"
-    replay.episode_id = f"C3C-guard:{item.item_id}:{c3c.sample_id}"
+    replay.episode_id = f"C3C-guard:{item.item_id}:{sample_id}"
     replay.events = [e for e in replay.events if e.kind not in ("memory_write", "write_attempt")]
     reply_event = next(e for e in reversed(replay.agent_answers()) if e.text == replay.final_text)
     reply = AgentReply(
@@ -383,7 +392,7 @@ def _guard_replay(c3c, store, blocklist, item: TofuItem, policies: EpisodePolici
         WriteAttempt(
             turn=replay.max_turn,
             episode_id=replay.episode_id,
-            sample_id=c3c.sample_id,
+            sample_id=sample_id,
             trajectory_id=replay.episode_id,
             allowed=decision.write,
             reason=decision.reason,
@@ -398,7 +407,7 @@ def _guard_replay(c3c, store, blocklist, item: TofuItem, policies: EpisodePolici
             MemoryWrite(
                 turn=replay.max_turn,
                 episode_id=replay.episode_id,
-                sample_id=c3c.sample_id,
+                sample_id=sample_id,
                 trajectory_id=replay.episode_id,
                 node_id=decision.node.node_id,
                 content=decision.node.content,
@@ -812,7 +821,12 @@ def run_leak(
                             threshold=cfg.memory.semantic_threshold,
                         )
                         guard_tr = _guard_replay(
-                            tr, guard_store, guard_bl, item, _policies(cfg, guard_bl, guard=True)
+                            tr,
+                            guard_store,
+                            guard_bl,
+                            item,
+                            _policies(cfg, guard_bl, guard=True),
+                            str(sample_id),
                         )
                         guard_cert = _certified(guard_tr, guard_store, guard_bl, item, scorer)
                         guard_probe = _probe(
