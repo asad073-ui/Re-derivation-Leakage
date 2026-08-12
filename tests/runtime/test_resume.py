@@ -7,9 +7,12 @@ import json
 import pytest
 
 from rdl.studies.graph_leak.evidence import (
+    LEDGER_NAME,
+    EvidenceTampered,
     ShardWriter,
     completed_keys,
     read_shards,
+    verify_ledger,
     verify_shards,
 )
 
@@ -113,3 +116,89 @@ def test_an_undeclared_shard_fails_verification(tmp_path):
     result = verify_shards(tmp_path, manifest)
     assert not result["ok"]
     assert "not in the manifest" in result["problems"][0]
+
+
+# =====================================================================================
+# GU-0024 — the shard ledger
+#
+# Shard hashes only ever reached RUN_MANIFEST.json when a run FINISHED, so the shards of
+# an interrupted run were covered by nothing at all. Resume read them back, trusted them,
+# and skipped their trajectory keys; the final manifest then hashed whatever was there and
+# declared it verified. These tests are about the interrupted case specifically.
+# =====================================================================================
+
+
+def _commit(tmp_path, n: int, *, shard_size: int = 2) -> ShardWriter:
+    writer = ShardWriter(tmp_path, shard_size=shard_size)
+    for i in range(n):
+        writer.append(_row("i0", i, "a"))
+    writer.close()
+    return writer
+
+
+def test_a_ledger_is_written_for_every_committed_shard(tmp_path):
+    _commit(tmp_path, 5)
+    ledger = json.loads((tmp_path / LEDGER_NAME).read_text(encoding="utf-8"))
+    assert ledger["n_shards"] == 3
+    assert ledger["n_rows"] == 5
+    assert verify_ledger(tmp_path)["ok"]
+
+
+def test_a_partial_run_can_be_resumed_when_its_shards_are_intact(tmp_path):
+    _commit(tmp_path, 4)  # never "completed": no manifest, only committed shards
+    resumed = ShardWriter(tmp_path, shard_size=2)
+    assert resumed.ledger_status == "verified"
+    assert len(resumed.completed()) == 4
+
+
+def test_an_edited_shard_of_an_INTERRUPTED_run_is_refused_on_resume(tmp_path):
+    """THE hole. There was no manifest to check these against, so they were adopted."""
+    _commit(tmp_path, 4)
+    shard = tmp_path / "part-00000.jsonl"
+    shard.write_text(shard.read_text(encoding="utf-8").replace('"x": 1', '"x": 999'), "utf-8")
+    with pytest.raises(EvidenceTampered, match="changed after it was committed"):
+        ShardWriter(tmp_path, shard_size=2)
+    assert not verify_ledger(tmp_path)["ok"]
+
+
+def test_a_shard_smuggled_in_beside_the_real_ones_is_refused(tmp_path):
+    _commit(tmp_path, 4)
+    (tmp_path / "part-09999.jsonl").write_text(json.dumps(_row("i9", 0, "a")) + "\n", "utf-8")
+    with pytest.raises(EvidenceTampered, match="never declared"):
+        ShardWriter(tmp_path, shard_size=2)
+
+
+def test_deleting_a_committed_shard_is_refused(tmp_path):
+    _commit(tmp_path, 6)  # three shards
+    (tmp_path / "part-00000.jsonl").unlink()
+    with pytest.raises(EvidenceTampered, match="missing from disk"):
+        ShardWriter(tmp_path, shard_size=2)
+
+
+def test_a_commit_interrupted_between_the_ledger_and_the_rename_is_recoverable(tmp_path):
+    """The one legitimate divergence: the LAST entry names a shard the rename never made.
+
+    The ledger is written first on purpose, so this window is the only one that exists and
+    it is unambiguous — those rows were never visible to anyone.
+    """
+    _commit(tmp_path, 4)
+    ledger = json.loads((tmp_path / LEDGER_NAME).read_text(encoding="utf-8"))
+    ledger["shards"].append({"name": "part-00002.jsonl", "sha256": "0" * 64, "n_rows": 2})
+    (tmp_path / LEDGER_NAME).write_text(json.dumps(ledger), encoding="utf-8")
+
+    resumed = ShardWriter(tmp_path, shard_size=2)
+    assert resumed.ledger_status == "verified"
+    assert len(resumed.completed()) == 4
+    # The phantom entry is gone once the directory is rewritten.
+    rewritten = json.loads((tmp_path / LEDGER_NAME).read_text(encoding="utf-8"))
+    assert [s["name"] for s in rewritten["shards"]] == ["part-00000.jsonl", "part-00001.jsonl"]
+
+
+def test_shards_written_before_the_ledger_existed_are_adopted_and_labelled(tmp_path):
+    """A run from before GU-0024. Adopt it — but never call it verified."""
+    _commit(tmp_path, 4)
+    (tmp_path / LEDGER_NAME).unlink()
+    resumed = ShardWriter(tmp_path, shard_size=2)
+    assert resumed.ledger_status == "adopted_unverified"
+    assert len(resumed.completed()) == 4
+    assert verify_ledger(tmp_path)["ok"], "the ledger is rebuilt from what was adopted"

@@ -49,6 +49,7 @@ class VllmBackend:
         self.profiles = tuple(profiles)
         self._engine = engine
         self._resolved: dict[str, str | None] | None = None
+        self._accepts_use_tqdm = True
         # `tokenizer_revision` was previously accepted by the CLI, recorded in the
         # manifest, and never passed here — so the engine loaded the tokenizer from the
         # branch head while the manifest claimed a pinned commit, and every serialized
@@ -110,7 +111,7 @@ class VllmBackend:
                     seed=request.seed,
                 )
             )
-        outputs = engine.generate(prompts, params)
+        outputs = self._dispatch(engine, prompts, params)
         if len(outputs) != len(requests):
             raise RuntimeError(f"vllm returned {len(outputs)} outputs for {len(requests)} prompts")
         responses: list[GenResponse] = []
@@ -127,6 +128,28 @@ class VllmBackend:
                 )
             )
         return responses
+
+    def _dispatch(self, engine: Any, prompts: list[str], params: list[Any]) -> Any:
+        """One ``engine.generate`` call, with vLLM's own progress bar suppressed.
+
+        The scheduler dispatches one call per graph layer and one per probe wave, so a
+        50x32 run makes thousands of calls. Each one draws its own tqdm bar, and on a
+        detached tmux/`tee` log that is thousands of redraw blocks in the run log —
+        enough to bury the lines that matter and to cost real time on a slow terminal.
+
+        ``use_tqdm`` is passed positionally-safe as a keyword and the fallback exists for
+        injected fake engines (and any vLLM version that drops the argument): a run must
+        not fail because a progress bar could not be turned off.
+        """
+        if not self._accepts_use_tqdm:
+            return engine.generate(prompts, params)
+        try:
+            return engine.generate(prompts, params, use_tqdm=False)
+        except TypeError:
+            # Retried at most once per backend instance: a TypeError raised from INSIDE
+            # generate would otherwise be swallowed and the batch silently run twice.
+            self._accepts_use_tqdm = False
+            return engine.generate(prompts, params)
 
     def _render(self, request: GenRequest) -> str:
         """Apply the chat template through the engine's own tokenizer.

@@ -55,6 +55,8 @@ def sandbox(tmp_path: Path) -> Path:
     (repo / "configs" / "env" / "local.yaml").write_text("name: local\n", encoding="utf-8")
     (repo / "results" / ".gitkeep").write_text("", encoding="utf-8")
     (repo / "results" / "manifest.jsonl").write_text("", encoding="utf-8")
+    (repo / "runs" / "graph").mkdir(parents=True)
+    (repo / "runs" / "graph" / ".gitkeep").write_text("", encoding="utf-8")
     shutil.copy(REPO / ".gitignore", repo / ".gitignore")
 
     _git(repo, "init", "-q")
@@ -110,6 +112,47 @@ def test_an_untracked_source_file_is_now_dirty(sandbox):
 
 def test_an_untracked_config_file_is_dirty(sandbox):
     (sandbox / "configs" / "env" / "new_box.yaml").write_text("name: new\n", encoding="utf-8")
+    assert git_dirty(sandbox) is True
+
+
+# =====================================================================================
+# GU-0024 — runs/graph/ is the graph study's OUTPUT, exactly as results/ is the two-agent
+# study's. `.gitignore` un-ignores the small contracts under a run directory, so writing a
+# run inside the repository left them UNTRACKED and `--untracked-files=normal` reported
+# the tree dirty. The first in-repo protocol run therefore stamped git_dirty: true on the
+# second — the same self-poisoning failure ADR-0059 fixed for results/.
+# =====================================================================================
+
+
+def _write_graph_run(repo: Path, run_id: str) -> Path:
+    d = repo / "runs" / "graph" / run_id
+    (d / "generations").mkdir(parents=True)
+    (d / "scores").mkdir()
+    for name in ("RUN_MANIFEST.json", "PLAN.json", "GRAPH_LEAK_REPORT.json", "FINALIZATION.json"):
+        (d / name).write_text('{"phase": "test"}', encoding="utf-8")
+    (d / "generations" / "part-00000.jsonl").write_text('{"item_id": "i0"}\n', encoding="utf-8")
+    (d / "scores" / "SCORING.json").write_text("{}", encoding="utf-8")
+    return d
+
+
+def test_a_graph_run_written_into_the_repo_does_not_make_the_tree_dirty(sandbox):
+    """THE blocker for running both protocols back to back on one rented box."""
+    _write_graph_run(sandbox, "20260812T000000Z-abc-1")
+    assert git_dirty(sandbox) is False
+
+
+def test_two_graph_runs_in_one_session_both_see_a_clean_tree(sandbox):
+    """The second protocol must not record itself as dirty because the first one ran."""
+    for run_id in ("20260812T000000Z-abc-1", "20260812T000100Z-abc-2"):
+        assert git_dirty(sandbox) is False, f"{run_id} would have recorded a dirty tree"
+        _write_graph_run(sandbox, run_id)
+    assert git_dirty(sandbox) is False
+
+
+def test_a_modified_source_file_is_still_dirty_while_graph_runs_exist(sandbox):
+    """Excluding the output must not blind the check to the source."""
+    _write_graph_run(sandbox, "20260812T000000Z-abc-1")
+    (sandbox / "src" / "rdl" / "mod.py").write_text("x = 3\n", encoding="utf-8")
     assert git_dirty(sandbox) is True
 
 

@@ -113,6 +113,12 @@ class DefenseSpec(GraphBase):
     apply_at: Literal["every_agent_input", "external_prompt_only"] = "every_agent_input"
     implementation: Literal["template", "sft_checkpoint"] = "template"
     propagate_scope: bool = False
+    # The matched-subset ablation (GU-0026). Gives the node-local baseline the same
+    # subset-scoring battery GraphForget uses, so that the remaining contrast is
+    # Forget-ID propagation and multi-surface enforcement rather than how finely each
+    # side chops up one node's input. False on the primary baseline: DRAGON as published
+    # scores one context, and a baseline that does more than the paper is not the paper.
+    score_subsets: bool = False
     # graphforget
     semantic_detection: bool = True
     propagate_forget_ids: bool = True

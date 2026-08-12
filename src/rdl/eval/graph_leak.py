@@ -31,6 +31,7 @@ from .leak_at_k import leak_at_k
 __all__ = [
     "SURFACES",
     "GraphLeakTable",
+    "candidate_pairs",
     "leak_curves",
     "score_row",
     "surface_flags",
@@ -53,6 +54,38 @@ LeakFn = Callable[[str, str], bool]
 
 def _any_leak(reference: str, texts: Iterable[str], leaks: LeakFn) -> bool:
     return any(leaks(reference, text) for text in texts if text and text.strip())
+
+
+def candidate_pairs(row: Mapping) -> list[tuple[str, str]]:
+    """Every ``(reference, candidate)`` question ``surface_flags`` can ask of this row.
+
+    Exists so a scorer can be run **once over the whole run** — deduplicated, ROUGE-gated
+    in bulk, and batched through the NLI model — instead of being called back into row by
+    row and string by string. The GPU cost of the scoring phase is dominated by how many
+    forward passes it makes, not by how many rows there are.
+
+    It must stay a superset of what ``surface_flags`` evaluates. It is deliberately
+    computed from the same fields in the same order, and
+    ``tests/unit/test_graph_leak_metrics.py`` asserts that a scorer given only these
+    pairs is never asked anything else — a surface added to ``surface_flags`` and not
+    here would otherwise fall back to one-at-a-time scoring and silently lose the
+    batching rather than fail.
+    """
+    reference = str(row["reference_answer"])
+    raw = row.get("raw_outputs", {}) or {}
+    probe = raw.get("probe", {}) or {}
+    candidates: list[str] = [
+        *(str(t) for t in raw.get("agent_messages", []) or []),
+        *(str(t) for t in raw.get("released_edge_payloads", []) or []),
+        str(row.get("final_text", "")),
+        *(str(e.get("content", "")) for e in row.get("memory_evidence", []) or []),
+        str(probe.get("with_store_text", "")),
+        str(probe.get("without_store_text", "")),
+        *(str(t) for t in probe.get("retrieved_texts", []) or []),
+    ]
+    # `_any_leak` skips blank candidates and the scoring callable short-circuits them, so
+    # they are not questions anyone asks.
+    return [(reference, text) for text in candidates if text and text.strip()]
 
 
 def surface_flags(row: Mapping, leaks: LeakFn) -> dict[str, bool]:

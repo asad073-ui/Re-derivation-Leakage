@@ -1,13 +1,21 @@
 """GraphForget: policy-carrying forgetting across a computation graph.
 
-Same detector as the DRAGON-style baseline. Five additions, each of which is a surface
-the node-local baseline structurally cannot cover:
+Same detector as the DRAGON-style baseline. Five additions. Four of them are surfaces the
+node-local baseline does not guard at all; the second is a difference in scoring
+granularity and is labelled as one, because overstating it is the easiest way to lose the
+whole comparison (GU-0026):
 
 1. **Forget-ID inheritance.** ``S(x) = D(content_x) ∪ ⋃_p S(p)``. A paraphrase of a
    tagged message is tagged even when the paraphrase itself scores below threshold.
-2. **Joint evidence accumulation.** Parent messages are scored together as well as
-   separately, so two individually-innocuous clues that reconstruct a concept at their
-   join node are caught. ``accumulated_only`` counts exactly those.
+2. **Subset scoring.** Parent messages are scored separately and in combination, not only
+   as one concatenated context. This is *not* a capability the baseline structurally
+   lacks — it scores the whole incoming context and so already catches clues that arrive
+   together at a join node. What subset scoring adds is robustness to dilution: a long
+   query or a pile of irrelevant memory drags the embedding of the concatenation below
+   threshold, and the parents scored as their own subset do not. ``subset_only`` counts
+   that; ``accumulated_only`` counts the strict case where a combination fired and the
+   whole-context view did not. ``dragon_style_subsets`` is the matched baseline that
+   removes this difference so the other four can be measured on their own.
 3. **Edge enforcement on payloads.** The edge and the routing are untouched; the content
    crossing it is passed, sanitized, quarantined or blocked, and the decision is
    recorded. Topology is held constant so the improvement is attributable to the

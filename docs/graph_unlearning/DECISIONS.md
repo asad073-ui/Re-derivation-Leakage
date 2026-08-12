@@ -242,3 +242,98 @@ dataset commit. `phase: retain_utility` selects it.
 questions. Applying the TOFU exclusion list to it blocked the CPU gate over a name
 collision rather than over shared content, so `load_cohort` skips exclusion enforcement
 when `dataset == "fixture"`.
+
+### GU-0024 — 2026-08-12 — Evidence, batching and gates for the RTX 3090 run
+
+Six findings from the pre-rental review of PR #23, fixed together because they all block
+the same thing: a 20x8 engineering run.
+
+**Later-episode probes were serialised.** `_row` called `_probe` per trajectory, so the
+readback dispatched two prompts at a time — 8,000 two-prompt backend calls per protocol
+at 50x32, against a backend chosen specifically for continuous batching. The whole wave's
+probes are now planned first and dispatched as one batch (`_probe_wave` / `_ProbePlan`).
+What is asked is unchanged; the retrieval decision is still taken per trajectory before
+any generation.
+
+**NLI scoring ran at batch size one.** `graph-score` called the scorer once per surface
+per string per row. It is now two passes over the shards: `candidate_pairs` collects every
+`(reference, candidate)` question, those are deduplicated, ROUGE-gated in bulk and pushed
+through the classifier in batches of `--batch-size` (default 64), and the second pass
+answers from the resulting table. `n_batch_misses` in `SCORING.json` is nonzero only if
+`candidate_pairs` and `surface_flags` drift apart. The NLI cache is checkpointed every
+`--checkpoint-every` verdicts instead of being reopened and flushed per verdict, and the
+`RougeScorer` is built once per process rather than once per pair.
+
+**vLLM progress bars were on.** `engine.generate(prompts, params)` draws a tqdm bar per
+call; thousands of calls into a `tee`'d log is thousands of redraw blocks. Now
+`use_tqdm=False`, with a one-shot fallback for engines that do not accept it.
+
+**Graph output made the next run dirty.** `_SOURCE_PATHSPEC` excluded `results/**` but not
+`runs/graph/**`. `.gitignore` un-ignores the small contracts under a run directory, so the
+first in-repo run left them untracked and the second recorded `git_dirty: true` — the same
+self-poisoning ADR-0059 fixed for `results/`. `runs/graph/**` is now excluded too.
+
+**Partial shards were covered by nothing.** Shard hashes reached `RUN_MANIFEST.json` only
+when a run finished, so resume read an interrupted run's shards back, trusted them and
+skipped their keys; a shard edited between the kill and the resume was adopted silently.
+Every commit is now recorded in a per-directory `SHARDS.json` ledger written **before** the
+atomic rename, so the crash windows are unambiguous: a trailing declared-but-absent shard
+is an interrupted commit and is pruned, and a hash mismatch, an undeclared shard, or an
+earlier missing one refuses. The runner additionally refuses a resume on a mismatch
+whether or not the previous run completed.
+
+**`graph-finalize` exited 0 on a partial, unreported run.** `ok` was `generations.ok and
+traces.ok`. It is now `hashes_ok and complete and report_present`, with the hash check
+covering the ledger as well as the manifest, and `blocking` / `warnings` lists saying why.
+`raw_evidence_uri` warns rather than blocks: an unarchived diagnostic run is legitimate,
+a partial or unreported one is not.
+
+### GU-0025 — 2026-08-12 — `peak_vram_bytes` was not a claim about the card
+
+`ResourceMonitor` sampled `torch.cuda.max_memory_allocated()`, which reports live tensor
+bytes in *this process's torch caching allocator*. Under vLLM that excludes the KV cache
+reservation, the CUDA graph pools and the activation workspaces, and under tensor
+parallelism it excludes the worker processes entirely — so a 24 GB readiness decision
+taken from it could read "4 GB peak" on a card that was in fact 20 GB full.
+
+Device-level memory is now sampled from NVML (`nvidia-ml-py`, already a vLLM dependency),
+which also attributes bytes to this PID and its children, falling back to
+`torch.cuda.mem_get_info` and then to nothing. `CUDA_VISIBLE_DEVICES` is applied so the
+sampled card is the one the run is pinned to. The torch-allocator figure is still recorded
+under `peak_torch_allocator_bytes`, which says what it is; `PERFORMANCE.json` gains
+`peak_device_vram_bytes`, `device_vram_utilization` and `vram_source`.
+
+### GU-0026 — 2026-08-12 — "DRAGON cannot see split clues" was not true
+
+The claim, in `evidence_accumulator`, `graphforget`, `BASELINES.md` and the capability
+table, was that a node-local guard structurally cannot detect clues split across parents.
+Our own DRAGON-style baseline runs at `apply_at: every_agent_input` and scores the node's
+**complete** incoming context — query, every parent message, retrieved memory — as one
+string. Clues that arrive together at one node are in that string. Node-locality says
+where the guard runs, not how much evidence one call receives, and a join node receives
+all of it.
+
+Worse, `accumulated_only` was defined as "a combination fired and no individual input and
+not the query", which does not exclude the whole-context view. The last combination the
+accumulator scores **is** the whole-context view, so the flag counted cases the baseline
+catches, and the headline split-clue number was unfalsifiable by construction.
+
+Three changes:
+
+1. `accumulated_only` now additionally requires that the whole-context view did **not**
+   fire. `subset_only` is the honest superset — a strict subset fired and the whole-context
+   view did not, i.e. scoring granularity, which is a real effect (a long query dilutes the
+   embedding of the concatenation) but not a structural one. `node_local_fired` and
+   `node_local_forget_ids` are carried on every result so the comparison can be checked
+   rather than assumed.
+2. `dragon_style_subsets` / `multi_agent_dragon_subsets`: the matched ablation. The
+   node-local guard with GraphForget's exact subset battery, still inheriting nothing and
+   still guarding no edge, write or retrieval. It holds scoring granularity constant so
+   the remaining contrast is Forget-ID propagation and multi-surface enforcement — and it
+   makes that claim falsifiable, which the previous comparison was not. Not the primary
+   baseline: DRAGON as published scores one context.
+3. The paper claim is narrowed to: *GraphForget adds persistent Forget-ID propagation and
+   enforcement across edges, memory writes, retrieval and final release, while the
+   DRAGON-style baseline guards model-input boundaries.* A genuine cross-call accumulation
+   claim needs a topology where no single call receives the complete evidence; the current
+   diamond rejoins every split clue inside one node's input, so it does not support one.

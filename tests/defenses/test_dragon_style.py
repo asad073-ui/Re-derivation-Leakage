@@ -153,6 +153,64 @@ def test_never_inherits_scope_from_provenance(detector):
     assert verdict.status == "pass"
 
 
+def test_the_baseline_does_see_clues_that_arrive_together_at_one_node(detector, tofu_items):
+    """GU-0026. "Node-local cannot see split clues" was claimed and it is not true.
+
+    The guard scores the node's COMPLETE incoming context as one string. Two halves of an
+    answer arriving on two edges are both in that string.
+    """
+    guard = DragonStyleDefense(detector=detector, inspect_query=False)
+    from rdl.studies.graph_leak.controls import split_answer
+
+    first, second = split_answer(tofu_items[0].answer)
+    halves = [
+        derive_envelope(kind="agent_output", content=first, source_node="B", dest_node="D"),
+        derive_envelope(kind="agent_output", content=second, source_node="C", dest_node="D"),
+    ]
+    joined = guard.on_node_input(_ctx("Combine the material you were given.", halves))
+    assert joined.fired, "the concatenation of both halves is what the baseline scores"
+
+
+def test_the_matched_subset_variant_scores_subsets_and_still_guards_nothing_else(
+    detector, tofu_items
+):
+    """The ablation that isolates propagation: same detection granularity, same surfaces."""
+    matched = DragonStyleDefense(detector=detector, score_subsets=True)
+    assert matched.score_subsets
+    assert matched.propagates_scope is False
+    assert matched.on_node_input(_ctx(tofu_items[0].question)).fired
+
+    # Everything downstream of the node input is still unguarded — that is the point.
+    envelope = derive_envelope(
+        kind="agent_output", content=tofu_items[0].answer, source_node="A", dest_node="B"
+    )
+    assert matched.on_edge(EdgeContext(src="A", dst="B", depth=0, envelope=envelope)).status == (
+        "pass"
+    )
+    assert matched.on_memory_write(WriteContext(node_id="A", depth=0, envelope=envelope)).allowed
+    assert matched.stats()["score_subsets"] is True
+    assert "subset_only_hits" in matched.stats()
+
+
+def test_the_matched_subset_variant_still_inherits_nothing(detector):
+    matched = DragonStyleDefense(detector=detector, score_subsets=True)
+    tagged = derive_envelope(
+        kind="agent_output",
+        content="a completely unrelated sentence about weather",
+        source_node="A",
+        dest_node="B",
+        detected=("stub-concept-0000",),
+    )
+    verdict = matched.on_edge(EdgeContext(src="A", dst="B", depth=0, envelope=tagged))
+    assert verdict.envelope.forget_ids == ()
+
+
+def test_subset_scoring_is_off_by_default(detector):
+    """DRAGON as published scores one context. The default must be the paper."""
+    assert DragonStyleDefense(detector=detector).score_subsets is False
+    assert DragonStyleDefense(detector=detector).accumulator is None
+
+
 def test_sft_checkpoint_mode_refuses_to_pretend():
     with pytest.raises(NotImplementedError, match="public repository does not ship"):
         DragonStyleDefense(detector=None, implementation="sft_checkpoint")  # type: ignore[arg-type]

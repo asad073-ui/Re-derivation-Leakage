@@ -44,7 +44,7 @@ from ...runtime.resource_monitor import ResourceMonitor
 from .arms import ArmPlan, build_arm_runtime, build_detector, build_registry
 from .cohort import Cohort
 from .controls import ControlledChallengeSet, build_controlled_challenges, concept_control_mapping
-from .evidence import ShardWriter, atomic_json, verify_shards
+from .evidence import ShardWriter, atomic_json, verify_ledger, verify_shards
 from .response_bank import ResponseBank
 
 __all__ = ["GraphRunner", "RunPlan", "build_baseline_memory"]
@@ -55,6 +55,29 @@ log = get_logger(__name__)
 def _brief(value: object, limit: int = 160) -> str:
     text = json.dumps(value, sort_keys=True, default=str)
     return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+@dataclass(frozen=True)
+class _ProbePlan:
+    """One trajectory's readback probe, split so a whole wave can be dispatched at once.
+
+    ``requests`` is exactly two prompts — with and without the new memory, same seed —
+    and ``record`` is everything the retrieval decision already determined. Keeping the
+    two apart is what lets the scheduler see every trajectory's prompts in one call
+    instead of two at a time.
+    """
+
+    trajectory_id: str
+    requests: tuple[GenRequest, ...]
+    record: dict
+
+    def resolve(self, responses: dict) -> dict:
+        with_request, without_request = self.requests
+        return {
+            **self.record,
+            "with_store_text": responses[with_request.request_id].text,
+            "without_store_text": responses[without_request.request_id].text,
+        }
 
 
 @dataclass(frozen=True)
@@ -260,11 +283,24 @@ class GraphRunner:
             )
         if done and previous is not None:
             # The shards being resumed onto must be the ones the old manifest describes.
+            #
+            # Only a COMPLETE previous run has an `evidence_shards` list at all, so this
+            # check alone covered nothing on the case that matters — an interrupted run.
+            # The per-shard ledger (GU-0024) is what covers those, and `ShardWriter` has
+            # already refused above if it did not verify. What is added here is that a
+            # hash mismatch or a vanished declared shard now refuses whether or not the
+            # previous run finished; only "on disk but undeclared" stays tolerated,
+            # because an interrupted run declares nothing in its manifest.
             verdict = verify_shards(generations, previous.get("evidence_shards", []))
-            if not verdict["ok"] and previous.get("complete"):
+            tampered = [
+                problem
+                for problem in verdict["problems"]
+                if "sha256 mismatch" in problem or "missing from disk" in problem
+            ]
+            if tampered or (not verdict["ok"] and previous.get("complete")):
                 raise ValueError(
                     "refusing to resume: existing evidence shards do not match the hashes "
-                    f"in the previous manifest: {verdict['problems'][:3]}"
+                    f"in the previous manifest: {(tampered or verdict['problems'])[:3]}"
                 )
         # Carry the completed work forward so the final manifest describes the whole run.
         manifest["resumed_from"] = (
@@ -315,8 +351,21 @@ class GraphRunner:
                         memories.append(memory)
                     if not episodes:
                         continue
-                    for trajectory in executor.run(episodes, memories):
-                        writer.append(self._row(trajectory, arm, executor))
+                    trajectories = list(executor.run(episodes, memories))
+                    # Every probe in the wave is dispatched as ONE batch. Building the
+                    # rows first and probing per row sent two prompts per trajectory:
+                    # 8,000 two-prompt backend calls per protocol at 50x32, against a
+                    # backend whose entire reason for being here is continuous batching.
+                    probes = self._probe_wave(trajectories, executor)
+                    for trajectory in trajectories:
+                        writer.append(
+                            self._row(
+                                trajectory,
+                                arm,
+                                executor,
+                                probes.get(trajectory.spec.trajectory_id, {}),
+                            )
+                        )
                         traces.append(
                             {
                                 "item_id": trajectory.spec.item_id,
@@ -341,6 +390,15 @@ class GraphRunner:
         manifest["complete"] = True
         manifest["evidence_shards"] = [s.to_dict() for s in shard_manifest]
         manifest["trace_shards"] = [s.to_dict() for s in trace_manifest]
+        # The ledger's own verdict, so a resumed run records whether the shards it
+        # inherited were ones it could check or ones it merely adopted.
+        manifest["evidence_ledger"] = {
+            "generations": {**verify_ledger(generations), "open_status": writer.ledger_status},
+            "traces": {
+                **verify_ledger(self.output / "traces", prefix="graph-events"),
+                "open_status": traces.ledger_status,
+            },
+        }
         manifest["completed_trajectories"] = writer.n_rows
         manifest["actual_graph_generations"] = self.scheduler.dispatched
         atomic_json(self.output / "RUN_MANIFEST.json", manifest)
@@ -478,9 +536,15 @@ class GraphRunner:
 
     # ----------------------------------------------------------------------- rows --
 
-    def _row(self, traj: GraphTrajectory, arm: ArmPlan, executor: GraphExecutor) -> dict:
+    def _row(
+        self,
+        traj: GraphTrajectory,
+        arm: ArmPlan,
+        executor: GraphExecutor,
+        probe: dict | None = None,
+    ) -> dict:
         item = next(i for i in self.items if i.item_id == traj.spec.item_id)
-        probe = self._probe(traj, executor) if self.cfg.study.memory.later_episode_probe else {}
+        probe = probe or {}
         node_events = traj.trace.of_kind("node_executed")
         edge_events = traj.trace.of_kind("edge_decision")
         write_events = traj.trace.of_kind("memory_write")
@@ -570,7 +634,24 @@ class GraphRunner:
             ],
         }
 
-    def _probe(self, traj: GraphTrajectory, executor: GraphExecutor) -> dict:
+    def _probe_wave(
+        self, trajectories: Sequence[GraphTrajectory], executor: GraphExecutor
+    ) -> dict[str, dict]:
+        """Every trajectory's readback probe, in one dispatch.
+
+        Returns ``{trajectory_id: probe}``. The retrieval decision is per trajectory and
+        is taken here, before any generation, so the two prompts a trajectory contributes
+        are fully determined by the time the batch is assembled — the batching changes
+        nothing about what is asked, only how many times the backend is called.
+        """
+        if not self.cfg.study.memory.later_episode_probe or not trajectories:
+            return {}
+        plans = [self._probe_plan(traj, executor) for traj in trajectories]
+        requests = [request for plan in plans for request in plan.requests]
+        responses = self.scheduler.run(requests) if requests else {}
+        return {plan.trajectory_id: plan.resolve(responses) for plan in plans}
+
+    def _probe_plan(self, traj: GraphTrajectory, executor: GraphExecutor) -> _ProbePlan:
         """Later-episode readback: the sink asks again, with and without the new memory.
 
         Two draws under the same seed. ``attributable`` needs the with-memory answer to
@@ -625,16 +706,17 @@ class GraphRunner:
                 model=sink.model,
             ),
         ]
-        responses = self.scheduler.run(requests)
-        return {
-            "with_store_text": responses[requests[0].request_id].text,
-            "without_store_text": responses[requests[1].request_id].text,
-            "retrieved_node_ids": list(allowed_ids),
-            "retrieved_texts": list(memory_texts),
-            "withheld_node_ids": list(verdict.withheld_node_ids),
-            "rescan_withheld_node_ids": list(verdict.rescan_withheld_node_ids),
-            "probe_seed": seed,
-        }
+        return _ProbePlan(
+            trajectory_id=traj.spec.trajectory_id,
+            requests=tuple(requests),
+            record={
+                "retrieved_node_ids": list(allowed_ids),
+                "retrieved_texts": list(memory_texts),
+                "withheld_node_ids": list(verdict.withheld_node_ids),
+                "rescan_withheld_node_ids": list(verdict.rescan_withheld_node_ids),
+                "probe_seed": seed,
+            },
+        )
 
     # ------------------------------------------------------------------- manifest --
 

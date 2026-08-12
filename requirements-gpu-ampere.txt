@@ -73,3 +73,11 @@ sentence-transformers==3.1.1
 # `model.generate` bit for bit, so a result presented as a reproduction of the released
 # Leak@k generation path must not come from it. See docs/graph_unlearning/GPU_EXECUTION.md.
 vllm==0.6.3.post1
+
+# Device-level VRAM accounting for PERFORMANCE.json. `torch.cuda.max_memory_allocated`
+# reports only this process's torch caching allocator, which under vLLM excludes the KV
+# cache reservation and the CUDA graph pools — so a 24 GB budget decision taken from it
+# is not a claim about the card. vLLM already depends on nvidia-ml-py; pinned here so the
+# accounting does not silently degrade to the driver fallback if that changes.
+# `rdl.runtime.resource_monitor` treats it as optional and never fails a run without it.
+nvidia-ml-py==12.560.30

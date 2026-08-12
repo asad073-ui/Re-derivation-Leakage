@@ -95,10 +95,21 @@ def git_sha(root: Path | None = None, short: bool = True) -> str:
 # files beside it, so a session that produced one result was, by its own definition,
 # dirty for the next one. See ADR-0059.
 #
+# `runs/graph/**` is the graph study's output and is excluded for exactly the same
+# reason (GU-0024). `.gitignore` un-ignores the small reviewable contracts under a run
+# directory — RUN_MANIFEST.json, PLAN.json, the report — so writing a run inside the
+# repository left those files UNTRACKED, and `--untracked-files=normal` then reported the
+# tree dirty. The first in-repo protocol run therefore stamped `git_dirty: true` on the
+# second, which is the same self-poisoning failure ADR-0059 fixed for `results/`.
+#
 # Applied as a git pathspec to both the status and the diff so the two agree; a `dirty`
 # flag computed over one file set and a `git_diff_sha256` computed over another describe
 # two different working trees.
-_SOURCE_PATHSPEC = (".", ":(exclude)results/**")
+_SOURCE_PATHSPEC = (
+    ".",
+    ":(exclude)results/**",
+    ":(exclude)runs/graph/**",
+)
 
 # Untracked content INSIDE the submodule is not superproject dirt. open-unlearning writes
 # its evaluation outputs into its own tree (`saves/`, `data/`), and the superproject's

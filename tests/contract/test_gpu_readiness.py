@@ -316,3 +316,120 @@ def test_the_refusal_upper_bound_exists_but_is_not_a_default_arm():
     )
     assert spec["guard_action"] == "refuse"
     assert "upper bound" in spec["description"]
+
+
+def test_the_matched_subset_baseline_exists_and_is_not_a_default_arm():
+    """GU-0026. The arm that makes the propagation claim falsifiable.
+
+    Without it, "GraphForget beats DRAGON" confounds Forget-ID propagation with the fact
+    that one side scores subsets of a node's input and the other scores it whole.
+    """
+    cfg = load_graph_config(LAUNCH)
+    assert "multi_agent_dragon_subsets" not in [a.name for a in cfg.arms]
+    spec = yaml.safe_load(
+        (repo_root() / "configs/graph/defenses/dragon_style_subsets.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert spec["kind"] == "dragon_style"
+    assert spec["score_subsets"] is True
+    # Still node-local. Giving the baseline the mechanism under test would erase the
+    # contrast entirely, and the config refuses it anyway.
+    assert spec["propagate_scope"] is False
+
+
+def test_the_primary_dragon_baseline_does_not_score_subsets():
+    """DRAGON as published scores one context; a baseline that does more is not the paper."""
+    cfg = load_graph_config(LAUNCH)
+    assert cfg.defenses["dragon_style"].score_subsets is False
+
+
+# ============================================================== GU-0024 / GU-0025 =====
+# Blockers from the pre-rental review of PR #23. Each one is silent: a run under any of
+# them completes and produces numbers that look exactly like the right ones.
+# ======================================================================================
+
+
+def test_vllm_generation_disables_the_progress_bar():
+    """One tqdm bar per call, thousands of calls, one tee'd log."""
+    from rdl.runtime.backend import GenRequest
+    from rdl.runtime.vllm_backend import VllmBackend
+
+    seen: list[dict] = []
+
+    class FakeEngine:
+        def generate(self, prompts, params, **kwargs):
+            seen.append(kwargs)
+            return [_FakeOutput(f"out-{i}") for i in range(len(prompts))]
+
+        def get_tokenizer(self):
+            return None
+
+    backend = VllmBackend("org/model", revision="r", tokenizer_revision="t", engine=FakeEngine())
+    backend.generate([GenRequest(request_id="a", prompt="hello")])
+    assert seen == [{"use_tqdm": False}]
+
+
+def test_an_engine_that_rejects_use_tqdm_still_generates():
+    """A progress bar that cannot be turned off must not fail a run — or run it twice."""
+    from rdl.runtime.backend import GenRequest
+    from rdl.runtime.vllm_backend import VllmBackend
+
+    calls: list[int] = []
+
+    class OldEngine:
+        def generate(self, prompts, params):
+            calls.append(len(prompts))
+            return [_FakeOutput("out") for _ in prompts]
+
+        def get_tokenizer(self):
+            return None
+
+    backend = VllmBackend("org/model", revision="r", tokenizer_revision="t", engine=OldEngine())
+    assert backend.generate([GenRequest(request_id="a", prompt="hi")])[0].text == "out"
+    backend.generate([GenRequest(request_id="b", prompt="hi")])
+    # The rejected keyword raises at call time, so the batch never entered the engine and
+    # was not run twice — which is the failure mode the one-shot flag exists to prevent.
+    assert calls == [1, 1]
+    assert backend._accepts_use_tqdm is False
+
+
+def test_graph_run_output_does_not_make_the_source_tree_dirty():
+    """GU-0024. `.gitignore` un-ignores the contracts under a run dir, so writing a run
+    inside the repository left them UNTRACKED and the next run recorded git_dirty: true."""
+    from rdl.paths import _SOURCE_PATHSPEC
+
+    assert ":(exclude)results/**" in _SOURCE_PATHSPEC
+    assert ":(exclude)runs/graph/**" in _SOURCE_PATHSPEC
+
+
+def test_the_device_vram_figure_is_not_the_torch_allocator():
+    """GU-0025. `max_memory_allocated` misses vLLM's KV cache reservation entirely."""
+    from rdl.runtime.resource_monitor import ResourceMonitor
+
+    monitor = ResourceMonitor()
+    monitor.record_batch(seconds=1.0, n=4)
+    payload = monitor.to_dict()
+    assert "peak_device_vram_bytes" in payload
+    assert "device_vram_utilization" in payload
+    # The old name survives, but the honest one says which allocator it came from.
+    assert "peak_torch_allocator_bytes" in payload
+    # On a CPU box nothing is sampled — and the fields say so rather than reading zero.
+    assert payload["vram_source"] in ("nvml", "torch.cuda.mem_get_info", "unsampled")
+
+
+def test_nvml_is_pinned_for_the_gpu_environment():
+    text = (repo_root() / "requirements-gpu-ampere.txt").read_text(encoding="utf-8")
+    assert any(line.strip().startswith("nvidia-ml-py==") for line in text.splitlines())
+
+
+class _FakeOutput:
+    def __init__(self, text: str) -> None:
+        self.outputs = [_FakeCompletion(text)]
+        self.prompt_token_ids = (1, 2, 3)
+
+
+class _FakeCompletion:
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.token_ids = (4, 5)
