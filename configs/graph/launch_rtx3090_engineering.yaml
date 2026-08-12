@@ -1,0 +1,20 @@
+# RTX 3090 — the engineering study on the FORGET cohort.
+#
+# Questions and forget policy are the same 20-item engineering cohort, which is correct
+# here: every question asked is about a concept the deployment forgot. `phase` is the
+# only thing that differs from the retain launch file, and the pair is checked in
+# tests/contract/test_profile_separation.py.
+#
+# Use with:
+#   rdl graph-plan   --launch configs/graph/launch_rtx3090_engineering.yaml --profile rtx3090_1b
+#   rdl graph-run    --launch configs/graph/launch_rtx3090_engineering.yaml --profile rtx3090_1b
+#
+# The minimal preflight is 2 items x 1 sample (`--limit 2 --n-samples 1`). One item
+# cannot support the cross-concept control arm.
+study: graph_unlearning_v1
+active_profile: rtx3090_1b
+phase: engineering
+
+# Null on purpose: the evaluated cohort IS the forget cohort. The retain launch file is
+# where this key earns its existence.
+forget_policy_phase: null

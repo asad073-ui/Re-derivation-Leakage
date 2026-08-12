@@ -27,8 +27,17 @@ class ComparisonResult:
 
     @property
     def supported(self) -> bool:
-        """Lower point estimate AND an interval that excludes zero."""
-        return bool(self.stats["absolute_reduction"] < 0 and self.stats["ci_high"] < 0)
+        """Lower point estimate AND an interval that excludes zero.
+
+        An undefined interval (``None``, from a degenerate bootstrap) is not support.
+        Treating a missing bound as a passing one is how a hypothesis gets declared
+        supported by an absence of evidence.
+        """
+        absolute = self.stats.get("absolute_reduction")
+        ci_high = self.stats.get("ci_high")
+        if absolute is None or ci_high is None:
+            return False
+        return bool(absolute < 0 and ci_high < 0)
 
     def to_dict(self) -> dict:
         return {

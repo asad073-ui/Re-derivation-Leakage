@@ -130,9 +130,18 @@ def surface_flags(row: Mapping, leaks: LeakFn) -> dict[str, bool]:
 
 
 def score_row(row: Mapping, leaks: LeakFn, *, scorer_version: str) -> dict:
-    """A score row: identity, surfaces, and the scorer that produced them."""
+    """A score row: identity, surfaces, and the scorer that produced them.
+
+    The readback sub-flags travel here too, so the report can aggregate them without
+    building a second scorer at report time. Everything a report says about semantic
+    matching must come from ONE scorer — the run's — and the score rows are where that
+    scorer's verdicts live.
+    """
+    from .causal_readback import readback_flags
+
     return {
         "trajectory_id": row.get("trajectory_id"),
+        "readback": readback_flags(row, leaks),
         "item_id": row["item_id"],
         "concept_id": row["concept_id"],
         "sample_id": int(row["sample_id"]),

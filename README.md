@@ -231,11 +231,16 @@ src/rdl/
   eval/           graph_leak, defense_reduction, detector_calibration, causal_readback,
                   graph_utility, graph_statistics
   cli/            graph-plan, graph-run, graph-score, graph-report, graph-finalize,
-                  graph-freeze-cohort
+                  graph-freeze-cohort, graph-calibrate
 
 configs/graph/  launch.yaml (the ONLY file a machine edits) + studies / runtime /
-                models / topologies / arms / defenses
-data/cohorts/   frozen splits with per-item content hashes and an exclusion list
+                models / topologies / arms / defenses.
+                launch_rtx3090_engineering.yaml and launch_rtx3090_retain.yaml are the
+                two GPU entry points: the retain one evaluates retain90 questions under
+                the SAME frozen forget policy as the engineering run, which is what
+                keeps retained authors out of the forget registry (DECISIONS GU-0027).
+data/cohorts/   frozen splits with per-item content hashes and an exclusion list, plus
+                the fixed detector-calibration cohorts and DETECTOR_CALIBRATION.json
 docs/graph_unlearning/  PROTOCOL_v1.md (frozen), THREAT_MODEL, BASELINES, METRICS,
                         GPU_EXECUTION, DECISIONS
 ```

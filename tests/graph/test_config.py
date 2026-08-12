@@ -22,9 +22,17 @@ def test_launch_resolves_the_whole_tree():
         "multi_agent_control",
         "multi_agent_leak",
         "multi_agent_dragon",
+        "multi_agent_dragon_subsets",
         "multi_agent_graphforget",
     ]
-    assert set(cfg.defenses) == {"none", "dragon_style", "graphforget"}
+    assert set(cfg.defenses) == {
+        "none",
+        "dragon_style",
+        # The matched-subset fairness ablation, composed alongside the published
+        # baseline rather than replacing it.
+        "dragon_style_subsets",
+        "graphforget",
+    }
 
 
 def test_only_the_active_profile_changes_between_machines():

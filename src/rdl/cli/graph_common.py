@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeVar, cast
 
 import typer
 
@@ -20,17 +22,28 @@ from ..models.stub import StubLM
 from ..paths import repo_root
 from ..runtime.backend import GenerationBackend
 from ..runtime.stub_backend import StubBackend
-from ..studies.graph_leak.cohort import Cohort, CohortError, load_cohort, resolve_cohort
+from ..studies.graph_leak.cohort import (
+    Cohort,
+    CohortError,
+    assert_forget_policy_cohort,
+    assert_policy_excludes_evaluation_concepts,
+    load_cohort,
+    resolve_cohort,
+)
 
 __all__ = [
     "DEFAULT_LAUNCH",
+    "RunCohorts",
     "apply_sample_budget",
     "build_backend",
     "load_config_or_fail",
     "resolve_cohort_items",
+    "resolve_run_cohorts",
 ]
 
 DEFAULT_LAUNCH = "configs/graph/launch.yaml"
+
+T = TypeVar("T")
 
 _MANIFEST_FOR_PHASE = {
     "smoke": "smoke_manifest",
@@ -92,17 +105,23 @@ def resolve_cohort_items(
     root: Path | None = None,
     fixture: Path | None = None,
     cohort_path: Path | None = None,
+    phase: str | None = None,
     token: str | None = None,
     limit: int | None = None,
 ) -> tuple[Cohort, list[TofuItem]]:
-    """Load the phase's frozen cohort and attach real question/answer text.
+    """Load one frozen cohort and attach real question/answer text.
+
+    ``phase`` selects which manifest, defaulting to the run's own phase; the forget-policy
+    resolution passes a different one so a retain run can load the forget cohort that
+    defines its policy. The exclusion list applies either way.
 
     The validation split additionally refuses to load while its concepts intersect the
     exclusion list — which, on the current checkpoint, they always do. That refusal is
     the point: 'the next 50 questions' are new questions, not new forgotten concepts.
     """
     base = (root or repo_root()) / cfg.study.data.cohort_dir
-    manifest_key = _MANIFEST_FOR_PHASE[cfg.phase]
+    active_phase = phase or cfg.phase
+    manifest_key = _MANIFEST_FOR_PHASE[active_phase]
     path = cohort_path or base / getattr(cfg.study.data, manifest_key)
     exclusions = base / cfg.study.data.exclusion_manifest
 
@@ -112,7 +131,7 @@ def resolve_cohort_items(
             exclusions_path=exclusions if exclusions.exists() else None,
             require_frozen=cfg.study.data.require_frozen_hashes,
             forbid_excluded_items=True,
-            forbid_excluded_concepts=cfg.phase == "validation",
+            forbid_excluded_concepts=active_phase == "validation",
         )
     except CohortError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -134,6 +153,166 @@ def resolve_cohort_items(
     except CohortError as exc:
         raise typer.BadParameter(str(exc)) from exc
     return cohort, items
+
+
+@dataclass(frozen=True)
+class RunCohorts:
+    """The two cohorts one run needs, resolved together so they cannot diverge.
+
+    ``evaluation`` supplies the questions. ``policy`` supplies the forget policy — the
+    concept registry and the deleted baseline memory. They are the same object for every
+    forget-cohort run and different objects for a retain-utility run.
+    """
+
+    evaluation: Cohort
+    evaluation_items: list[TofuItem]
+    policy: Cohort
+    policy_items: list[TofuItem]
+
+    @property
+    def separated(self) -> bool:
+        return self.policy.fingerprint() != self.evaluation.fingerprint()
+
+    def to_dict(self) -> dict:
+        return {
+            "evaluation_cohort_split": self.evaluation.split,
+            "evaluation_cohort_fingerprint": self.evaluation.fingerprint(),
+            "evaluation_cohort_dataset_config": self.evaluation.dataset_config,
+            "evaluation_n_items": len(self.evaluation_items),
+            "evaluation_n_concepts": len(self.evaluation.concept_ids),
+            "evaluation_is_retain": self.evaluation.is_retain,
+            "forget_policy_split": self.policy.split,
+            "forget_policy_fingerprint": self.policy.fingerprint(),
+            "forget_policy_dataset_config": self.policy.dataset_config,
+            "forget_policy_n_items": len(self.policy_items),
+            "forget_policy_n_concepts": len(self.policy.concept_ids),
+            "cohorts_separated": self.separated,
+        }
+
+
+def _forget_policy_phase(cfg: ResolvedGraphConfig) -> str:
+    """Which phase's cohort defines what was forgotten.
+
+    A retain phase has no forget cohort of its own, so it must name one. Falling back to
+    the evaluated phase there is precisely the bug this function exists to make
+    impossible: it would build the registry from retain questions.
+    """
+    declared = cfg.launch.forget_policy_phase
+    if declared:
+        return str(declared)
+    if cfg.phase == "retain_utility":
+        raise typer.BadParameter(
+            "phase 'retain_utility' evaluates questions the system is SUPPOSED to answer, "
+            "so it cannot also supply the forget policy. Set `forget_policy_phase` in the "
+            "launch file to the frozen forget cohort this deployment forgot, e.g.\n"
+            "    forget_policy_phase: engineering\n"
+            "Without it the concept registry and the deleted baseline memory would be "
+            "built from retain authors, and every retain-utility and false-positive "
+            "number would be invalid."
+        )
+    return str(cfg.phase)
+
+
+def resolve_run_cohorts(
+    cfg: ResolvedGraphConfig,
+    *,
+    root: Path | None = None,
+    fixture: Path | None = None,
+    cohort_path: Path | None = None,
+    policy_cohort_path: Path | None = None,
+    token: str | None = None,
+    limit: int | None = None,
+) -> RunCohorts:
+    """Resolve the evaluation cohort and the forget-policy cohort for one run.
+
+    ``limit`` narrows the EVALUATION cohort only. A limit is a question budget; it is not
+    a statement that the deployment forgot fewer things, and a registry that shrank with
+    it would make the guard's scope depend on how much GPU time was bought.
+    """
+    evaluation, evaluation_items = resolve_cohort_items(
+        cfg, root=root, fixture=fixture, cohort_path=cohort_path, token=token, limit=limit
+    )
+    policy_phase = _forget_policy_phase(cfg)
+
+    if policy_cohort_path is None and policy_phase == str(cfg.phase) and cohort_path is not None:
+        # An explicit --cohort with no separate policy cohort keeps both roles on that
+        # one manifest, which is right for the CPU stub and for any ad-hoc forget split.
+        policy, policy_items = evaluation, evaluation_items
+    elif policy_cohort_path is None and policy_phase == str(cfg.phase):
+        policy, policy_items = evaluation, evaluation_items
+    else:
+        policy, policy_items = resolve_cohort_items(
+            cfg,
+            root=root,
+            fixture=fixture,
+            cohort_path=policy_cohort_path,
+            phase=policy_phase,
+            token=token,
+            limit=None,
+        )
+
+    try:
+        assert_forget_policy_cohort(policy)
+        assert_policy_excludes_evaluation_concepts(policy, evaluation)
+    except CohortError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    return RunCohorts(
+        evaluation=evaluation,
+        evaluation_items=evaluation_items,
+        policy=policy,
+        policy_items=policy_items,
+    )
+
+
+def option_value(value: object, fallback: T) -> T:
+    """Resolve a Typer default when a command is called as a plain Python function.
+
+    The tests in this repository call the command functions directly rather than through
+    a CliRunner, which is a deliberate convention: it keeps them fast and lets them assert
+    on return values. The cost is that any parameter the caller omits arrives as a
+    ``typer.models.OptionInfo`` sentinel rather than its default, and a new option that
+    reaches a comparison or a JSON payload then fails in a way that has nothing to do with
+    the behaviour under test. One helper, applied at the top of the commands that grew
+    new options, is cheaper than converting every caller.
+    """
+    return fallback if isinstance(value, typer.models.OptionInfo) else cast(T, value)
+
+
+def stub_source_items(cohorts: RunCohorts) -> list[TofuItem]:
+    """Every item the stub backend may be asked about, evaluation and policy alike.
+
+    Only the stub backend uses this: it answers from a lookup table, and a retain run
+    whose table held the retain questions alone would have no answer for the forgotten
+    content the memory baseline is built from.
+    """
+    seen: dict[str, TofuItem] = {}
+    for item in [*cohorts.policy_items, *cohorts.evaluation_items]:
+        seen.setdefault(item.item_id, item)
+    return list(seen.values())
+
+
+# THE PREFLIGHT IS 2 ITEMS x 1 SAMPLE. One item cannot produce a cross-concept control:
+# `cross_author_mapping` needs two authors to rotate between, so `--limit 1` raises deep
+# inside the runner with a message about C3S. The runbook said 1x1 for months and the
+# operator had to discover 2x1 on a rented GPU. This turns that into a parameter error
+# with the right number in it, before anything is loaded.
+MIN_ITEMS_FOR_CROSS_CONCEPT_CONTROL = 2
+
+
+def assert_control_arm_has_enough_items(
+    cfg: ResolvedGraphConfig, items: Sequence[TofuItem]
+) -> None:
+    needs_control = any(arm.peer_content == "cross_concept" for arm in cfg.arms)
+    if not needs_control or len(items) >= MIN_ITEMS_FOR_CROSS_CONCEPT_CONTROL:
+        return
+    raise typer.BadParameter(
+        f"{len(items)} evaluation item(s), but this study includes a cross-concept "
+        "control arm, which needs at least "
+        f"{MIN_ITEMS_FOR_CROSS_CONCEPT_CONTROL} items from different concepts to rotate "
+        "between. The minimal preflight is 2 items x 1 sample:\n"
+        "    --limit 2 --n-samples 1"
+    )
 
 
 def build_backend(

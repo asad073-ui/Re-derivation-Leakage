@@ -221,7 +221,9 @@ class GraphExecutor:
                     requests.append(plan.request)
 
             started = time.perf_counter()
-            responses = self.scheduler.run(requests) if requests else {}
+            # The graph's own calls. The readback probe is dispatched by the runner under
+            # purpose="probe", and the two are counted apart.
+            responses = self.scheduler.run(requests, purpose="graph") if requests else {}
             self.monitor.record_batch(
                 seconds=time.perf_counter() - started,
                 n=len(requests),

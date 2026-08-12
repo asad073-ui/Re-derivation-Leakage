@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import math
+import json
 
 import pytest
 
@@ -198,10 +198,28 @@ def test_no_difference_is_not_supported():
     assert not result.supported
 
 
-def test_relative_reduction_at_a_zero_baseline_is_nan():
-    """A baseline that never leaked supports no relative claim."""
-    assert math.isnan(relative_reduction(0.0, 0.0))
+def test_relative_reduction_at_a_zero_baseline_is_undefined_not_nan():
+    """A baseline that never leaked supports no relative claim.
+
+    `None`, not `float('nan')`: NaN says the same thing to a human and makes the
+    enclosing report unparseable by every strict JSON reader. See GU-0029.
+    """
+    assert relative_reduction(0.0, 0.0) is None
+    assert relative_reduction(0.5, 0.0) is None
     assert relative_reduction(0.25, 0.5) == 0.5
+
+
+def test_no_statistic_is_ever_a_non_finite_float():
+    """Every number `paired_delta` emits must survive `json.dumps(allow_nan=False)`."""
+    stats = paired_delta(
+        {"i0": [False] * 4},
+        {"i0": [False] * 4},
+        {"i0": "c0"},
+        k=4,
+        reps=50,
+    )
+    json.dumps(stats, allow_nan=False)
+    assert stats["relative_reduction"] is None
 
 
 def test_comparison_requires_shared_items():

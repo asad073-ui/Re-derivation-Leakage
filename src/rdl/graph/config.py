@@ -199,7 +199,32 @@ class GraphDetectorConfig(GraphBase):
     # calibrated threshold without one is blocked by the report gate.
     status: Literal["diagnostic", "calibrated"] = "diagnostic"
     calibration_id: str | None = None
+    # Repo-relative path to the frozen artefact `rdl graph-calibrate` wrote. Carries the
+    # threshold, the held-out FPR and FNR, the calibration cohort fingerprints and its
+    # own content hash. `status: calibrated` without one is refused below — the whole
+    # point of the status is that it is checkable, and a boolean nobody can check is
+    # worse than no boolean.
+    calibration_artifact: str | None = None
     alias_weight: float = 1.0
+
+    @model_validator(mode="after")
+    def _calibrated_means_an_artefact_exists(self) -> GraphDetectorConfig:
+        if self.status != "calibrated":
+            return self
+        missing = [
+            field
+            for field in ("calibration_artifact", "calibration_id")
+            if not getattr(self, field)
+        ]
+        if missing:
+            raise ValueError(
+                f"detector.status is 'calibrated' but {missing} unset. A calibrated "
+                "threshold is a claim about a measured false-positive rate on a frozen "
+                "held-out cohort; without the artefact that recorded it, the claim is "
+                "unverifiable.\nRun `rdl graph-calibrate --write` and point "
+                "`calibration_artifact` at what it produced."
+            )
+        return self
 
 
 class GraphEvaluationConfig(GraphBase):
@@ -219,6 +244,11 @@ class GraphDataConfig(GraphBase):
     retain_utility_manifest: str = "retain_utility.json"
     exclusion_manifest: str = "exclusions.json"
     smoke_manifest: str = "smoke.json"
+    # The FIXED detector-calibration dataset. Positives are held-out questions about the
+    # forget-policy authors; negatives are retain90 authors no other cohort uses, so the
+    # false-positive rate is held out from the retain questions the utility gate scores.
+    calibration_positives_manifest: str = "calibration_positives.json"
+    calibration_negatives_manifest: str = "calibration_negatives.json"
     require_frozen_hashes: bool = True
 
 
@@ -404,6 +434,24 @@ class GraphLaunchConfig(GraphBase):
     # the frozen validation cohort from the same study file. Anything else must edit the
     # study, which changes the study-design hash.
     phase: Phase | None = None
+    # Which phase's frozen cohort defines the FORGET POLICY — the concept registry and
+    # the deleted baseline memory — when that is not the phase being evaluated.
+    #
+    # `null` means "the evaluated phase is itself the forget cohort", which is true for
+    # smoke, engineering, discovery and validation. It is NOT true for `retain_utility`,
+    # where the questions are ones the system must answer: a retain phase with no
+    # `forget_policy_phase` is refused, because the fallback would register retained
+    # authors as forgotten. See ADR GU-0027.
+    forget_policy_phase: Phase | None = None
+
+    @model_validator(mode="after")
+    def _policy_phase_is_a_forget_phase(self) -> GraphLaunchConfig:
+        if self.forget_policy_phase == "retain_utility":
+            raise ValueError(
+                "forget_policy_phase cannot be 'retain_utility': the forget policy must "
+                "come from a cohort of concepts the system is required to withhold."
+            )
+        return self
 
 
 # ------------------------------------------------------------------- resolution --
@@ -450,12 +498,31 @@ class ResolvedGraphConfig(GraphBase):
         # be broken by editing a defence file alone.
         kinds = {d.kind for d in self.defenses.values()}
         if {"dragon_style", "graphforget"} <= kinds:
-            dragon = next(d for d in self.defenses.values() if d.kind == "dragon_style")
-            if dragon.propagate_scope:
+            # EVERY dragon_style defence, not just the first one found. With the
+            # matched-subset ablation in the study there are two, and checking one of an
+            # arbitrary pair is not a check.
+            leaking = sorted(
+                d.name
+                for d in self.defenses.values()
+                if d.kind == "dragon_style" and d.propagate_scope
+            )
+            if leaking:
                 raise ValueError(
-                    "the DRAGON-style baseline must not propagate scope; that is the "
-                    "mechanism under test and giving it to the baseline erases the contrast"
+                    f"DRAGON-style baselines {leaking} must not propagate scope. That is "
+                    "the mechanism under test, and giving it to a baseline erases the "
+                    "contrast."
                 )
+        # Exactly one dragon_style defence may score subsets: the matched-subset
+        # ablation. If the PRIMARY baseline started scoring subsets it would no longer be
+        # DRAGON as published, and the headline table would be comparing against
+        # something the paper does not describe.
+        primary = self.defenses.get("dragon_style")
+        if primary is not None and primary.score_subsets:
+            raise ValueError(
+                "the primary 'dragon_style' baseline must not score subsets — DRAGON as "
+                "published scores one context. The subset battery belongs to "
+                "'dragon_style_subsets', which is reported as a fairness ablation."
+            )
         return self
 
     # ------------------------------------------------------------------- hashes --

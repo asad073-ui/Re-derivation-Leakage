@@ -1,4 +1,4 @@
-"""The five arms must differ ONLY in the intended treatment.
+"""The six arms must differ ONLY in the intended treatment.
 
 Same checkpoint, same graph, same prompts, same routing, same seeds, same k, same
 max tokens, same memory setup, same evaluator. If any of that drifts, the contrast
@@ -47,13 +47,19 @@ def _episode(item, arm, *, sample=0, upstream=None):
     )
 
 
-def test_all_five_arms_resolve(plans):
+def test_all_six_arms_resolve(plans):
+    """GU-0027 added multi_agent_dragon_subsets: the matched-subset fairness ablation.
+
+    Order is asserted because the report tables are built in this order and a silent
+    reordering would move which arm a reader compares against which.
+    """
     _cfg, arm_plans = plans
     assert [p.name for p in arm_plans] == [
         "single_agent",
         "multi_agent_control",
         "multi_agent_leak",
         "multi_agent_dragon",
+        "multi_agent_dragon_subsets",
         "multi_agent_graphforget",
     ]
 
