@@ -26,11 +26,17 @@ and never calls it a reproduction. The repository is not copied into this codeba
   win.
 * Also guards the released final answer, which is one more model boundary. Generous to
   the baseline on purpose.
-* `guard_action: refuse` is the default: the node emits a fixed safe refusal instead of
-  generating. Deterministic and model-independent. A prompt-only guard on a checkpoint
-  that ignores instructions is a no-op, and a baseline that is a no-op is not a baseline.
-  `guard_prompt` (append a reasoning-guard instruction, then generate) is available for
-  instruction-following checkpoints and is the faithful "template reasoning" mode.
+* **`guard_action: guard_prompt` is the default and the primary baseline** — a guard
+  instruction is appended to the system message and the node generates normally. This is
+  what DRAGON describes: detect, then modify the inference context.
+* `guard_action: refuse` makes the node emit a fixed safe refusal instead of generating.
+  That is a strictly stronger intervention than anything DRAGON performs, so it ships as
+  a **separate** arm (`dragon_style_refuse` / `multi_agent_dragon_refuse`) and is
+  reported as a **strong upper bound on node-local guarding**, never as a faithful
+  reproduction. It was briefly the default; calling it "DRAGON" overstated the baseline
+  (DECISIONS.md GU-0017). The two bracket the real baseline: the prompt guard is the
+  weaker bound — on a checkpoint that ignores the instruction it is a no-op — and the
+  refusal is the stronger.
 * `implementation: sft_checkpoint` **raises**, rather than silently substituting a
   template for weights that were never released.
 
@@ -93,12 +99,27 @@ explicitly: when the user asks about a forgotten concept, every combination cont
 the query fires, and counting that as "reconstructed from several parents" would inflate
 the split-clue result with cases a node-local guard catches trivially.
 
+## The protocol the comparison runs under
+
+Both baselines are compared under **both** protocols, separately (PROTOCOL_v1 §2b).
+
+Under `end_to_end_safety` the request gate is part of the defence, and since the forget
+question is one of the detector's own prototypes, both guarded arms refuse at the root
+and score identically clean. That comparison is real — it says the deployed system does
+not release the information — but it says nothing about the graph, because no mechanism
+downstream of the root was ever reached.
+
+Under `graph_flow` no arm inspects the question, so the guarded arms must actually
+contain what the graph carries. **This is the protocol the GraphForget claim rests on**,
+and it is where the capability table below becomes testable rather than notional.
+
 ## Other baselines and ablations
 
 | Name | What it isolates |
 |---|---|
 | `single_agent` | Everything the graph adds on top of one agent. |
 | `multi_agent_control` | The peer-message wrapper, holding content concept-disjoint. |
+| `multi_agent_dragon_refuse` | The upper bound on node-local guarding. |
 | `edge_cut` | What deleting communication buys — leakage falls, collaboration falls. An **ablation**, not a method. |
 | graphforget with `propagate_forget_ids: false` | Semantic detection only. |
 | graphforget with `semantic_detection: false` | Provenance only. |

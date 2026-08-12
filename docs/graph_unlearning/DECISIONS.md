@@ -108,6 +108,134 @@ If a write made at depth 1 were retrievable at depth 2, agent-to-agent edge flow
 memory-mediated flow would be mixed into one number and neither would be attributable to
 its own mechanism.
 
+### GU-0015 — 2026-08-12 — The RTX target was the FULL checkpoint, not the unlearned one
+
+`configs/graph/models/rule_npo_1b.yaml` shipped as
+`repo_id: open-unlearning/tofu_Llama-3.2-1B-Instruct_full` with `revision: null` — a
+model that was never unlearned, on a moving branch. A 3090 run under that config would
+have measured leakage from a checkpoint that has forgotten nothing, and every number
+would have been meaningless while looking entirely normal.
+
+Fixed to the released Leak-k baseline the two-agent work already pins:
+`OptimAI-Lab/TOFU-forget10_RULE-NPO @ afe117e4`, tokenizer pinned to the same repo and
+commit (it ships its own `tokenizer.json`, so this also removes the moving-branch chat
+template risk flagged in `src/rdl/provenance.py`).
+
+Three checks now make the class of error impossible to repeat:
+`GraphModelConfig` rejects a config named for an unlearning method that points at a repo
+containing `_full` / `_base` / `retain`; a method-named config must opt into
+`expect_unlearned`; and `assert_model_provenance` refuses to start any run whose model
+or tokenizer revision is unpinned. `tests/contract/test_gpu_readiness.py` asserts the
+graph target equals `configs/models/tofu_forget10_rule_npo.yaml`.
+
+### GU-0016 — 2026-08-12 — Two protocols, because the natural comparison collapsed
+
+**The most important correction in this branch.** The concept registry's scope
+prototypes include the forget questions themselves, so a forget question has ~1.0
+similarity to its own prototype. Both guarded arms therefore fired at the root and
+refused before the model was called. Measured on the CPU stub, natural condition:
+
+| protocol | MA-GRAPHFORGET generations | nodes abstained |
+|---|---|---|
+| `end_to_end_safety` | 0 | 40 / 40 |
+| `graph_flow` | 40 | 0 |
+
+Under the old single protocol the study could only have shown that a detector
+recognises the question it was built from. Propagation, edge enforcement, write
+protection and retrieval protection were never exercised at all.
+
+Split into two protocols, run separately and never pooled:
+
+* `end_to_end_safety` — the request gate is part of the defence. Answers *does the
+  deployed system release forgotten information*.
+* `graph_flow` — the request gate is held **constant across every arm** (no arm inspects
+  the question) and detection covers peer messages, tool responses, memory reads, agent
+  outputs, edges, writes, retrievals and the final output. Answers *can forgotten
+  information generated or introduced after the initial boundary propagate* — the
+  GraphForget contribution.
+
+`graph_flow` is mandatory: a study config that omits it fails to load. `protocol` is on
+every evidence row, in the manifest, in the resume fingerprint, and is a required filter
+in the report.
+
+### GU-0017 — 2026-08-12 — The DRAGON default is the prompt guard, not a refusal
+
+`guard_action: refuse` makes the node emit a fixed refusal instead of generating, which
+is a strictly stronger intervention than anything DRAGON performs. Shipping it as *the*
+DRAGON baseline overstated the baseline. The primary arm is now
+`guard_action: guard_prompt` — detect, then modify the inference context, which is what
+the paper describes — and the deterministic refusal is available as
+`dragon_style_refuse` / `multi_agent_dragon_refuse`, reported as a **strong upper bound
+on node-local guarding** and never as a faithful reproduction. The two bracket the real
+baseline.
+
+### GU-0018 — 2026-08-12 — `graph-plan` ignored `--n-samples`, so it costed the wrong run
+
+`graph-run` accepted `--n-samples`; `graph-plan` did not. Planning a 4-item smoke against
+the RTX profile therefore printed the profile's full 32-draw cost — 2 688 graph
+generations and 1 280 probes — while the run that followed did 168 and 80. A plan that
+describes a different experiment from the run is worse than no plan, because it is
+trusted. Both commands now call one `apply_sample_budget`, and a reduction below the
+study's `primary_k` marks the profile unreportable rather than silently reporting at a
+smaller k.
+
+### GU-0019 — 2026-08-12 — The dataset revision was recorded but never downloaded
+
+`graph-freeze-cohort --dataset-revision X` wrote `X` into the manifest while `load_tofu`
+called `load_dataset` with no revision, so the tool could record one commit and download
+another. `revision` now flows through `load_tofu` and `load_items` into `load_dataset`;
+freezing against real data requires it; a frozen non-fixture cohort without one is
+refused at load; and runs download the cohort's own recorded revision.
+
+All four real cohorts (smoke, engineering, discovery, retain_utility) are now frozen
+against `locuslab/TOFU @ 324592d84ae4f482ac7249b9285c2ecdb53e3a68` with per-item
+question and answer hashes.
+
+### GU-0020 — 2026-08-12 — Resume could silently mix two experiments
+
+`GraphRunner.run` overwrote `RUN_MANIFEST.json` before checking anything, so a resume
+under a different checkpoint, topology, sample budget, protocol or cohort replaced the
+record of what had produced the existing shards and then skipped their trajectory keys.
+The completed keys are identical whichever checkpoint produced them, so nothing
+downstream could notice.
+
+Compatibility is now verified **before** any write, over sixteen immutable fields
+(`GraphRunner.IMMUTABLE_ON_RESUME`), existing shard hashes are checked against the
+previous manifest, and the original manifest survives a refused resume. A git-SHA
+difference warns rather than fails: the study, profile and resolved hashes are what
+determine whether it is the same experiment.
+
+### GU-0021 — 2026-08-12 — `detector_device: cuda` named a code path that does not exist
+
+The runtime profiles carried `detector_device` and `detector_batch_size`. The only
+detector backbone is the torch-free hashing embedder, which runs on CPU by construction,
+so those keys were decorative and would have been read as evidence that the detector ran
+on the GPU. Both removed from the profiles; the detector's identity now lives in
+`study.detector.backend: hashing64`, where the science is. Adding a semantic backbone
+means adding a value there **and** the implementation behind it, together.
+
+### GU-0022 — 2026-08-12 — vLLM was the RTX backend and nothing installed it
+
+Neither `pyproject.toml` nor `requirements-gpu-ampere.txt` mentioned vLLM, so the RTX
+profile named a backend that would fail at construction on a fresh box. Pinned
+`vllm==0.6.3.post1` in the Ampere requirements and as a **separate** `[vllm]` extra —
+separate because vLLM pins its own torch, and installing it into the reproduction
+environment would replace the torch every existing number was produced under.
+
+The backend also now receives `tokenizer_revision` (previously accepted by the CLI,
+recorded in the manifest, and never passed to the engine — so the tokenizer came from
+the branch head while the manifest claimed a pin), authenticates from `HF_TOKEN` in the
+environment so no credential can reach engine kwargs or a manifest, and reports
+`resolved_revisions()` — what the Hub actually resolved — alongside what was requested.
+
+### GU-0023 — 2026-08-12 — A retain-utility cohort now exists
+
+There was no cohort on which an answer-match rate is a utility rather than a leakage
+rate, so `utility_gate` could only ever report itself inapplicable and a leakage
+reduction had no cost attached. Added `retain_utility.json`: one retain90 question per
+author for every fourth author, 45 authors spanning the split, frozen against the same
+dataset commit. `phase: retain_utility` selects it.
+
 ### GU-0014 — 2026-08-12 — TOFU exclusions do not apply to the development fixture
 
 `tests/fixtures/tofu_forget10_sample.json` reuses TOFU item ids for eight invented

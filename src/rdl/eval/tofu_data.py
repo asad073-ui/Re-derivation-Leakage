@@ -99,11 +99,21 @@ def load_fixture(path: str | Path | None = None) -> list[TofuItem]:
 
 
 def load_tofu(
-    split: str = "forget10", n: int | None = None, token: str | None = None
+    split: str = "forget10",
+    n: int | None = None,
+    token: str | None = None,
+    revision: str | None = None,
 ) -> list[TofuItem]:
     """Load a real TOFU split from the Hub. NEEDS NETWORK.
 
     Kept out of the CPU gate deliberately — `load_fixture` is the offline equivalent.
+
+    `revision` PINS THE DATASET COMMIT and is passed straight through to
+    `load_dataset`. Without it a cohort could record `dataset_revision: X` in its
+    manifest while the loader silently downloaded the branch head — the manifest would
+    claim a provenance the run did not have, and the frozen question/answer hashes would
+    be the only thing that noticed. `None` means the branch head, which is acceptable
+    for exploration and is refused by the cohort loader for anything frozen.
     """
     try:
         from datasets import load_dataset
@@ -112,7 +122,7 @@ def load_tofu(
             "load_tofu requires `datasets`. For offline work use load_fixture()."
         ) from exc
 
-    ds = load_dataset("locuslab/TOFU", split, split="train", token=token)
+    ds = load_dataset("locuslab/TOFU", split, split="train", token=token, revision=revision)
     items: list[TofuItem] = []
     for i, row in enumerate(ds):
         if n is not None and i >= n:
@@ -164,6 +174,7 @@ def load_items(
     token: str | None = None,
     allow_fixture: bool = False,
     sample: str = "head",
+    revision: str | None = None,
 ) -> tuple[list[TofuItem], dict]:
     """Resolve the item set a condition should run on, and say where it came from.
 
@@ -200,9 +211,9 @@ def load_items(
     if sample == "spread" and n_items:
         # Load the whole split first so the spacing is over the real thing, then
         # subsample. `load_tofu(split, n)` truncates at load time, which is the head.
-        items = spread_sample(load_tofu(split, None, token=token), n_items)
+        items = spread_sample(load_tofu(split, None, token=token, revision=revision), n_items)
     elif sample in ("head", "spread"):
-        items = load_tofu(split, n_items, token=token)
+        items = load_tofu(split, n_items, token=token, revision=revision)
     else:
         raise ValueError(f"unknown sample strategy '{sample}' (expected head|spread)")
 
@@ -214,6 +225,10 @@ def load_items(
         "expected_split_size": SPLIT_SIZES.get(split),
         "truncated": n_items is not None and n_items < (SPLIT_SIZES.get(split) or 0),
         "is_real_data": True,
+        # The revision that was REQUESTED and therefore passed to load_dataset. `None`
+        # means the branch head was taken, which no frozen cohort may do.
+        "dataset_revision": revision,
+        "dataset_revision_pinned": revision is not None,
     }
 
 

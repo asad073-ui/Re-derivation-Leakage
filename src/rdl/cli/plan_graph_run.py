@@ -13,7 +13,13 @@ from pathlib import Path
 import typer
 
 from ..studies.graph_leak.runner import GraphRunner
-from .graph_common import DEFAULT_LAUNCH, build_backend, load_config_or_fail, resolve_cohort_items
+from .graph_common import (
+    DEFAULT_LAUNCH,
+    apply_sample_budget,
+    build_backend,
+    load_config_or_fail,
+    resolve_cohort_items,
+)
 
 __all__ = ["plan_graph_run"]
 
@@ -25,13 +31,24 @@ def plan_graph_run(
     fixture: Path | None = typer.Option(None, "--fixture", help="offline fixture; CPU only"),
     cohort: Path | None = typer.Option(None, "--cohort", help="explicit cohort manifest"),
     limit: int | None = typer.Option(None, "--limit", min=1),
+    n_samples: int | None = typer.Option(
+        None, "--n-samples", min=1, help="reduce (never exceed) the profile's sample budget"
+    ),
     challenges: str = typer.Option("natural", "--challenges", help="comma-separated"),
+    protocol: str = typer.Option(
+        "end_to_end_safety", "--protocol", help="end_to_end_safety or graph_flow"
+    ),
     token: str | None = typer.Option(None, "--hf-token"),
     output: Path | None = typer.Option(None, "--output", help="write PLAN.json here"),
 ) -> None:
-    """Dry-run cost estimation for a graph study configuration."""
+    """Dry-run cost estimation for a graph study configuration.
+
+    Takes the SAME `--n-samples` as `graph-run` and applies it through the same
+    function, so the printed cost is the cost of the run that follows.
+    """
     overrides = [f"active_profile={profile}"] if profile else None
     cfg = load_config_or_fail(launch, overrides=overrides, topology=topology)
+    cfg = apply_sample_budget(cfg, n_samples)
     cohort_obj, items = resolve_cohort_items(
         cfg, fixture=fixture, cohort_path=cohort, token=token, limit=limit
     )
@@ -44,6 +61,7 @@ def plan_graph_run(
         backend=backend,
         output=output or Path("."),
         challenges=modes,
+        protocol=protocol,
         tokenizer_revision=tokenizer_revision,
     )
     plan = runner.plan()
@@ -55,14 +73,23 @@ def plan_graph_run(
         "model": cfg.model.name,
         "cohort_split": cohort_obj.split,
         "cohort_fingerprint": cohort_obj.fingerprint(),
+        "cohort_dataset_revision": cohort_obj.dataset_revision,
         "n_concepts": len(cohort_obj.concept_ids),
+        "protocol": protocol,
         **cfg.hashes(),
         **plan.to_dict(),
         "logical_agents": cfg.profile.agents.logical_count,
         "shared_model_handles": len(set(getattr(backend, "shared_handle_ids", dict)().values())),
         "k_values": list(cfg.profile.sampling.k_values),
         "primary_k": cfg.study.sampling.primary_k,
+        "primary_k_reachable": cfg.study.sampling.primary_k in cfg.profile.sampling.k_values,
+        "profile_reportable": cfg.profile.reportable,
+        "detector_backend": cfg.study.detector.backend,
         "detector_status": cfg.study.detector.status,
+        "model_repo_id": cfg.model.repo_id,
+        "model_revision": cfg.model.revision,
+        "tokenizer_revision": cfg.model.tokenizer_revision,
+        "model_pinned": cfg.model.pinned,
     }
     backend.close()
     typer.echo(json.dumps(payload, indent=2, sort_keys=True))

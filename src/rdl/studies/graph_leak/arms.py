@@ -87,7 +87,9 @@ def build_detector(cfg: ResolvedGraphConfig, registry: ConceptRegistry) -> Seman
     )
 
 
-def _build_defense(spec: DefenseSpec, detector: SemanticConceptDetector) -> Defense:
+def _build_defense(
+    spec: DefenseSpec, detector: SemanticConceptDetector, *, inspect_query: bool
+) -> Defense:
     if spec.kind == "none":
         return NoDefense()
     if spec.kind == "dragon_style":
@@ -96,6 +98,7 @@ def _build_defense(spec: DefenseSpec, detector: SemanticConceptDetector) -> Defe
             guard_action=spec.guard_action,
             apply_at=spec.apply_at,
             implementation=spec.implementation,
+            inspect_query=inspect_query,
         )
     if spec.kind == "graphforget":
         policy = ForgetPolicy(
@@ -113,6 +116,7 @@ def _build_defense(spec: DefenseSpec, detector: SemanticConceptDetector) -> Defe
             propagate_forget_ids=spec.propagate_forget_ids,
             accumulate_evidence=spec.accumulate_evidence,
             rescan_untagged_memory=spec.rescan_untagged_memory,
+            inspect_query=inspect_query,
         )
     if spec.kind == "edge_cut":
         return EdgeCutDefense(detector=detector)
@@ -123,11 +127,20 @@ def build_arm_runtime(
     cfg: ResolvedGraphConfig,
     topology: GraphSpec,
     detector: SemanticConceptDetector,
+    *,
+    protocol: str = "end_to_end_safety",
 ) -> list[ArmPlan]:
-    """Build every arm's runtime for one run. Detector is shared by construction."""
+    """Build every arm's runtime for one run. Detector is shared by construction.
+
+    ``protocol`` decides whether the request gate is part of the defence. Under
+    ``graph_flow`` no arm inspects the incoming question, so the request gate is
+    constant across arms and what the contrast measures is propagation through the
+    graph rather than recognition of the original forget question.
+    """
+    inspect_query = protocol != "graph_flow"
     plans: list[ArmPlan] = []
     for arm in cfg.arms:
-        defense = _build_defense(cfg.defenses[arm.defense], detector)
+        defense = _build_defense(cfg.defenses[arm.defense], detector, inspect_query=inspect_query)
         active = (topology.sink,) if arm.mode == "single_agent" else tuple(topology.node_ids())
         plans.append(
             ArmPlan(

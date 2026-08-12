@@ -93,6 +93,20 @@ Scoring is a separate phase from generation, so the generator is gone from GPU m
 before the NLI model loads, and a rescore under a different evaluator produces a new
 file rather than overwriting one.
 
+## What is never pooled
+
+Two dimensions are filters, never groupings. A report covers exactly one value of each
+and records how many of the scored rows that left in scope.
+
+| Dimension | Why pooling is meaningless |
+|---|---|
+| `protocol` | `end_to_end_safety` measures request filtering; `graph_flow` measures graph containment. Averaging them produces a number that answers neither question. |
+| `challenge` | Controlled challenges inject gold-derived content; the natural condition measures what the model produced itself. Averaging them reports an injection rate as a leakage rate. |
+
+`leak_curves` takes both as filters and `graph-report` refuses to run without resolving
+them, listing the available `(challenge, protocol)` pairs when the requested one is
+absent.
+
 ## Report gates
 
 `GRAPH_LEAK_REPORT.json` is marked `reportable` only when **all** hold:

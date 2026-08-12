@@ -50,6 +50,12 @@ gpu = [
     "transformers==4.51.3",
     "datasets==3.0.1",
 ]
+# The graph study's fast GPU backend. Separate extra, not part of `gpu`: vLLM pins its
+# own torch, and installing it alongside the reproduction environment would replace the
+# torch every existing number was produced under. See requirements-gpu-ampere.txt.
+vllm = [
+    "vllm==0.6.3.post1",
+]
 dev = [
     "ruff>=0.5",
     "black>=24.4",

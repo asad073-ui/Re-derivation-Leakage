@@ -74,44 +74,96 @@ generations, before caching and excluding the readback probe.
 
 | Stage | Items | Samples | Graph generations | Probe generations |
 |---|---|---|---|---|
+| Preflight | 1 | 1 | **21** | 10 |
 | Smoke | 4 | 2 | **168** | 80 |
 | Small discovery | 20 | 8 | 3 360 | 1 600 |
 | Main discovery | 50 | 32 | 33 600 | 16 000 |
 
-`rdl graph-plan` prints these before anything is generated, and
-`tests/graph/test_scheduler.py` pins the three numbers. Do **not** run the full Cartesian
-product of challenges × topologies on the 3090.
+**`--n-samples` must be passed to `graph-plan` AND `graph-run`.** The RTX profile's
+budget is 32 draws; without the flag a "4×2 smoke" is a 4×32 run — 2 688 graph
+generations and 1 280 probes, sixteen times the intended cost. Both commands call the
+same `apply_sample_budget`, so the plan describes the run that follows
+(`tests/contract/test_gpu_readiness.py`). Do **not** run the full Cartesian product of
+challenges × topologies × protocols on the 3090.
 
 ## The GPU-readiness gate
 
-Rent the 3090 only when all of these hold:
+Rent the 3090 only when all of these hold. Each is an executable check in
+`tests/contract/test_gpu_readiness.py` unless noted.
 
 - [x] every graph, defence, memory, runtime and contract test passes on CPU;
-- [x] the 4-item smoke cohort is frozen;
+- [x] **the target is the unlearned checkpoint** — `OptimAI-Lab/TOFU-forget10_RULE-NPO`,
+      not `..._full`, and it matches the two-agent repo's pinned entry;
+- [x] **model and tokenizer revisions are pinned**, and `assert_model_provenance`
+      refuses to start a run without them;
+- [x] the smoke cohort is frozen with content hashes **and** a dataset revision, and
+      that revision is what `load_dataset` receives;
 - [x] all five arms resolve;
-- [x] DRAGON and GraphForget share one detector object (asserted by test);
+- [x] DRAGON and GraphForget share one detector object;
+- [x] the DRAGON primary arm is the **prompt guard**; the refusal variant is a labelled
+      upper bound;
+- [x] **`graph_flow` is enabled**, so the study can measure propagation and not only
+      request filtering;
 - [x] the detector threshold is explicitly marked `diagnostic` or `calibrated`;
-- [x] the dry run predicts exactly **168** graph generations;
-- [x] resume works after an intentionally interrupted stub run;
+- [x] the dry run with `--n-samples 2` predicts exactly **168** graph generations;
+- [x] resume verifies sixteen immutable fields and refuses a different experiment;
 - [x] the validation split remains inaccessible (it raises on load);
 - [x] one physical model is shared by all five logical agents;
 - [x] no scoring API is called during generation;
-- [x] `RUN_MANIFEST.json` is written before the first model call;
-- [ ] model and tokenizer revisions are pinned in `configs/graph/models/*.yaml`.
+- [x] `RUN_MANIFEST.json` is written before the first model call, and is not overwritten
+      by a refused resume;
+- [x] `vllm` is pinned in `requirements-gpu-ampere.txt`;
+- [x] a retain-utility cohort exists, so a leakage reduction has a cost attached.
 
-The last box is deliberately open: `revision: null` records "unresolved" in the manifest
-rather than pretending to a commit. Pin it on the GPU box, where the Hub is reachable.
+Verified on the GPU box, not by a test:
 
-## Commands
+- [ ] `nvidia-smi` shows one process and one model resident;
+- [ ] the manifest's `resolved_model_revisions` matches the pinned SHAs exactly;
+- [ ] outputs are non-empty and no CPU fallback occurred;
+- [ ] the direct single-agent Leak@k floor still shows the expected forgetting.
+
+## Phase 2 — minimal preflight, then the smoke
 
 ```bash
-# on the GPU box, edit ONE line in configs/graph/launch.yaml:
+# ONE line in configs/graph/launch.yaml:
 #   active_profile: rtx3090_1b
+export HF_TOKEN=...        # never passed as an argument; never enters a manifest
 
-rdl graph-freeze-cohort --manifest data/cohorts/graph_unlearning_v1/smoke.json --write
-rdl graph-plan     --launch configs/graph/launch.yaml
-rdl graph-run      --launch configs/graph/launch.yaml --output runs/graph/smoke
-rdl graph-score    --run runs/graph/smoke --scorer leakk --device 0
-rdl graph-report   --run runs/graph/smoke
-rdl graph-finalize --run runs/graph/smoke
+# 1x1 preflight: 5 trajectories, 21 graph generations, 10 probes.
+rdl graph-plan --n-samples 1 --limit 1
+rdl graph-run  --n-samples 1 --limit 1 --protocol graph_flow --output runs/graph/preflight
+rdl graph-finalize --run runs/graph/preflight
 ```
+
+Check before going further: exactly one physical model handle
+(`shared_model_handles`), `resolved_model_revisions` equal to `afe117e4…` for both model
+and tokenizer, non-empty generations, no OOM, and `PERFORMANCE.json` showing real
+throughput and peak VRAM.
+
+Then the wiring smoke — **both protocols**, because they answer different questions:
+
+```bash
+rdl graph-run --n-samples 2 --protocol end_to_end_safety --output runs/graph/smoke-safety
+rdl graph-run --n-samples 2 --protocol graph_flow        --output runs/graph/smoke-flow
+
+for r in runs/graph/smoke-safety runs/graph/smoke-flow; do
+  rdl graph-score    --run $r --scorer leakk --device 0
+  rdl graph-report   --run $r
+  rdl graph-finalize --run $r
+done
+```
+
+The smoke is a wiring and performance result only. It is not publishable evidence: the
+detector is still `diagnostic`, and 2 draws cannot reach `primary_k: 32`.
+
+## Phase 3 — engineering
+
+20 items × 8 samples, diamond5, natural condition, both protocols, controlled stress
+conditions in separate runs. Use it to calibrate the detector on the engineering cohort,
+measure the false-positive rate, run the retain cohort (`phase: retain_utility`), tune
+batching, and check refusal rates.
+
+The single question this phase must answer before any publication run:
+**does GraphForget's advantage come from propagation, write and retrieval protection —
+or from blanket refusal?** The `graph_flow` protocol plus the retain cohort is what
+separates the two.

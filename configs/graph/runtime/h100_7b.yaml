@@ -14,8 +14,6 @@ runtime:
   max_num_seqs: 64
   max_num_batched_tokens: 16384
   tensor_parallel_size: 1
-  detector_device: cuda
-  detector_batch_size: 256
   shard_size: 128
   response_cache: true
 

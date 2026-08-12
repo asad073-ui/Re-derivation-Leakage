@@ -7,13 +7,14 @@ slightly differently from the runner would predict a cost for an experiment nobo
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from pathlib import Path
 
 import typer
 
 from ..eval.tofu_data import TofuItem, load_items
-from ..graph.config import ResolvedGraphConfig, load_graph_config
+from ..graph.config import ResolvedGraphConfig, assert_model_provenance, load_graph_config
 from ..graph.validation import GraphConfigError
 from ..models.stub import StubLM
 from ..paths import repo_root
@@ -23,6 +24,7 @@ from ..studies.graph_leak.cohort import Cohort, CohortError, load_cohort, resolv
 
 __all__ = [
     "DEFAULT_LAUNCH",
+    "apply_sample_budget",
     "build_backend",
     "load_config_or_fail",
     "resolve_cohort_items",
@@ -35,7 +37,40 @@ _MANIFEST_FOR_PHASE = {
     "engineering": "engineering_manifest",
     "discovery": "discovery_manifest",
     "validation": "validation_manifest",
+    "retain_utility": "retain_utility_manifest",
 }
+
+
+def apply_sample_budget(cfg: ResolvedGraphConfig, n_samples: int | None) -> ResolvedGraphConfig:
+    """Reduce the profile's sample budget, identically for `graph-plan` and `graph-run`.
+
+    ONE implementation, deliberately. `graph-run` used to accept `--n-samples` while
+    `graph-plan` did not, so planning a smoke against the RTX profile printed the cost
+    of the profile's full 32 draws — 2 688 graph generations — while the run that
+    followed did 168. A plan that describes a different experiment from the run is worse
+    than no plan, because it is trusted.
+
+    Reducing only: a profile's budget is the hardware's ceiling, not a suggestion.
+    """
+    if n_samples is None:
+        return cfg
+    if n_samples > cfg.profile.sampling.n_samples:
+        raise typer.BadParameter(
+            f"--n-samples {n_samples} exceeds the profile's budget of "
+            f"{cfg.profile.sampling.n_samples}. It may reduce, never raise."
+        )
+    budget = cfg.profile.sampling.model_copy(
+        update={
+            "n_samples": n_samples,
+            "k_values": tuple(k for k in cfg.profile.sampling.k_values if k <= n_samples) or (1,),
+        }
+    )
+    profile = cfg.profile.model_copy(update={"sampling": budget})
+    # A reduced budget that can no longer reach the study's primary k makes the run a
+    # wiring check, and it has to say so rather than silently reporting at a smaller k.
+    if cfg.study.sampling.primary_k not in budget.k_values:
+        profile = profile.model_copy(update={"reportable": False})
+    return cfg.model_copy(update={"profile": profile})
 
 
 def load_config_or_fail(
@@ -90,6 +125,9 @@ def resolve_cohort_items(
         fixture=fixture,
         allow_fixture=bool(fixture),
         token=token,
+        # The cohort's own frozen revision drives the download, so the run loads exactly
+        # the commit its manifest names rather than whatever the branch head holds.
+        revision=cohort.dataset_revision,
     )
     try:
         items = resolve_cohort(cohort, source)
@@ -114,6 +152,14 @@ def build_backend(
     profiles = {node.model for node in cfg.topology.nodes}
     backend_kind = cfg.profile.runtime.backend
 
+    # The gate that would have caught `..._full` with `revision: null`. Checked for every
+    # real backend, before a single byte is downloaded.
+    if backend_kind != "stub":
+        try:
+            assert_model_provenance(cfg.model)
+        except GraphConfigError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+
     if backend_kind == "stub":
         answers = {item.question: item.answer for item in items}
         stub = StubLM(
@@ -130,12 +176,17 @@ def build_backend(
 
         if not cfg.model.repo_id:
             raise typer.BadParameter("the vllm backend needs model.repo_id")
+        if token:
+            # vLLM authenticates from the environment; passing a token as an argument
+            # would let it reach engine kwargs and from there a manifest.
+            os.environ.setdefault("HF_TOKEN", token)
         return (
             VllmBackend(
                 cfg.model.repo_id,
                 profiles=tuple(sorted(profiles)),
                 revision=cfg.model.revision,
                 tokenizer=cfg.model.tokenizer_repo_id,
+                tokenizer_revision=cfg.model.tokenizer_revision,
                 dtype=cfg.profile.runtime.dtype,
                 gpu_memory_utilization=cfg.profile.runtime.gpu_memory_utilization,
                 max_model_len=cfg.profile.runtime.max_model_len,

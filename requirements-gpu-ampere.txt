@@ -54,3 +54,22 @@ typer>=0.12
 
 faiss-cpu==1.8.0.post1
 sentence-transformers==3.1.1
+
+# --------------------------------------------------------------------------------------
+# graph-unlearning-v1 GPU backend
+# --------------------------------------------------------------------------------------
+# vLLM for the graph protocol's continuous batching. Pinned, because an unpinned engine
+# changes the sampler and the batching between runs and those are exactly the things a
+# Leak@k comparison must hold fixed.
+#
+# 0.6.3.post1 is the last release in the 0.6 line that builds against the torch 2.4.x /
+# cu121 wheels this file already targets and against transformers 4.51.3. Installing a
+# newer vLLM here will drag its own torch in and silently replace the one every other
+# number in this repository was produced under — install it in a SEPARATE environment if
+# you need it.
+#
+# SCOPE: vLLM serves the graph protocol only. The strict direct Leak@k compatibility
+# runner stays on transformers at batch size 1; vLLM does not reproduce
+# `model.generate` bit for bit, so a result presented as a reproduction of the released
+# Leak@k generation path must not come from it. See docs/graph_unlearning/GPU_EXECUTION.md.
+vllm==0.6.3.post1

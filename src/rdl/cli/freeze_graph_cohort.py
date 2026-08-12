@@ -28,12 +28,21 @@ def freeze_graph_cohort(
         cohort = load_cohort(manifest, require_frozen=False)
     except CohortError as exc:
         raise typer.BadParameter(str(exc)) from exc
+    if not fixture and not revision:
+        raise typer.BadParameter(
+            "--dataset-revision is required when freezing against real data. Freezing "
+            "content hashes taken from the branch head, then recording no revision, "
+            "produces a manifest nobody can reproduce the download for.\n"
+            "Find it with: huggingface_hub.HfApi().dataset_info('locuslab/TOFU').sha"
+        )
     items, provenance = load_items(
         dataset="stub" if fixture else "tofu",
         split=cohort.dataset_config,
         fixture=fixture,
         allow_fixture=bool(fixture),
         token=token,
+        # The SAME revision that gets recorded is the one that is downloaded.
+        revision=revision,
     )
     try:
         frozen = freeze_cohort(cohort, items, revision=revision)

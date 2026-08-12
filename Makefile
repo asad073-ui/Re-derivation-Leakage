@@ -61,14 +61,18 @@ GRAPH_SMOKE_ARGS := --launch configs/graph/launch.yaml \
 	--cohort data/cohorts/graph_unlearning_v1/cpu_stub.json --limit 4
 
 graph-smoke:
-	rm -rf $(GRAPH_SMOKE_OUT)
-	$(PY) -m rdl.cli graph-plan $(GRAPH_SMOKE_ARGS)
-	$(PY) -m rdl.cli graph-run $(GRAPH_SMOKE_ARGS) --challenges direct --output $(GRAPH_SMOKE_OUT)
-	$(PY) -m rdl.cli graph-score --run $(GRAPH_SMOKE_OUT)
-	$(PY) -m rdl.cli graph-report --run $(GRAPH_SMOKE_OUT) --challenge direct
-	$(PY) -m rdl.cli graph-finalize --run $(GRAPH_SMOKE_OUT)
+	rm -rf $(GRAPH_SMOKE_OUT)-*
+	$(PY) -m rdl.cli graph-plan $(GRAPH_SMOKE_ARGS) --n-samples 2
+	@for proto in end_to_end_safety graph_flow; do \
+		out=$(GRAPH_SMOKE_OUT)-$$proto; \
+		$(PY) -m rdl.cli graph-run $(GRAPH_SMOKE_ARGS) --n-samples 2 \
+			--challenges direct --protocol $$proto --output $$out && \
+		$(PY) -m rdl.cli graph-score --run $$out && \
+		$(PY) -m rdl.cli graph-report --run $$out --challenge direct && \
+		$(PY) -m rdl.cli graph-finalize --run $$out || exit 1; \
+	done
 	@echo ""
-	@echo "GRAPH SMOKE PASSED (diagnostic only)"
+	@echo "GRAPH SMOKE PASSED, both protocols (diagnostic only)"
 
 submodule:
 	git submodule update --init --recursive

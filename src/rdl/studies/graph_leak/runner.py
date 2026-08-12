@@ -18,8 +18,10 @@ What it produces, under ``runs/graph/<run-id>/``:
 
 from __future__ import annotations
 
+import datetime as _dt
 import hashlib
 import importlib.metadata
+import json
 import platform
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -32,6 +34,7 @@ from ...graph.config import ResolvedGraphConfig
 from ...graph.executor import EpisodeSpec, GraphExecutor, GraphTrajectory
 from ...graph.scheduler import planned_generations
 from ...graph_memory.staged_store import StagedMemory
+from ...logging_utils import get_logger
 from ...memory.blocklist import Blocklist, build_blocklist
 from ...memory.store import MemoryStore
 from ...paths import git_diff_sha256, git_dirty, git_sha
@@ -41,10 +44,17 @@ from ...runtime.resource_monitor import ResourceMonitor
 from .arms import ArmPlan, build_arm_runtime, build_detector, build_registry
 from .cohort import Cohort
 from .controls import ControlledChallengeSet, build_controlled_challenges, concept_control_mapping
-from .evidence import ShardWriter, atomic_json
+from .evidence import ShardWriter, atomic_json, verify_shards
 from .response_bank import ResponseBank
 
 __all__ = ["GraphRunner", "RunPlan", "build_baseline_memory"]
+
+log = get_logger(__name__)
+
+
+def _brief(value: object, limit: int = 160) -> str:
+    text = json.dumps(value, sort_keys=True, default=str)
+    return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
 @dataclass(frozen=True)
@@ -126,6 +136,11 @@ class GraphRunner:
     backend: GenerationBackend
     output: Path
     challenges: tuple[str, ...] = ("natural",)
+    # ``end_to_end_safety`` or ``graph_flow``. One protocol per run; the resume
+    # fingerprint refuses to continue a run under a different one, because pooling the
+    # two would average "the system refused the request" with "the graph contained what
+    # it produced" and neither number would survive.
+    protocol: str = "end_to_end_safety"
     tokenizer_revision: str | None = None
     resume: bool = False
     bank: ResponseBank = field(default_factory=ResponseBank)
@@ -134,13 +149,18 @@ class GraphRunner:
     # ------------------------------------------------------------------- assembly --
 
     def __post_init__(self) -> None:
+        if self.protocol not in self.cfg.study.protocols:
+            raise ValueError(
+                f"protocol '{self.protocol}' is not enabled by study "
+                f"'{self.cfg.study.study_id}'; available: {list(self.cfg.study.protocols)}"
+            )
         self.concept_by_item = {entry.item_id: entry.concept_id for entry in self.cohort.items}
         self.registry = build_registry(
             self.items, concept_of=lambda item_id: self.concept_by_item[item_id]
         )
         self.detector: SemanticConceptDetector = build_detector(self.cfg, self.registry)
         self.arm_plans: list[ArmPlan] = build_arm_runtime(
-            self.cfg, self.cfg.topology, self.detector
+            self.cfg, self.cfg.topology, self.detector, protocol=self.protocol
         )
         self.scheduler = BatchScheduler(
             self.backend,
@@ -210,6 +230,22 @@ class GraphRunner:
     def run(self) -> dict:
         self.output.mkdir(parents=True, exist_ok=True)
         generations = self.output / "generations"
+        plan = self.plan()
+        manifest = self._manifest(plan)
+
+        # Compatibility is checked BEFORE anything is written. The previous version
+        # overwrote RUN_MANIFEST.json first, so a resume under a different checkpoint,
+        # topology, sample budget or protocol replaced the record of what had actually
+        # produced the existing shards and then silently skipped their keys.
+        previous = self._previous_manifest()
+        if previous is not None:
+            if not self.resume:
+                raise FileExistsError(
+                    f"{self.output} already holds a run manifest. Pass resume=True to "
+                    "continue it, or choose a new output directory — runs are append-only."
+                )
+            self._assert_resumable(previous)
+
         writer = ShardWriter(generations, shard_size=self.cfg.profile.runtime.shard_size)
         traces = ShardWriter(
             self.output / "traces",
@@ -222,9 +258,24 @@ class GraphRunner:
                 f"{generations} already holds {len(done)} trajectories. Pass resume=True to "
                 "continue it, or choose a new output directory — runs are append-only."
             )
-
-        plan = self.plan()
-        manifest = self._manifest(plan)
+        if done and previous is not None:
+            # The shards being resumed onto must be the ones the old manifest describes.
+            verdict = verify_shards(generations, previous.get("evidence_shards", []))
+            if not verdict["ok"] and previous.get("complete"):
+                raise ValueError(
+                    "refusing to resume: existing evidence shards do not match the hashes "
+                    f"in the previous manifest: {verdict['problems'][:3]}"
+                )
+        # Carry the completed work forward so the final manifest describes the whole run.
+        manifest["resumed_from"] = (
+            {
+                "trajectories": len(done),
+                "previous_git_sha": previous.get("git_sha"),
+                "previous_started": previous.get("started_utc"),
+            }
+            if previous is not None
+            else None
+        )
         atomic_json(self.output / "RUN_MANIFEST.json", manifest)
         atomic_json(self.output / "RESOLVED_CONFIG.json", self.cfg.to_dict())
         atomic_json(self.output / "COHORT.json", self.cohort.to_dict())
@@ -294,6 +345,69 @@ class GraphRunner:
         manifest["actual_graph_generations"] = self.scheduler.dispatched
         atomic_json(self.output / "RUN_MANIFEST.json", manifest)
         return manifest
+
+    # --------------------------------------------------------------------- resume --
+
+    # Fields that define WHICH EXPERIMENT this is. A resume that differs on any of them
+    # would append trajectories from a different experiment to the same evidence file,
+    # and the trajectory-key skip would hide it — the completed keys look identical
+    # whichever checkpoint produced them.
+    IMMUTABLE_ON_RESUME: tuple[str, ...] = (
+        "study_id",
+        "phase",
+        "protocol",
+        "study_design_hash",
+        "profile_hash",
+        "resolved_run_hash",
+        "cohort_fingerprint",
+        "cohort_split",
+        "challenges",
+        "backend",
+        "model",
+        "tokenizer_revision",
+        "logical_agents",
+        "detector",
+        "control_mapping",
+        "sampling",
+    )
+
+    def _previous_manifest(self) -> dict | None:
+        path = self.output / "RUN_MANIFEST.json"
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"refusing to resume: {path} is not readable JSON: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError(f"refusing to resume: {path} is not an object")
+        return payload
+
+    def _assert_resumable(self, previous: dict) -> None:
+        current = self._manifest(self.plan())
+        differences: list[str] = []
+        for key in self.IMMUTABLE_ON_RESUME:
+            was, now = previous.get(key), current.get(key)
+            if was != now:
+                differences.append(f"  {key}:\n    was: {_brief(was)}\n    now: {_brief(now)}")
+        if differences:
+            raise ValueError(
+                "refusing to resume: this run is not the same experiment as the one in "
+                f"{self.output / 'RUN_MANIFEST.json'}.\n"
+                + "\n".join(differences)
+                + "\nStart a new output directory. Appending to these shards would mix two "
+                "experiments in one evidence file, and the completed-key skip would hide it."
+            )
+        # Git state is recorded rather than enforced: a resume after an unrelated commit
+        # is normal, and a hard failure there would strand recoverable runs. A CODE
+        # change that matters shows up in the hashes above.
+        if previous.get("git_sha") != current.get("git_sha"):
+            log.warning(
+                "resuming a run started at git %s from git %s; the study, profile and "
+                "resolved hashes all match, so the experiment is the same",
+                previous.get("git_sha"),
+                current.get("git_sha"),
+            )
 
     # ------------------------------------------------------------------- episodes --
 
@@ -388,6 +502,7 @@ class GraphRunner:
             "sample_id": traj.spec.sample_id,
             "arm": traj.spec.arm,
             "challenge": traj.spec.challenge,
+            "protocol": self.protocol,
             "topology": traj.spec.topology,
             "defense": arm.defense.name,
             # The reference answer travels with the raw evidence so a pinned evaluator can
@@ -526,7 +641,8 @@ class GraphRunner:
     def _manifest(self, plan: RunPlan) -> dict:
         uses_gold = any(c != "natural" for c in self.challenges)
         return {
-            "schema": "graph-run-manifest-v1",
+            "schema": "graph-run-manifest-v2",
+            "started_utc": _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
             "study_id": self.cfg.study.study_id,
             "phase": self.cfg.phase,
             **self.cfg.hashes(),
@@ -538,8 +654,22 @@ class GraphRunner:
                 package: _pkg_version(package)
                 for package in ("torch", "transformers", "datasets", "vllm", "numpy", "pydantic")
             },
+            "protocol": self.protocol,
+            "protocol_note": (
+                "graph_flow: the request gate is held CONSTANT across every arm — no arm "
+                "inspects the incoming question — so what is measured is whether forgotten "
+                "information generated or introduced after the initial boundary can "
+                "propagate."
+                if self.protocol == "graph_flow"
+                else "end_to_end_safety: the request gate is part of the defence, so a "
+                "forget question is refused before the model is called. This measures "
+                "whether the DEPLOYED SYSTEM releases forgotten information; it does NOT "
+                "isolate the graph contribution."
+            ),
             "backend": self.cfg.profile.runtime.backend,
             "model": self.cfg.model.model_dump(mode="json"),
+            # What the backend ACTUALLY resolved, not what the config asked for.
+            "resolved_model_revisions": _resolved_revisions(self.backend),
             "tokenizer_revision": self.tokenizer_revision,
             "shared_model_handles": getattr(self.backend, "shared_handle_ids", dict)(),
             "logical_agents": self.cfg.profile.agents.logical_count,
@@ -581,3 +711,19 @@ def _pkg_version(name: str) -> str:
         return importlib.metadata.version(name)
     except Exception:
         return "absent"
+
+
+def _resolved_revisions(backend: GenerationBackend) -> dict:
+    """What the backend actually loaded, per model profile.
+
+    The config records what was ASKED for. A manifest that repeats the request as though
+    it were the outcome cannot detect a backend that silently fell back to a branch head,
+    which is exactly the failure a pinned revision exists to prevent.
+    """
+    resolved = getattr(backend, "resolved_revisions", None)
+    if callable(resolved):
+        try:
+            return dict(resolved())
+        except Exception as exc:  # provenance is best-effort; never fail a finished run
+            return {"error": f"{type(exc).__name__}: {exc}"}
+    return {}

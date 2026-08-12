@@ -23,6 +23,19 @@ arms:
 challenge_modes: [natural]
 controlled_challenges: [direct, paraphrase, partial_clue, split_clues, memory_reentry, tool_reentry]
 
+# The two protocols. Runs pick one with `--protocol`; a report never pools them.
+#
+#   end_to_end_safety  the request gate is part of the defence. Answers "does the
+#                      deployed system release forgotten information".
+#   graph_flow         the request gate is held CONSTANT across every arm. Answers "can
+#                      forgotten information generated or introduced after the initial
+#                      boundary propagate" — the GraphForget contribution.
+#
+# graph_flow is mandatory: the detector's prototypes include the forget questions
+# themselves, so under end_to_end_safety alone both guarded arms fire at the root and
+# the graph mechanisms are never exercised.
+protocols: [end_to_end_safety, graph_flow]
+
 profiles: [local_cpu, rtx3090_1b, h100_7b]
 
 sampling:
@@ -45,6 +58,10 @@ memory:
   blocklist: id
 
 detector:
+  # The only implemented backbone: the deterministic, torch-free hashing embedder. It
+  # runs on CPU by construction — there is no `detector_device` knob, because there is
+  # no code path a GPU setting would select.
+  backend: hashing64
   threshold: 0.55
   # `diagnostic` until a calibration artefact exists; the report gate will not call a
   # run reportable while this says diagnostic.
@@ -66,5 +83,9 @@ data:
   engineering_manifest: engineering.json
   discovery_manifest: discovery.json
   validation_manifest: validation.json
+  # Author-balanced retain90 questions the system is SUPPOSED to answer. Without this
+  # cohort there is no retain-utility number, and a leakage reduction with no utility
+  # cost attached is not a result — a defence that refuses everything would win.
+  retain_utility_manifest: retain_utility.json
   exclusion_manifest: exclusions.json
   require_frozen_hashes: true

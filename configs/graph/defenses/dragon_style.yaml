@@ -1,20 +1,26 @@
-# DRAGON-style node-local baseline.
+# DRAGON-style node-local baseline — THE PRIMARY BASELINE.
 #
-# `implementation: template` is the only supported value. The public DRAGON repository is
-# a code skeleton — the detector/guard checkpoints are not released and the WMDP path is
-# incomplete — so this is not a reproduction and is never called one. Setting
-# `sft_checkpoint` raises rather than silently substituting a template.
+# `guard_action: guard_prompt` is the faithful "template reasoning" mode: a guard
+# instruction is appended to the system message and the node generates normally. This is
+# what DRAGON describes — detect, then modify the inference context — and it is what the
+# primary comparison uses.
 #
-# `guard_action: refuse` is deterministic and model-independent. A prompt-only guard on a
-# checkpoint that ignores instructions is a no-op, and a baseline that is a no-op is not
-# a baseline. `guard_prompt` is available for instruction-following checkpoints.
+# It was previously `refuse`, which is a deterministic node-local REFUSAL and a strictly
+# stronger intervention than anything DRAGON performs. Calling that "DRAGON" overstated
+# the baseline. It is still available as `dragon_style_refuse` and is reported as a
+# strong upper bound, never as a faithful reproduction. See DECISIONS.md GU-0017.
 #
-# `apply_at: every_agent_input` is the STRONGER reading and is what the main comparison
-# uses. `external_prompt_only` is the weaker ablation.
+# The public DRAGON repository is a code skeleton: the detector/guard checkpoints are
+# not released and the WMDP path is incomplete. This is not a reproduction and is never
+# called one. `implementation: sft_checkpoint` raises rather than substituting a
+# template for weights that were never released.
+#
+# `apply_at: every_agent_input` is the STRONGER of the two graph generalisations and is
+# what the main comparison uses; `external_prompt_only` is the weaker ablation.
 name: dragon_style
 kind: dragon_style
-guard_action: refuse
+guard_action: guard_prompt
 apply_at: every_agent_input
 implementation: template
 propagate_scope: false
-description: "inference-time scope detection at each agent input; no cross-object state"
+description: "DRAGON-style prompt guard at each agent input; no cross-object state"

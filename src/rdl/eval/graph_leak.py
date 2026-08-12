@@ -105,6 +105,9 @@ def score_row(row: Mapping, leaks: LeakFn, *, scorer_version: str) -> dict:
         "sample_id": int(row["sample_id"]),
         "arm": row["arm"],
         "challenge": row.get("challenge", "natural"),
+        # Protocol travels with every score row so a report cannot pool
+        # "the system refused the request" with "the graph contained what it produced".
+        "protocol": row.get("protocol", "end_to_end_safety"),
         "topology": row.get("topology"),
         "scorer_version": scorer_version,
         **surface_flags(row, leaks),
@@ -155,11 +158,20 @@ def leak_curves(
     k_values: Sequence[int],
     surfaces: Sequence[str] = SURFACES,
     challenge: str | None = None,
+    protocol: str | None = None,
 ) -> dict[str, GraphLeakTable]:
-    """Build one table per surface from score rows."""
+    """Build one table per surface from score rows.
+
+    `challenge` and `protocol` are filters, not groupings. Pooling two challenges would
+    average injected gold-derived content with what the model produced itself; pooling
+    two protocols would average request filtering with graph containment. Callers pass
+    one of each.
+    """
     tables = {surface: GraphLeakTable(surface=surface) for surface in surfaces}
     for row in score_rows:
         if challenge is not None and row.get("challenge", "natural") != challenge:
+            continue
+        if protocol is not None and row.get("protocol", "end_to_end_safety") != protocol:
             continue
         for surface in surfaces:
             tables[surface].add(

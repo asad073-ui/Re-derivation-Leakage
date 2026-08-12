@@ -1,10 +1,16 @@
-# The H100 confirmation target. The 7B family is what makes the model-scale claim a
-# claim about scale rather than about one checkpoint. Checkpoint provenance and the
-# direct-safety gate must both pass before this profile produces a reportable number.
+# The H100 confirmation target.
+#
+# DELIBERATELY UNPINNED AND UNUSABLE AS SHIPPED. `expect_unlearned: true` with a null
+# revision fails the model-provenance gate, so `active_profile: h100_7b` cannot start a
+# run until someone resolves the checkpoint and pins it. That is the correct state: the
+# 7B target has not been selected, its provenance has not been verified, and its direct
+# forget/retain floors have not been measured. Filling this in is a deliberate act, not
+# a default.
 name: unlearned_7b
 kind: hf
-repo_id: locuslab/tofu_ft_llama2-7b
+repo_id: null
 revision: null
-tokenizer_repo_id: locuslab/tofu_ft_llama2-7b
+tokenizer_repo_id: null
 tokenizer_revision: null
-description: "7B unlearned checkpoint for model-scale confirmation"
+description: "7B unlearned checkpoint for model-scale confirmation — NOT YET SELECTED"
+expect_unlearned: true

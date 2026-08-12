@@ -70,9 +70,10 @@ class DragonStyleDefense:
         self,
         *,
         detector: SemanticConceptDetector,
-        guard_action: Literal["refuse", "guard_prompt", "both"] = "refuse",
+        guard_action: Literal["refuse", "guard_prompt", "both"] = "guard_prompt",
         apply_at: Literal["every_agent_input", "external_prompt_only"] = "every_agent_input",
         implementation: Literal["template", "sft_checkpoint"] = "template",
+        inspect_query: bool = True,
         sanitizer: Sanitizer | None = None,
     ) -> None:
         if implementation != "template":
@@ -85,6 +86,9 @@ class DragonStyleDefense:
         self.guard_action = guard_action
         self.apply_at = apply_at
         self.implementation = implementation
+        # False under the graph_flow protocol, where the request gate is held constant
+        # across arms so that what is measured is propagation, not request filtering.
+        self.inspect_query = inspect_query
         self.sanitizer = sanitizer or Sanitizer()
         self.counters = DefenseCounters()
 
@@ -101,7 +105,7 @@ class DragonStyleDefense:
 
         # The node's whole incoming context, exactly as a node-local guard would see it.
         # No inheritance, no cross-call state: each call starts from nothing.
-        result = self.detector.score(ctx.combined_text())
+        result = self.detector.score(ctx.combined_text(include_query=self.inspect_query))
         if not result.fired:
             return NodeInputVerdict(
                 inputs=tuple(ctx.inputs),
@@ -185,6 +189,7 @@ class DragonStyleDefense:
             "guard_action": self.guard_action,
             "apply_at": self.apply_at,
             "implementation": self.implementation,
+            "inspect_query": self.inspect_query,
             "detector_version": self.detector.version,
             **self.counters.to_dict(),
         }

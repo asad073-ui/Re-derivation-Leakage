@@ -58,9 +58,60 @@ def test_validation_refuses_to_load_on_this_checkpoint():
         load_cohort(COHORTS / "validation.json", require_frozen=False)
 
 
-def test_an_unfrozen_cohort_is_refused_when_hashes_are_required():
+def test_every_shipped_real_cohort_is_frozen_and_revision_pinned():
+    """The state the GPU gate requires: content hashes AND the dataset commit."""
+    for split in ("smoke", "engineering", "discovery", "retain_utility"):
+        cohort = load_cohort(COHORTS / f"{split}.json", require_frozen=True)
+        assert cohort.frozen, split
+        assert cohort.dataset_revision, split
+        assert all(i.question_sha256 and i.answer_sha256 for i in cohort.items), split
+
+
+def test_all_real_cohorts_share_one_dataset_revision():
+    revisions = {
+        load_cohort(COHORTS / f"{s}.json").dataset_revision
+        for s in ("smoke", "engineering", "discovery", "retain_utility")
+    }
+    assert len(revisions) == 1, f"cohorts frozen against different commits: {revisions}"
+
+
+def test_an_unfrozen_cohort_is_refused_when_hashes_are_required(tmp_path):
+    payload = json.loads((COHORTS / "smoke.json").read_text(encoding="utf-8"))
+    for item in payload["items"]:
+        item["question_sha256"] = None
+        item["answer_sha256"] = None
+    path = tmp_path / "unfrozen.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(CohortError, match="not frozen"):
-        load_cohort(COHORTS / "discovery.json", require_frozen=True)
+        load_cohort(path, require_frozen=True)
+
+
+def test_a_frozen_cohort_without_a_dataset_revision_is_refused(tmp_path):
+    """Content hashes catch a changed question only AFTER the download.
+
+    The revision is what makes the download itself reproducible, so a frozen cohort
+    that omits it is refused rather than trusted.
+    """
+    payload = json.loads((COHORTS / "smoke.json").read_text(encoding="utf-8"))
+    payload["dataset_revision"] = None
+    path = tmp_path / "unpinned.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(CohortError, match="no dataset_revision"):
+        load_cohort(path, require_frozen=True)
+
+
+def test_the_fixture_cohort_is_exempt_from_the_revision_requirement():
+    """It is a checked-in file, so its 'revision' is the path, and it loads."""
+    cohort = load_cohort(COHORTS / "cpu_stub.json", require_frozen=True)
+    assert cohort.dataset == "fixture"
+
+
+def test_the_retain_cohort_is_author_balanced():
+    cohort = load_cohort(COHORTS / "retain_utility.json")
+    assert cohort.dataset_config == "retain90"
+    # One question per author, so items and concepts are the same count.
+    assert len(cohort.items) == len(cohort.concept_ids) == 45
+    assert all(i.usage == "retain_utility" for i in cohort.items)
 
 
 def test_the_cpu_stub_cohort_is_frozen_and_loads():
