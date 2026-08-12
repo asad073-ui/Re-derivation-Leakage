@@ -236,22 +236,60 @@ def test_retain_utility_may_not_be_named_as_the_forget_policy():
         )
 
 
+def _route(monkeypatch, cfg, **kwargs) -> list[dict]:
+    """Record how `resolve_run_cohorts` calls the loader, without loading anything.
+
+    A pure routing test, and offline by construction: the CPU gate has no `datasets`
+    installed, so anything that reaches the real TOFU loader fails in CI and passes on a
+    developer machine that happens to have it. What is under test here is which phase and
+    which limit each role is resolved with, and that needs no data at all.
+    """
+    calls: list[dict] = []
+
+    def stub(config, **call):
+        calls.append(call)
+        split = str(call.get("phase") or config.phase)
+        # retain90 for a retain split, forget10 otherwise, with disjoint authors — the
+        # same relationship the committed cohorts have, so the role checks run for real.
+        retain = "retain" in split
+        cohort = _cohort(
+            split,
+            "retain90" if retain else "forget10",
+            ("retain-a", "retain-b") if retain else ("forget-a", "forget-b"),
+        )
+        return cohort.limited(call.get("limit")), [None] * len(cohort.items)
+
+    monkeypatch.setitem(resolve_run_cohorts.__globals__, "resolve_cohort_items", stub)
+    resolve_run_cohorts(cfg, **kwargs)
+    return calls
+
+
 def test_the_limit_narrows_the_questions_and_never_the_forget_policy(monkeypatch):
-    """A question budget is not a statement about what the deployment forgot."""
-    cfg = load_graph_config(LAUNCH, overrides=["phase=engineering"])
+    """A question budget is not a statement about what the deployment forgot.
 
-    seen: list[tuple[str | None, int | None]] = []
-    real = resolve_run_cohorts.__globals__["resolve_cohort_items"]
+    The retain launch resolves twice, and only the EVALUATION resolution carries the
+    limit. A forget policy that shrank with `--limit` would make the guard's scope a
+    function of how much GPU time was bought.
+    """
+    cfg = load_graph_config(
+        repo_root() / "configs" / "graph" / "launch_rtx3090_retain.yaml",
+        overrides=["active_profile=local_cpu"],
+    )
+    calls = _route(monkeypatch, cfg, limit=2)
 
-    def spy(config, **kwargs):
-        seen.append((kwargs.get("phase"), kwargs.get("limit")))
-        return real(config, **kwargs)
+    assert len(calls) == 2
+    evaluation, policy = calls
+    assert evaluation.get("phase") is None and evaluation["limit"] == 2
+    assert policy["phase"] == "engineering" and policy["limit"] is None
 
-    monkeypatch.setitem(resolve_run_cohorts.__globals__, "resolve_cohort_items", spy)
-    cohorts = resolve_run_cohorts(cfg, limit=2)
 
-    assert len(cohorts.evaluation_items) == 2
-    # One resolution only, because evaluation and policy are the same cohort here — and
-    # crucially it is the EVALUATION resolution that carried the limit.
-    assert seen == [(None, 2)]
-    assert cohorts.policy is cohorts.evaluation
+def test_a_forget_phase_resolves_one_cohort_for_both_roles(monkeypatch):
+    cfg = load_graph_config(
+        repo_root() / "configs" / "graph" / "launch_rtx3090_engineering.yaml",
+        overrides=["active_profile=local_cpu"],
+    )
+    calls = _route(monkeypatch, cfg, limit=2)
+
+    # One resolution, because the evaluated cohort IS the forget cohort here.
+    assert len(calls) == 1
+    assert calls[0]["limit"] == 2

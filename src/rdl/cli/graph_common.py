@@ -234,11 +234,11 @@ def resolve_run_cohorts(
     )
     policy_phase = _forget_policy_phase(cfg)
 
-    if policy_cohort_path is None and policy_phase == str(cfg.phase) and cohort_path is not None:
-        # An explicit --cohort with no separate policy cohort keeps both roles on that
-        # one manifest, which is right for the CPU stub and for any ad-hoc forget split.
-        policy, policy_items = evaluation, evaluation_items
-    elif policy_cohort_path is None and policy_phase == str(cfg.phase):
+    if policy_cohort_path is None and policy_phase == str(cfg.phase):
+        # The evaluated phase IS the forget phase, so one cohort serves both roles. That
+        # covers smoke, engineering, discovery, validation, and an explicit `--cohort`
+        # pointing at an ad-hoc forget split or the CPU stub. It is still checked below:
+        # sharing the roles is only legitimate while the cohort is a forget cohort.
         policy, policy_items = evaluation, evaluation_items
     else:
         policy, policy_items = resolve_cohort_items(
