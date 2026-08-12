@@ -1,0 +1,12 @@
+{
+  "batch_size": 1,
+  "n_batch_misses": 0,
+  "n_distinct_pairs": 36,
+  "n_rows": 10,
+  "n_surface_questions": 176,
+  "nli_forward_pairs": 0,
+  "note": "the offline token-F1 scorer is deterministic and auditable but NOT the released semantic gate; a reportable semantic claim needs --scorer leakk",
+  "reportable": false,
+  "scorer": "offline",
+  "scorer_version": "offline-token-f1-v1"
+}
