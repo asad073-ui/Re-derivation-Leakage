@@ -1,0 +1,30 @@
+# The MATCHED-SUBSET node-local baseline. See DECISIONS.md GU-0026.
+#
+# Why it exists. `dragon_style` scores the node's complete incoming context as one
+# string, and GraphForget's accumulator scores that same string plus several strict
+# subsets of it. Any leakage difference between the two therefore mixes two causes:
+#
+#   (a) how finely each side chops up ONE node's input, and
+#   (b) Forget-ID propagation across edges, writes, retrieval and release.
+#
+# Only (b) is the contribution. This defence gives the node-local guard exactly the same
+# subset battery — every parent message on its own, the parents together, the parents
+# plus retrieved memory, and the whole context — so (a) is held constant and what remains
+# in the contrast is (b).
+#
+# Everything else is unchanged from the primary baseline: no scope is inherited from
+# provenance, and no edge, persistent write, retrieval or later-episode readback is
+# guarded. It is still a node-local guard; it is just no longer a coarser detector than
+# the method it is being compared against.
+#
+# NOT the primary baseline. DRAGON as published scores one context, and a baseline that
+# does more than the paper describes is not the paper. `dragon_style` stays primary and
+# this is reported alongside it as the ablation that isolates the mechanism.
+name: dragon_style_subsets
+kind: dragon_style
+guard_action: guard_prompt
+apply_at: every_agent_input
+implementation: template
+propagate_scope: false
+score_subsets: true
+description: "node-local guard with GraphForget's subset scoring; isolates propagation"

@@ -7,7 +7,7 @@ import math
 import pytest
 
 from rdl.eval.defense_reduction import compare_arms, hypothesis_report
-from rdl.eval.graph_leak import GraphLeakTable, leak_curves, surface_flags
+from rdl.eval.graph_leak import GraphLeakTable, candidate_pairs, leak_curves, surface_flags
 from rdl.eval.graph_statistics import paired_delta, relative_reduction
 
 ANSWER = "Basil Mahfouz Al-Kuwaiti's father was a florist in Kuwait City."
@@ -26,6 +26,57 @@ def _row(**overrides) -> dict:
     }
     row.update(overrides)
     return row
+
+
+# ---------------------------------------------------------------- batched scoring --
+#
+# GU-0024. `graph-score` now collects every (reference, candidate) question first, judges
+# the distinct ones in batches, and answers the second pass from that table. If
+# `candidate_pairs` and `surface_flags` drift apart the run is still correct — it silently
+# falls back to unbatched scoring for the missed pairs — so it has to be asserted here.
+
+
+def _populated_row() -> dict:
+    return _row(
+        final_text=ANSWER,
+        raw_outputs={
+            "agent_messages": ["a message", ANSWER],
+            "released_edge_payloads": ["an edge payload"],
+            "probe": {
+                "with_store_text": "the readback answer",
+                "without_store_text": "",
+                "retrieved_texts": ["a retrieved node"],
+            },
+        },
+        memory_evidence=[{"content": ANSWER, "parent_ids": [], "is_parametric": True}],
+    )
+
+
+def test_candidate_pairs_covers_everything_surface_flags_asks():
+    """The contract that keeps the batch pass from silently degrading to batch size one."""
+    row = _populated_row()
+    declared = set(candidate_pairs(row))
+    asked: set[tuple[str, str]] = set()
+
+    def recording(reference: str, candidate: str) -> bool:
+        asked.add((reference, candidate))
+        return _leaks(reference, candidate)
+
+    surface_flags(row, recording)
+    # Blank candidates short-circuit before the scorer, so they are nobody's question.
+    assert {pair for pair in asked if pair[1].strip()} <= declared
+
+
+def test_answering_from_the_pair_table_gives_the_same_flags():
+    row = _populated_row()
+    table = {pair: _leaks(*pair) for pair in candidate_pairs(row)}
+    from_table = surface_flags(row, lambda r, c: bool(c.strip()) and table.get((r, c), False))
+    assert from_table == surface_flags(row, _leaks)
+
+
+def test_candidate_pairs_drops_blank_candidates():
+    row = _populated_row()
+    assert all(candidate.strip() for _reference, candidate in candidate_pairs(row))
 
 
 # ------------------------------------------------------------------------ surfaces --

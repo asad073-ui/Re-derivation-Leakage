@@ -82,6 +82,53 @@ def test_the_manifest_exists_before_the_first_model_call(runner_factory, tmp_pat
     assert calls["n"] > 0
 
 
+def test_the_readback_probes_of_a_wave_are_dispatched_as_one_batch(runner_factory, tmp_path):
+    """GU-0024. `_row` used to call `_probe`, so the readback went out two prompts at a time.
+
+    At 50x32 that is 8,000 two-prompt calls per protocol into a backend whose entire
+    reason for being on the RTX plan is continuous batching. The whole wave's probes must
+    reach the scheduler in one call.
+    """
+    out = tmp_path / "batched"
+    runner = runner_factory(out)
+    per_call: list[int] = []
+    original = runner.scheduler.run
+
+    def counting(requests):
+        probes = [r for r in requests if "|probe-" in r.request_id]
+        if probes:
+            per_call.append(len(probes))
+        return original(requests)
+
+    runner.scheduler.run = counting  # type: ignore[method-assign]
+    plan = runner.plan()
+    runner.run()
+
+    assert sum(per_call) == plan.planned_probe_generations == 80
+    # 4 items x 2 samples = 8 trajectories per arm, which is exactly one wave at
+    # max_num_seqs=8, so each of the five arms contributes ONE probe dispatch of 16.
+    assert per_call == [16, 16, 16, 16, 16]
+
+
+def test_batching_the_probes_does_not_change_what_they_ask(runner_factory, tmp_path):
+    """The retrieval decision is still per trajectory, and both draws share one seed."""
+    out = tmp_path / "probe-content"
+    runner_factory(out).run()
+    rows = list(read_shards(out / "generations"))
+    probes = [row["raw_outputs"]["probe"] for row in rows]
+    assert len(probes) == 40
+    for probe in probes:
+        assert set(probe) >= {
+            "with_store_text",
+            "without_store_text",
+            "retrieved_node_ids",
+            "retrieved_texts",
+            "probe_seed",
+        }
+    # A per-trajectory seed, not one shared across the wave.
+    assert len({p["probe_seed"] for p in probes}) > 1
+
+
 def test_the_manifest_records_shared_handles_and_declines_the_stronger_claim(
     runner_factory, tmp_path
 ):

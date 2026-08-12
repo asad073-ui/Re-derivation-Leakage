@@ -1,0 +1,16 @@
+# MA-DRAGON-SUBSETS. The matched-subset node-local baseline (DECISIONS.md GU-0026).
+#
+# NOT in the study's default arm list, for the same reason as multi_agent_dragon_refuse:
+# the headline table names DRAGON, and DRAGON as published scores one context. This arm
+# is enabled deliberately, when the question is specifically "how much of GraphForget's
+# advantage survives once the baseline scores the same subsets?".
+#
+# It is the arm that makes the propagation claim falsifiable: if GraphForget's reduction
+# against MA-DRAGON largely disappears here, the mechanism doing the work was subset
+# scoring, not Forget-ID propagation, and the paper has to say so.
+name: multi_agent_dragon_subsets
+label: MA-DRAGON-SUBSETS
+mode: multi_agent
+peer_content: same_concept
+defense: dragon_style_subsets
+description: "matched-subset node-local guard; isolates Forget-ID propagation"

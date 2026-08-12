@@ -46,9 +46,31 @@ and never calls it a reproduction. The repository is not copied into this codeba
 * score subsets of the input separately from the whole;
 * guard persistent writes, retrieval, or later-episode readback.
 
+Note what is **not** on that list: *joint evidence over several parents*. The guard
+scores the node's complete incoming context as one string, so two clues that arrive
+together at one node are both in what it scores and it does catch them. See "Where the
+real difference lies" below, and GU-0026.
+
 `DragonStyleDefense` strips inherited scopes from any envelope it touches
 (`_untagged`), so the baseline cannot accidentally benefit from GraphForget's
 bookkeeping.
+
+### The matched-subset variant
+
+`dragon_style_subsets` / `multi_agent_dragon_subsets` (GU-0026). Same node-local guard,
+given **GraphForget's exact subset battery**: each parent message alone, the parents
+together, the parents plus retrieved memory, and the whole context. Still inherits
+nothing, still guards no edge, write or retrieval.
+
+It exists because a difference between `multi_agent_dragon` and `multi_agent_graphforget`
+otherwise mixes two causes — how finely each side chops up one node's input, and Forget-ID
+propagation across surfaces. Only the second is the contribution. This arm holds the first
+constant, and it is what makes the propagation claim falsifiable: if GraphForget's
+reduction largely disappears against it, the mechanism doing the work was subset scoring
+and the paper has to say so.
+
+It is **not** the primary baseline. DRAGON as published scores one context, and a baseline
+that does more than the paper describes is not the paper.
 
 ## Shared detector
 
@@ -70,7 +92,8 @@ The config additionally refuses to load a `dragon_style` defence with
 | Every agent input | yes (adapted) | yes |
 | Semantic edge inspection | no persistent state | yes |
 | Forget-ID propagation | no | yes |
-| Split clues from several parents | partly — whole-context scoring | explicitly tested, subset scoring |
+| Split clues arriving together at one node | **yes** — whole-context scoring | yes |
+| Split clues a diluted whole-context score misses | no (yes with `score_subsets`) | yes, subset scoring |
 | Memory-write protection | not its mechanism | yes |
 | Retrieval protection | limited | yes, with rescan of untagged nodes |
 | Later-episode causal protection | not its focus | yes |
@@ -93,11 +116,43 @@ arrive together at one node. The genuine differences are:
 4. **Retrieval and later episodes.** Nothing in a node-local guard stops a later episode
    from retrieving what an earlier one wrote.
 
-`accumulated_only` counts only cases where a **combination** of parent messages fires
-and neither any individual input **nor the query on its own** does. The query is excluded
-explicitly: when the user asks about a forgotten concept, every combination containing
-the query fires, and counting that as "reconstructed from several parents" would inflate
-the split-clue result with cases a node-local guard catches trivially.
+### The claim we do not make
+
+> ~~DRAGON cannot detect split clues because it is node-local.~~
+
+This is **false** and must not appear in the paper (GU-0026). Our DRAGON-style baseline
+runs at `apply_at: every_agent_input` and scores the node's complete incoming context —
+query, all parent messages, retrieved memory — as one string. Clues that arrive together
+at one node are in that string. Node-locality is a statement about *where* the guard runs,
+not about how much evidence any one call receives, and a node that joins two parents
+receives both.
+
+The defensible claim is narrower:
+
+> GraphForget adds persistent Forget-ID propagation and enforcement across edges, memory
+> writes, retrieval and final release, while the DRAGON-style baseline guards
+> model-input boundaries.
+
+A genuine cross-call accumulation claim would need state accumulated over calls **no
+single one of which receives the complete evidence** — for example clues that reach the
+sink through different episodes or different memory writes. The current diamond topology
+does not produce that: every split clue rejoins inside one node's input. Until a topology
+that does exists, the propagation claim rests on the surfaces, and the matched-subset arm
+is what isolates it.
+
+### The three counters, and what each is worth
+
+| Counter | Meaning | What it licenses |
+|---|---|---|
+| `node_local_visible_hits` | the whole-context view fired | nothing — the baseline catches these |
+| `subset_only_hits` | a strict subset fired and the whole-context view did not | subset scoring beats whole-context scoring; `dragon_style_subsets` also gets this |
+| `accumulated_only_hits` | a **combination of parents** fired while no individual input, no query, **and not the whole-context view** did | the only one that counts as "reconstructed from several parents and missed by the matched baseline" |
+
+`accumulated_only` previously omitted the `and not the whole-context view` clause, so it
+counted cases the baseline catches and the claim was unfalsifiable by construction. The
+query is excluded from all three explicitly: when the user asks about a forgotten concept,
+every combination containing the query fires, and counting that would inflate the result
+with cases a node-local guard catches trivially.
 
 ## The protocol the comparison runs under
 
@@ -120,6 +175,7 @@ and it is where the capability table below becomes testable rather than notional
 | `single_agent` | Everything the graph adds on top of one agent. |
 | `multi_agent_control` | The peer-message wrapper, holding content concept-disjoint. |
 | `multi_agent_dragon_refuse` | The upper bound on node-local guarding. |
+| `multi_agent_dragon_subsets` | Forget-ID propagation and multi-surface enforcement, with subset scoring held constant. |
 | `edge_cut` | What deleting communication buys — leakage falls, collaboration falls. An **ablation**, not a method. |
 | graphforget with `propagate_forget_ids: false` | Semantic detection only. |
 | graphforget with `semantic_detection: false` | Provenance only. |

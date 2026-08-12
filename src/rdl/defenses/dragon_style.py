@@ -11,8 +11,21 @@ reported as an additional ablation.
 What it deliberately does NOT do, because DRAGON does not:
 
   * inherit Forget IDs from provenance (each call is independent);
-  * accumulate evidence across parent messages jointly;
+  * score subsets of the input separately from the whole;
   * guard persistent writes, retrieval, or later-episode readback.
+
+Note what is NOT on that list: joint evidence over several parents. The guard scores the
+node's *complete* incoming context — query, every parent message, retrieved memory — as
+one string, so two clues that arrive together at one node are both in what it scores and
+it does catch them. "A node-local guard structurally cannot see split clues" was claimed
+here and it is not true; see GU-0026 and ``evidence_accumulator``.
+
+``score_subsets`` is the matched ablation that closes the one remaining detection-side
+gap. With it the baseline scores each parent message on its own and the parents as their
+own subset, exactly as GraphForget's accumulator does, and still inherits nothing and
+still guards no edge, write or retrieval. It is the arm to compare against when the claim
+is about Forget-ID propagation and multi-surface enforcement, because it removes scoring
+granularity from the contrast entirely.
 
 Honesty about the implementation. The public DRAGON repository is a code skeleton: the
 detector/guard checkpoints are not released and the WMDP path is incomplete, so this is
@@ -50,6 +63,7 @@ from .base import (
     WriteContext,
     WriteVerdict,
 )
+from .evidence_accumulator import EvidenceAccumulator
 from .sanitizer import Sanitizer
 from .semantic_detector import SemanticConceptDetector
 
@@ -74,6 +88,7 @@ class DragonStyleDefense:
         apply_at: Literal["every_agent_input", "external_prompt_only"] = "every_agent_input",
         implementation: Literal["template", "sft_checkpoint"] = "template",
         inspect_query: bool = True,
+        score_subsets: bool = False,
         sanitizer: Sanitizer | None = None,
     ) -> None:
         if implementation != "template":
@@ -89,6 +104,14 @@ class DragonStyleDefense:
         # False under the graph_flow protocol, where the request gate is held constant
         # across arms so that what is measured is propagation, not request filtering.
         self.inspect_query = inspect_query
+        # The matched ablation (GU-0026). Same subset battery as GraphForget, still no
+        # inheritance and still no edge/write/retrieval enforcement.
+        self.score_subsets = score_subsets
+        self.accumulator = (
+            EvidenceAccumulator(detector, enabled=True, inspect_query=inspect_query)
+            if score_subsets
+            else None
+        )
         self.sanitizer = sanitizer or Sanitizer()
         self.counters = DefenseCounters()
 
@@ -105,13 +128,13 @@ class DragonStyleDefense:
 
         # The node's whole incoming context, exactly as a node-local guard would see it.
         # No inheritance, no cross-call state: each call starts from nothing.
-        result = self.detector.score(ctx.combined_text(include_query=self.inspect_query))
-        if not result.fired:
+        fired, forget_ids, score, how = self._detect(ctx)
+        if not fired:
             return NodeInputVerdict(
                 inputs=tuple(ctx.inputs),
                 memory_texts=tuple(ctx.memory_texts),
-                score=result.score,
-                reason=f"node-local detector below threshold ({result.score:.3f})",
+                score=score,
+                reason=f"{how} detector below threshold ({score:.3f})",
             )
 
         self.counters.node_input_fired += 1
@@ -119,18 +142,33 @@ class DragonStyleDefense:
         forced: str | None = None
         if self.guard_action in ("refuse", "both"):
             forced, _certificate = self.sanitizer.safe_refusal(
-                result.forget_ids, detector_version=self.detector.version
+                forget_ids, detector_version=self.detector.version
             )
         return NodeInputVerdict(
             inputs=tuple(ctx.inputs),
             memory_texts=tuple(ctx.memory_texts),
-            forget_ids=result.forget_ids,
-            score=result.score,
+            forget_ids=forget_ids,
+            score=score,
             fired=True,
             forced_output=forced,
             guard_system_suffix=suffix,
-            reason=f"node-local scope match {list(result.forget_ids)} ({result.score:.3f})",
+            reason=f"{how} scope match {list(forget_ids)} ({score:.3f})",
         )
+
+    def _detect(self, ctx: NodeInputContext) -> tuple[bool, tuple[str, ...], float, str]:
+        """``(fired, forget_ids, score, how)`` for this node's incoming context."""
+        if self.accumulator is None:
+            result = self.detector.score(ctx.combined_text(include_query=self.inspect_query))
+            return result.fired, result.forget_ids, result.score, "node-local"
+        # Matched-subset mode: the same battery GraphForget's accumulator scores. What
+        # stays absent is everything downstream — no inherited scope reaches this call and
+        # no edge, write or retrieval is guarded by this defence.
+        evidence = self.accumulator.evaluate(
+            question=ctx.question,
+            input_texts=[e.content for e in ctx.inputs],
+            memory_texts=ctx.memory_texts,
+        )
+        return evidence.fired, evidence.forget_ids, evidence.score, "node-local+subsets"
 
     # ------------------------------------------------- surfaces DRAGON does not guard --
 
@@ -190,8 +228,10 @@ class DragonStyleDefense:
             "apply_at": self.apply_at,
             "implementation": self.implementation,
             "inspect_query": self.inspect_query,
+            "score_subsets": self.score_subsets,
             "detector_version": self.detector.version,
             **self.counters.to_dict(),
+            **(self.accumulator.stats() if self.accumulator is not None else {}),
         }
 
 

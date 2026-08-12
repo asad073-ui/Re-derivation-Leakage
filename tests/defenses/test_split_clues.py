@@ -37,11 +37,88 @@ def test_two_clues_fire_jointly_but_not_individually():
         question="Combine the material you have been given.",
         input_texts=[clue_a, clue_b],
     )
-    if not individually_fires and evidence.fired:
+    if not individually_fires and evidence.fired and not evidence.node_local_fired:
         assert evidence.accumulated_only
         assert accumulator.stats()["accumulated_only_hits"] == 1
     # In every case the joint view must be at least as strong as the strongest single one.
     assert evidence.score >= max(r.score for r in detector.score_batch([clue_a, clue_b]))
+
+
+# =====================================================================================
+# GU-0026 — what the node-local baseline actually sees
+#
+# The claim was "a node-local guard structurally cannot see clues split across parents".
+# It is false: our DRAGON-style baseline scores the node's COMPLETE incoming context as
+# one string, and clues that arrive together at one node are in that string. The old
+# `accumulated_only` did not exclude that view, so it counted cases the baseline catches
+# and the headline number was unfalsifiable by construction.
+# =====================================================================================
+
+
+def test_a_case_the_whole_context_view_catches_is_not_claimed_as_accumulated():
+    """The correction. If the concatenation fires, the baseline fires; nothing is gained."""
+    detector = _detector()
+    accumulator = EvidenceAccumulator(detector)
+    evidence = accumulator.evaluate(
+        question="Summarise.",
+        input_texts=["Amara Rossi", "Rossi wrote novels about the sea"],
+    )
+    if evidence.node_local_fired:
+        assert not evidence.accumulated_only
+        assert not evidence.subset_only
+        assert accumulator.stats()["accumulated_only_hits"] == 0
+        assert accumulator.stats()["node_local_visible_hits"] == 1
+
+
+def test_the_whole_context_view_is_recorded_on_every_result():
+    """Carried so no claim about the baseline missing something is taken on trust."""
+    detector = _detector()
+    evidence = EvidenceAccumulator(detector).evaluate(
+        question="Who was Amara Rossi and what did she write?",
+        input_texts=["a remark about the weather"],
+    )
+    assert evidence.node_local_fired
+    assert evidence.node_local_forget_ids
+    assert "node_local_fired" in evidence.to_dict()
+
+
+def test_dilution_is_labelled_subset_only_not_accumulated_only():
+    """A long query drags the concatenation below threshold; the parents alone do not.
+
+    This is a real difference and it is the one `subset_only` measures — but it is scoring
+    granularity, not visibility, and `dragon_style_subsets` has it too. Only a genuine
+    combination effect earns `accumulated_only`.
+    """
+    detector = _detector(alias_weight=0.0)
+    accumulator = EvidenceAccumulator(detector)
+    long_query = " ".join(["please summarise the attached material carefully"] * 12)
+    evidence = accumulator.evaluate(
+        question=long_query, input_texts=["Amara Rossi", "Rossi wrote novels"]
+    )
+    if evidence.fired and not evidence.node_local_fired:
+        assert evidence.subset_only
+        # An individual input firing rules out "reconstructed from several parents".
+        assert evidence.accumulated_only == (
+            not evidence.individual_forget_ids and not evidence.query_forget_ids
+        )
+    assert accumulator.stats()["subset_only_hits"] == int(evidence.subset_only)
+
+
+def test_accumulated_only_is_a_subset_of_subset_only():
+    """The strict claim can never exceed the honest one it is carved out of."""
+    detector = _detector()
+    accumulator = EvidenceAccumulator(detector)
+    for question, inputs in [
+        ("Summarise.", ["Amara Rossi wrote"]),
+        ("Who was Amara Rossi and what did she write?", ["weather"]),
+        ("Combine.", ["Amara initials", "Rossi wrote"]),
+        ("Nothing to see.", ["the boiling point of water"]),
+    ]:
+        evidence = accumulator.evaluate(question=question, input_texts=inputs)
+        assert not (evidence.accumulated_only and not evidence.subset_only)
+        assert not (evidence.subset_only and evidence.node_local_fired)
+    stats = accumulator.stats()
+    assert stats["accumulated_only_hits"] <= stats["subset_only_hits"]
 
 
 def test_an_in_scope_query_is_not_counted_as_accumulated_only():

@@ -99,6 +99,7 @@ def _build_defense(
             apply_at=spec.apply_at,
             implementation=spec.implementation,
             inspect_query=inspect_query,
+            score_subsets=spec.score_subsets,
         )
     if spec.kind == "graphforget":
         policy = ForgetPolicy(
