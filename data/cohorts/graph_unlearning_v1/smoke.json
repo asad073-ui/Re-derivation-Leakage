@@ -1,0 +1,45 @@
+{
+  "dataset": "TOFU",
+  "dataset_config": "forget10",
+  "dataset_revision": null,
+  "hashes_frozen": false,
+  "items": [
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0000",
+      "index": 6,
+      "item_id": "forget10-0006",
+      "question_sha256": null,
+      "usage": "smoke"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0005",
+      "index": 106,
+      "item_id": "forget10-0106",
+      "question_sha256": null,
+      "usage": "smoke"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0010",
+      "index": 206,
+      "item_id": "forget10-0206",
+      "question_sha256": null,
+      "usage": "smoke"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0015",
+      "index": 306,
+      "item_id": "forget10-0306",
+      "question_sha256": null,
+      "usage": "smoke"
+    }
+  ],
+  "n_concepts": 4,
+  "n_items": 4,
+  "note": "four items for the wiring check; 4 items x 2 samples x 5 arms = 168 graph generations on diamond5",
+  "schema": "graph-cohort-v1",
+  "split": "smoke"
+}

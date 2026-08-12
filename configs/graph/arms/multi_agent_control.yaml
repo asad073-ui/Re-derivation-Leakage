@@ -1,0 +1,10 @@
+# MA-CONTROL. The generalised C3S. The SAME graph, and edges that carry real peer
+# messages in a byte-identical wrapper — about a DIFFERENT concept. Calling this arm
+# merely "multi-agent" would not say whether the agents exchanged relevant information,
+# which is the whole variable.
+name: multi_agent_control
+label: MA-CONTROL
+mode: multi_agent
+peer_content: cross_concept
+defense: none
+description: "same graph, cross-concept messages; isolates the peer-message wrapper"

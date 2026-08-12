@@ -1,0 +1,413 @@
+{
+  "dataset": "TOFU",
+  "dataset_config": "forget10",
+  "dataset_revision": null,
+  "hashes_frozen": false,
+  "items": [
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0000",
+      "index": 4,
+      "item_id": "forget10-0004",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0000",
+      "index": 12,
+      "item_id": "forget10-0012",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0001",
+      "index": 20,
+      "item_id": "forget10-0020",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0001",
+      "index": 28,
+      "item_id": "forget10-0028",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0001",
+      "index": 36,
+      "item_id": "forget10-0036",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0002",
+      "index": 44,
+      "item_id": "forget10-0044",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0002",
+      "index": 52,
+      "item_id": "forget10-0052",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0003",
+      "index": 60,
+      "item_id": "forget10-0060",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0003",
+      "index": 68,
+      "item_id": "forget10-0068",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0003",
+      "index": 76,
+      "item_id": "forget10-0076",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0004",
+      "index": 84,
+      "item_id": "forget10-0084",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0004",
+      "index": 92,
+      "item_id": "forget10-0092",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0005",
+      "index": 100,
+      "item_id": "forget10-0100",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0005",
+      "index": 108,
+      "item_id": "forget10-0108",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0005",
+      "index": 116,
+      "item_id": "forget10-0116",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0006",
+      "index": 124,
+      "item_id": "forget10-0124",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0006",
+      "index": 132,
+      "item_id": "forget10-0132",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0007",
+      "index": 140,
+      "item_id": "forget10-0140",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0007",
+      "index": 148,
+      "item_id": "forget10-0148",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0007",
+      "index": 156,
+      "item_id": "forget10-0156",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0008",
+      "index": 164,
+      "item_id": "forget10-0164",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0008",
+      "index": 172,
+      "item_id": "forget10-0172",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0009",
+      "index": 180,
+      "item_id": "forget10-0180",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0009",
+      "index": 188,
+      "item_id": "forget10-0188",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0009",
+      "index": 196,
+      "item_id": "forget10-0196",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0010",
+      "index": 204,
+      "item_id": "forget10-0204",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0010",
+      "index": 212,
+      "item_id": "forget10-0212",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0011",
+      "index": 220,
+      "item_id": "forget10-0220",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0011",
+      "index": 228,
+      "item_id": "forget10-0228",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0011",
+      "index": 236,
+      "item_id": "forget10-0236",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0012",
+      "index": 244,
+      "item_id": "forget10-0244",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0012",
+      "index": 252,
+      "item_id": "forget10-0252",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0013",
+      "index": 260,
+      "item_id": "forget10-0260",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0013",
+      "index": 268,
+      "item_id": "forget10-0268",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0013",
+      "index": 276,
+      "item_id": "forget10-0276",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0014",
+      "index": 284,
+      "item_id": "forget10-0284",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0014",
+      "index": 292,
+      "item_id": "forget10-0292",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0015",
+      "index": 300,
+      "item_id": "forget10-0300",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0015",
+      "index": 308,
+      "item_id": "forget10-0308",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0015",
+      "index": 316,
+      "item_id": "forget10-0316",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0016",
+      "index": 324,
+      "item_id": "forget10-0324",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0016",
+      "index": 332,
+      "item_id": "forget10-0332",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0017",
+      "index": 340,
+      "item_id": "forget10-0340",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0017",
+      "index": 348,
+      "item_id": "forget10-0348",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0017",
+      "index": 356,
+      "item_id": "forget10-0356",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0018",
+      "index": 364,
+      "item_id": "forget10-0364",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0018",
+      "index": 372,
+      "item_id": "forget10-0372",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0019",
+      "index": 380,
+      "item_id": "forget10-0380",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0019",
+      "index": 388,
+      "item_id": "forget10-0388",
+      "question_sha256": null,
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0019",
+      "index": 396,
+      "item_id": "forget10-0396",
+      "question_sha256": null,
+      "usage": "discovery"
+    }
+  ],
+  "n_concepts": 20,
+  "n_items": 50,
+  "note": "50 questions not used by the earlier pilot. DISCOVERY, NOT VALIDATION: they concern the same 20 forget10 authors the pilot already covered, so they are new questions and not new forgotten concepts.",
+  "schema": "graph-cohort-v1",
+  "split": "discovery"
+}

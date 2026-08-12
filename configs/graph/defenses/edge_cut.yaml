@@ -1,0 +1,8 @@
+# The edge-cut ABLATION. Removes the edge outright on a scope match, which changes the
+# topology and therefore is not a controlled comparison against the other arms. It exists
+# to quantify what the honest comparison avoided: leakage falls, and so does
+# collaboration. Any report built on it is labelled topology-changing.
+name: edge_cut
+kind: edge_cut
+changes_topology: true
+description: "ablation: delete the edge instead of enforcing on its payload"

@@ -1,0 +1,9 @@
+# MA-GRAPHFORGET. MA-LEAK plus semantic detection, Forget-ID propagation, edge
+# enforcement on payloads, write protection and retrieval protection. The topology is
+# untouched: every edge still exists and still carries a decision.
+name: multi_agent_graphforget
+label: MA-GRAPHFORGET
+mode: multi_agent
+peer_content: same_concept
+defense: graphforget
+description: "graph-wide policy propagation across messages, writes and retrieval"

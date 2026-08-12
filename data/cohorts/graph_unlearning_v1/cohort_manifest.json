@@ -1,0 +1,44 @@
+{
+  "dataset": "TOFU",
+  "dataset_config": "forget10",
+  "dataset_revision": null,
+  "freeze_command": "rdl graph-freeze-cohort --manifest data/cohorts/graph_unlearning_v1/<split>.json --write",
+  "generation_rule": "forget10 is 400 questions over 20 authors, 20 questions each, contiguous. exclusions = range(0, 400, 8); discovery = range(4, 400, 8); engineering = [2 + 20a for a in range(20)]; smoke = [6, 106, 206, 306]. All four sets are pairwise disjoint and every non-smoke set covers all 20 authors.",
+  "items": [],
+  "n_items": 0,
+  "note": "index of the graph-unlearning-v1 cohort splits",
+  "schema": "graph-cohort-v1",
+  "split": "index",
+  "splits": {
+    "cpu_stub": {
+      "file": "cpu_stub.json",
+      "n_items": 8,
+      "role": "CPU gate; fixture, not TOFU"
+    },
+    "discovery": {
+      "file": "discovery.json",
+      "n_items": 50,
+      "role": "discovery, NOT validation"
+    },
+    "engineering": {
+      "file": "engineering.json",
+      "n_items": 20,
+      "role": "threshold selection"
+    },
+    "exclusions": {
+      "file": "exclusions.json",
+      "n_items": 50,
+      "role": "already touched"
+    },
+    "smoke": {
+      "file": "smoke.json",
+      "n_items": 4,
+      "role": "wiring check"
+    },
+    "validation": {
+      "file": "validation.json",
+      "n_items": 0,
+      "role": "unavailable on this checkpoint"
+    }
+  }
+}

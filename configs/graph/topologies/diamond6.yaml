@@ -1,0 +1,26 @@
+# Diamond-6: the agent-count scalability appendix.
+#
+#     A ──▶ B ─┐
+#     A ──▶ C ─┼──▶ E ──▶ F
+#     A ──▶ D ─┘
+#
+# Three branches into one integrator. Five agents are enough for the main study; six is
+# where "does the containment hold as the graph grows" is answered, on the H100.
+name: diamond6
+description: "six agents; three branches recombine at the integrator"
+sink: F
+nodes:
+  - { node_id: A, role: proposer,   model: primary, writes_memory: true }
+  - { node_id: B, role: analyst,    model: primary, writes_memory: true }
+  - { node_id: C, role: reviewer,   model: primary, writes_memory: true }
+  - { node_id: D, role: analyst,    model: primary, writes_memory: true }
+  - { node_id: E, role: integrator, model: primary, writes_memory: true }
+  - { node_id: F, role: finalizer,  model: primary, writes_memory: true }
+edges:
+  - { src: A, dst: B }
+  - { src: A, dst: C }
+  - { src: A, dst: D }
+  - { src: B, dst: E }
+  - { src: C, dst: E }
+  - { src: D, dst: E }
+  - { src: E, dst: F }

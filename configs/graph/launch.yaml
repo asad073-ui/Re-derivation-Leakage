@@ -1,0 +1,11 @@
+# The ONLY file a machine edits.
+#
+#   this laptop      active_profile: local_cpu
+#   the RTX 3090     active_profile: rtx3090_1b
+#   the H100         active_profile: h100_7b
+#
+# No source change, and no scientific change: a profile controls the backend, the batch
+# sizes, the checkpoint and the sample budget. Everything that defines the experiment
+# lives in configs/graph/studies/graph_unlearning_v1.yaml and is identical everywhere.
+study: graph_unlearning_v1
+active_profile: local_cpu

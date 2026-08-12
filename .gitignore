@@ -95,3 +95,30 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# ----------------------------------------------------------------------------------
+# graph-unlearning-v1 run outputs
+#
+# Same discipline as `results/**` above and for the same reason (ADR-0060): the bulk
+# evidence — raw generations, graph traces, per-trajectory scores — is large and stays
+# local or goes to an immutable external archive. The small reviewable contracts are
+# committed, so a reviewer can see WHAT ran and verify the shard hashes even when the
+# shards themselves are elsewhere.
+#
+# `!runs/graph/*/` is load-bearing: git will not re-include a file whose PARENT
+# DIRECTORY is excluded.
+# ----------------------------------------------------------------------------------
+runs/graph/**
+!runs/graph/.gitkeep
+!runs/graph/*/
+!runs/graph/*/RUN_MANIFEST.json
+!runs/graph/*/RESOLVED_CONFIG.json
+!runs/graph/*/COHORT.json
+!runs/graph/*/PLAN.json
+!runs/graph/*/PERFORMANCE.json
+!runs/graph/*/GRAPH_LEAK_REPORT.json
+!runs/graph/*/GRAPH_LEAK_REPORT.md
+!runs/graph/*/FINALIZATION.json
+!runs/graph/*/scores/
+!runs/graph/*/scores/detector-calibration.json
+!runs/graph/*/scores/SCORING.json

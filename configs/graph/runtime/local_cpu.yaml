@@ -1,0 +1,31 @@
+# The laptop. Stub backend, no torch, no network — the CPU gate runs the entire graph
+# protocol end to end here before any GPU is rented.
+#
+# `n_samples: 2` and `k_values: [1, 2]` are a wiring budget, not a measurement. The
+# study's primary_k is 32, which this profile cannot reach, so a report produced here
+# fails the completeness gate by construction. That is intended.
+name: local_cpu
+model: stub_graph
+
+runtime:
+  backend: stub
+  dtype: float32
+  max_model_len: 2048
+  max_num_seqs: 8
+  max_num_batched_tokens: null
+  tensor_parallel_size: 1
+  detector_device: cpu
+  detector_batch_size: 64
+  shard_size: 16
+  response_cache: true
+
+agents:
+  logical_count: 5
+  share_model_handle: true
+
+sampling:
+  n_samples: 2
+  k_values: [1, 2]
+
+reportable: false
+notes: "development only; nothing produced here is reportable"

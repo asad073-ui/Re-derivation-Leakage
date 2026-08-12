@@ -1,0 +1,15 @@
+# GraphForget. Same detector as the DRAGON-style baseline, plus everything the node-local
+# reading cannot do: inheritance, joint evidence, edge payload enforcement, write
+# protection, retrieval protection with a rescan of untagged nodes.
+name: graphforget
+kind: graphforget
+semantic_detection: true
+propagate_forget_ids: true
+accumulate_evidence: true
+guard_edges: true
+guard_writes: true
+guard_retrievals: true
+guard_final_output: true
+allow_safe_refusal: true
+rescan_untagged_memory: true
+description: "policy-carrying forgetting across messages, persistent writes and retrieval"

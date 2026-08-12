@@ -1,0 +1,77 @@
+{
+  "dataset": "fixture",
+  "dataset_config": "forget10",
+  "dataset_revision": "tests/fixtures/tofu_forget10_sample.json",
+  "hashes_frozen": true,
+  "items": [
+    {
+      "answer_sha256": "fe1e4333c4829741e99dd885deaaebffa52683e9158de3bbedd499277f30769e",
+      "concept_id": "stub-concept-0000",
+      "index": 0,
+      "item_id": "forget10-0000",
+      "question_sha256": "10caa2b9420070a7bdc68e49328b8a557ddc9448427bc0776385e8623b47f1f2",
+      "usage": "cpu_stub"
+    },
+    {
+      "answer_sha256": "bd27d89ed53a5c3fc2b18e67ee758a011ba9f8410a059daedc868d90706d7dda",
+      "concept_id": "stub-concept-0001",
+      "index": 20,
+      "item_id": "forget10-0001",
+      "question_sha256": "ad280eeb42b8d73e3ef3cef8b44400609da3696cd7c16a85e4fe4a6c49338e07",
+      "usage": "cpu_stub"
+    },
+    {
+      "answer_sha256": "02ef090d6f7de2affd94f2c3e925832ca823fd5c7387f1060871b9bbaa96f768",
+      "concept_id": "stub-concept-0002",
+      "index": 40,
+      "item_id": "forget10-0002",
+      "question_sha256": "6c9868a685ec17ef89ada4882da2438e035191eb5be273450c7ab66f9dfcba82",
+      "usage": "cpu_stub"
+    },
+    {
+      "answer_sha256": "abae1effdfecd60597b15637760d637541f5f57c8772a83295c96767ba580858",
+      "concept_id": "stub-concept-0003",
+      "index": 60,
+      "item_id": "forget10-0003",
+      "question_sha256": "a488294a33cdbc4b803277786ca40aeda6ac2fa8d0b8653356829740c3bbd8fa",
+      "usage": "cpu_stub"
+    },
+    {
+      "answer_sha256": "2f95581f920f6d3b409173a7b2ffdb49a608683f5e24ef2786b481e7cf2e6905",
+      "concept_id": "stub-concept-0004",
+      "index": 80,
+      "item_id": "forget10-0004",
+      "question_sha256": "785a12919947dfa852f6375d905f443507e9676c3052ffb373830d1a0ce0d09b",
+      "usage": "cpu_stub"
+    },
+    {
+      "answer_sha256": "f9729769c07edb43f3ce52211cb250d5efd4b83084669a13c223bfb419ba2faa",
+      "concept_id": "stub-concept-0005",
+      "index": 100,
+      "item_id": "forget10-0005",
+      "question_sha256": "a1ded0964242b3a95d585d6ede3f8ea34c5a99e47a8d7a701abb3fd16399a9d8",
+      "usage": "cpu_stub"
+    },
+    {
+      "answer_sha256": "29b495a1b6ba2c141f9992c76114936edc2abd3e5dc29fd4678dd125b982c88f",
+      "concept_id": "stub-concept-0006",
+      "index": 120,
+      "item_id": "forget10-0006",
+      "question_sha256": "a4a0c0ee170eb7e7bb28f10b47dec599309446c51dc28431090b7ffe6b01c31e",
+      "usage": "cpu_stub"
+    },
+    {
+      "answer_sha256": "f6141b376f4e3ee21623b64c71538e50a75427f483dda3a332690c98290d8cd7",
+      "concept_id": "stub-concept-0007",
+      "index": 140,
+      "item_id": "forget10-0007",
+      "question_sha256": "b97939032c2e15f48a06ea924c3615dc46615e6ae7499b23a2f26e9693c55be2",
+      "usage": "cpu_stub"
+    }
+  ],
+  "n_concepts": 8,
+  "n_items": 8,
+  "note": "The checked-in development fixture, frozen. Eight hand-written items; NOT TOFU and never reportable. It exists so the whole graph protocol runs on CPU with no network.",
+  "schema": "graph-cohort-v1",
+  "split": "cpu_stub"
+}

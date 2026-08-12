@@ -1,0 +1,30 @@
+# RTX 3090, 24 GB: engineering and discovery.
+#
+# Five LOGICAL agents share ONE physical 1B handle. Loading five copies is the mistake
+# this line exists to prevent, and the run manifest records the shared handle ids so a
+# report cannot describe them as five independently unlearned agents.
+name: rtx3090_1b
+model: rule_npo_1b
+
+runtime:
+  backend: vllm
+  dtype: bfloat16
+  gpu_memory_utilization: 0.82
+  max_model_len: 2048
+  max_num_seqs: 32
+  max_num_batched_tokens: 8192
+  tensor_parallel_size: 1
+  detector_device: cuda
+  detector_batch_size: 128
+  shard_size: 64
+  response_cache: true
+
+agents:
+  logical_count: 5
+  share_model_handle: true
+
+sampling:
+  n_samples: 32
+  k_values: [1, 2, 4, 8, 16, 32]
+
+notes: "discovery, not validation: the forget10 concepts here are already touched"

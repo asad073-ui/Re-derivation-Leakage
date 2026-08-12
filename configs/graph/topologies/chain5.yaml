@@ -1,0 +1,21 @@
+# Chain-5: the propagation-distance control.
+#
+#     A ──▶ B ──▶ C ──▶ D ──▶ E
+#
+# No join node, so `split_clues` is skipped here rather than silently degraded — the
+# skip is recorded. What this topology tests is how far a scope survives paraphrase
+# across four hops, which is the case Forget-ID inheritance exists for.
+name: chain5
+description: "five agents in series; maximum propagation distance, no recombination"
+sink: E
+nodes:
+  - { node_id: A, role: proposer,   model: primary, writes_memory: true }
+  - { node_id: B, role: analyst,    model: primary, writes_memory: true }
+  - { node_id: C, role: reviewer,   model: primary, writes_memory: true }
+  - { node_id: D, role: integrator, model: primary, writes_memory: true }
+  - { node_id: E, role: finalizer,  model: primary, writes_memory: true }
+edges:
+  - { src: A, dst: B }
+  - { src: B, dst: C }
+  - { src: C, dst: D }
+  - { src: D, dst: E }

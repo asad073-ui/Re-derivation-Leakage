@@ -6,13 +6,19 @@ import typer
 
 from .discover_checkpoints import discover_checkpoints
 from .env_check import env_check
+from .finalize_graph import finalize_graph
+from .freeze_graph_cohort import freeze_graph_cohort
 from .make_leak_report import make_leak_report
 from .make_report import make_report
+from .plan_graph_run import plan_graph_run
+from .report_graph import report_graph
 from .rescore_day2 import rescore_day2
 from .rescore_leak import rescore_leak
 from .run_condition import run_condition
+from .run_graph import run_graph
 from .run_leak import run_leak
 from .run_repro import run_repro
+from .score_graph import score_graph
 
 app = typer.Typer(
     name="rdl",
@@ -30,6 +36,15 @@ app.command("rescore-day2")(rescore_day2)
 app.command("run-leak")(run_leak)
 app.command("make-leak-report")(make_leak_report)
 app.command("rescore-leak")(rescore_leak)
+
+# graph-unlearning-v1. A separate experiment family: the commands above are frozen
+# evidence for the v5 conditions and the two-agent Leak@k work.
+app.command("graph-plan")(plan_graph_run)
+app.command("graph-run")(run_graph)
+app.command("graph-score")(score_graph)
+app.command("graph-report")(report_graph)
+app.command("graph-finalize")(finalize_graph)
+app.command("graph-freeze-cohort")(freeze_graph_cohort)
 
 
 if __name__ == "__main__":

@@ -200,6 +200,68 @@ third_party/    open-unlearning, pinned submodule — called, never patched
 
 ---
 
+## graph-unlearning-v1 — the multi-agent graph study
+
+A **separate experiment family**, added on branch `research/graph-unlearning-v1`. The
+two-agent runner above, the v5 conditions and everything in `results/` are frozen
+evidence and are not modified by it.
+
+The question: DRAGON guards one inference boundary. Does forgetting at the *system*
+level require propagating a semantic policy across agent communication, persistent
+writes and later retrieval?
+
+Five arms over one fixed agent graph, differing only in the intended treatment:
+
+| Arm | Meaning |
+|---|---|
+| SA | one unlearned agent alone, same memory lifecycle |
+| MA-CONTROL | the same graph, edges carrying **cross-concept** messages (generalised C3S) |
+| MA-LEAK | the same graph, edges carrying **same-concept** messages, unguarded (generalised C3C) |
+| MA-DRAGON | a DRAGON-style node-local guard at every agent input |
+| MA-GRAPHFORGET | semantic detection + propagated Forget IDs + edge, write and retrieval enforcement |
+
+```
+src/rdl/
+  graph/          schema, topology, scheduler, envelope, prompt builder, executor, trace
+  defenses/       concept registry, shared detector, evidence accumulator,
+                  dragon_style, forget_policy, graphforget, sanitizer, edge_cut
+  runtime/        backend protocol, stub/transformers/vllm, batching, response cache
+  graph_memory/   policy-carrying nodes, staged store, scope index, retrieval guard
+  studies/graph_leak/  cohort, controls, arms, response bank, runner, evidence shards
+  eval/           graph_leak, defense_reduction, detector_calibration, causal_readback,
+                  graph_utility, graph_statistics
+  cli/            graph-plan, graph-run, graph-score, graph-report, graph-finalize,
+                  graph-freeze-cohort
+
+configs/graph/  launch.yaml (the ONLY file a machine edits) + studies / runtime /
+                models / topologies / arms / defenses
+data/cohorts/   frozen splits with per-item content hashes and an exclusion list
+docs/graph_unlearning/  PROTOCOL_v1.md (frozen), THREAT_MODEL, BASELINES, METRICS,
+                        GPU_EXECUTION, DECISIONS
+```
+
+Run the whole pipeline offline on the stub backend:
+
+```powershell
+.\tasks.ps1 test-graph     # graph + defence + memory + runtime tests
+.\tasks.ps1 graph-smoke    # plan -> run -> score -> report -> finalize, no GPU
+```
+
+Three points a reader should check first, because they are the ones most easily got
+wrong:
+
+* **Both guarded arms share one detector object**, so "our method wins" cannot be an
+  artefact of a better backbone (`tests/defenses/test_concept_registry.py`).
+* **Enforcement never removes an edge.** The topology is held fixed and the payload is
+  passed / sanitized / quarantined / blocked, so the improvement is attributable to the
+  defence rather than to deleted communication. `edge_cut` measures the alternative as a
+  labelled ablation.
+* **The validation cohort is empty and raises on load.** The earlier 50-item pilot
+  covered all 20 forget10 authors, so a further 50 questions are new questions but not
+  new forgotten concepts. See `docs/graph_unlearning/PROTOCOL_v1.md` §6.
+
+---
+
 ## Design invariants
 
 1. **Never fork or vendor `open-unlearning`.** It enters as a pinned submodule. Every

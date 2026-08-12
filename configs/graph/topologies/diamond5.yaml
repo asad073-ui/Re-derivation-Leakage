@@ -1,0 +1,24 @@
+# Diamond-5: the primary topology.
+#
+#     A ──▶ B ─┐
+#              ├──▶ D ──▶ E
+#     A ──▶ C ─┘
+#
+# D has two parents, which is what makes the split-clue experiment possible: B and C can
+# each carry an individually-innocuous clue that D combines. That join is the case a
+# node-local detector structurally cannot see.
+name: diamond5
+description: "five agents; two branches recombine at an integrator before the finalizer"
+sink: E
+nodes:
+  - { node_id: A, role: proposer,   model: primary, writes_memory: true }
+  - { node_id: B, role: analyst,    model: primary, writes_memory: true }
+  - { node_id: C, role: reviewer,   model: primary, writes_memory: true }
+  - { node_id: D, role: integrator, model: primary, writes_memory: true }
+  - { node_id: E, role: finalizer,  model: primary, writes_memory: true }
+edges:
+  - { src: A, dst: B }
+  - { src: A, dst: C }
+  - { src: B, dst: D }
+  - { src: C, dst: D }
+  - { src: D, dst: E }

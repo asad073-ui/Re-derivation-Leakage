@@ -1,0 +1,9 @@
+# SA. One unlearned agent answers alone, with the same memory lifecycle as every other
+# arm: same post-deletion store, same retrieval, same write path, same probe. It runs the
+# graph's sink node so the final answer comes from the same role in every arm.
+name: single_agent
+label: SA
+mode: single_agent
+peer_content: none
+defense: none
+description: "one agent, no collaboration; the floor for everything the graph adds"
