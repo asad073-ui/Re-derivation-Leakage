@@ -1,0 +1,43 @@
+{
+  "blocking": [],
+  "complete": true,
+  "generations": {
+    "n_declared": 1,
+    "n_shards": 1,
+    "ok": true,
+    "problems": []
+  },
+  "generations_ledger": {
+    "interrupted_commit": [],
+    "n_declared": 1,
+    "n_shards": 1,
+    "ok": true,
+    "problems": [],
+    "status": "verified"
+  },
+  "git_dirty": false,
+  "git_sha": "6e802e9",
+  "hashes_ok": true,
+  "n_trajectories": 10,
+  "ok": true,
+  "planned_trajectories": 10,
+  "raw_evidence_uri": "https://github.com/asad073-ui/Re-derivation-Leakage/releases/tag/graph-smoke-20260812T155730Z",
+  "report_present": true,
+  "run": "20260812T155730Z-preflight-flow",
+  "schema": "graph-finalization-v2",
+  "traces": {
+    "n_declared": 1,
+    "n_shards": 1,
+    "ok": true,
+    "problems": []
+  },
+  "traces_ledger": {
+    "interrupted_commit": [],
+    "n_declared": 1,
+    "n_shards": 1,
+    "ok": true,
+    "problems": [],
+    "status": "verified"
+  },
+  "warnings": []
+}

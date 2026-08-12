@@ -1,0 +1,46 @@
+{
+  "dataset": "TOFU",
+  "dataset_config": "forget10",
+  "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+  "fingerprint": "8f00d97efe746d0d6cf9e7250ead885af71e55aca752956f9f944b0138dfcfbc",
+  "hashes_frozen": true,
+  "items": [
+    {
+      "answer_sha256": "34239185001e436072d784ba1d8fdd8dad47f4a1b3526545edee53547025fc05",
+      "concept_id": "tofu-forget10-author-0000",
+      "index": 6,
+      "item_id": "forget10-0006",
+      "question_sha256": "5396a4f98baa801b411b158e5850ace601e292714d6ae90c777ffca3306738e1",
+      "usage": "smoke"
+    },
+    {
+      "answer_sha256": "ada1aee1eaa9011b3188227b64af147d3665a6cc5daf44eeddc929ea67bd159b",
+      "concept_id": "tofu-forget10-author-0005",
+      "index": 106,
+      "item_id": "forget10-0106",
+      "question_sha256": "e5e5f8e378bb470c10b8b70caae176f2898f1ea20b78d313bcb6cc08766b5a80",
+      "usage": "smoke"
+    },
+    {
+      "answer_sha256": "144f86568777f2b4727eca245c6d36cab80c5e2e1bccd4aea8f79e37bf5ce56a",
+      "concept_id": "tofu-forget10-author-0010",
+      "index": 206,
+      "item_id": "forget10-0206",
+      "question_sha256": "5829900e554aa87129059f3c77fc86a2526a4d065ef69bf9391a769c5d0652fd",
+      "usage": "smoke"
+    },
+    {
+      "answer_sha256": "0a8bc0a37ed8a6b0c34f3be63a18c3573bdabbc3810c1fcac4d7714409638960",
+      "concept_id": "tofu-forget10-author-0015",
+      "index": 306,
+      "item_id": "forget10-0306",
+      "question_sha256": "a6c5980d3ebfcdac0cc22958b1a1dc7e4393ec57caaf5f393f5a6cd1c0c96ced",
+      "usage": "smoke"
+    }
+  ],
+  "n_concepts": 4,
+  "n_items": 4,
+  "note": "four items for the wiring check; 4 items x 2 samples x 5 arms = 168 graph generations on diamond5",
+  "schema": "graph-cohort-v1",
+  "split": "smoke"
+}
