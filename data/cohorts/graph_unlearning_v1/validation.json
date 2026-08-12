@@ -1,0 +1,13 @@
+{
+  "dataset": "TOFU",
+  "dataset_config": "forget10",
+  "dataset_revision": null,
+  "hashes_frozen": false,
+  "items": [],
+  "n_concepts": 0,
+  "n_items": 0,
+  "note": "EMPTY BY DESIGN. Concept-level validation needs forgotten concepts that no development or discovery run has inspected. Every forget10 author is already in exclusions.json, so this split cannot be filled from the current checkpoint. Filling it requires ONE of: (a) a new TOFU unlearning checkpoint with a different preregistered author set, (b) another dataset with untouched forgotten concepts, or (c) a new model/unlearning-method combination with a fully frozen concept split. Loading this split raises rather than silently running discovery data under a validation label.",
+  "schema": "graph-cohort-v1",
+  "split": "validation",
+  "status": "unavailable"
+}

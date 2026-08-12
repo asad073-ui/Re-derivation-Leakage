@@ -1,0 +1,173 @@
+{
+  "dataset": "TOFU",
+  "dataset_config": "forget10",
+  "dataset_revision": null,
+  "hashes_frozen": false,
+  "items": [
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0000",
+      "index": 2,
+      "item_id": "forget10-0002",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0001",
+      "index": 22,
+      "item_id": "forget10-0022",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0002",
+      "index": 42,
+      "item_id": "forget10-0042",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0003",
+      "index": 62,
+      "item_id": "forget10-0062",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0004",
+      "index": 82,
+      "item_id": "forget10-0082",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0005",
+      "index": 102,
+      "item_id": "forget10-0102",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0006",
+      "index": 122,
+      "item_id": "forget10-0122",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0007",
+      "index": 142,
+      "item_id": "forget10-0142",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0008",
+      "index": 162,
+      "item_id": "forget10-0162",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0009",
+      "index": 182,
+      "item_id": "forget10-0182",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0010",
+      "index": 202,
+      "item_id": "forget10-0202",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0011",
+      "index": 222,
+      "item_id": "forget10-0222",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0012",
+      "index": 242,
+      "item_id": "forget10-0242",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0013",
+      "index": 262,
+      "item_id": "forget10-0262",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0014",
+      "index": 282,
+      "item_id": "forget10-0282",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0015",
+      "index": 302,
+      "item_id": "forget10-0302",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0016",
+      "index": 322,
+      "item_id": "forget10-0322",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0017",
+      "index": 342,
+      "item_id": "forget10-0342",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0018",
+      "index": 362,
+      "item_id": "forget10-0362",
+      "question_sha256": null,
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": null,
+      "concept_id": "tofu-forget10-author-0019",
+      "index": 382,
+      "item_id": "forget10-0382",
+      "question_sha256": null,
+      "usage": "engineering"
+    }
+  ],
+  "n_concepts": 20,
+  "n_items": 20,
+  "note": "20 items, one per forget10 author, for the RTX 3090 small discovery pass",
+  "schema": "graph-cohort-v1",
+  "split": "engineering"
+}

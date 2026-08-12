@@ -105,3 +105,90 @@ def ou_summary_path() -> Path:
 def laundering_transcript_fixture() -> dict:
     with (FIXTURES / "transcripts" / "laundering_c3.json").open(encoding="utf-8") as fh:
         return json.load(fh)
+
+
+# --------------------------------------------------------------- graph-unlearning-v1 --
+#
+# Everything below belongs to the graph study. It is deliberately built from the same
+# fixture as the two-agent tests so a failure can never be blamed on different data.
+
+
+@pytest.fixture
+def diamond5():
+    from rdl.graph.topology import load_topology
+
+    return load_topology("diamond5")
+
+
+@pytest.fixture
+def chain5():
+    from rdl.graph.topology import load_topology
+
+    return load_topology("chain5")
+
+
+@pytest.fixture
+def concept_rows(tofu_items) -> list[dict]:
+    """``{item_id, concept_id, question}`` — note the absent ``answer``."""
+    return [
+        {
+            "item_id": it.item_id,
+            "concept_id": f"stub-concept-{it.index // 20:04d}",
+            "question": it.question,
+        }
+        for it in tofu_items
+    ]
+
+
+@pytest.fixture
+def registry(concept_rows):
+    from rdl.defenses.concept_registry import ConceptPolicy, ConceptRegistry
+
+    return ConceptRegistry.from_questions(
+        concept_rows,
+        policy=ConceptPolicy(
+            allow_refusal=True,
+            allow_persistent_write=False,
+            allow_edge_release=False,
+            allow_retrieval=False,
+        ),
+    )
+
+
+@pytest.fixture
+def detector(registry):
+    from rdl.defenses.semantic_detector import SemanticConceptDetector
+
+    return SemanticConceptDetector(registry, threshold=0.55)
+
+
+@pytest.fixture
+def graph_backend(qa_pairs, tofu_items):
+    """One StubLM shared by every logical agent profile, as on the GPU."""
+    from rdl.models.stub import StubLM
+    from rdl.runtime.stub_backend import StubBackend
+
+    handle = StubLM(
+        qa_pairs,
+        knowledge_mask=list(qa_pairs),
+        model_id="stub_graph",
+        qid_to_question={it.item_id: it.question for it in tofu_items},
+    )
+    return StubBackend({"primary": handle})
+
+
+@pytest.fixture
+def graph_scheduler(graph_backend):
+    from rdl.runtime.batch_scheduler import BatchScheduler
+
+    return BatchScheduler(graph_backend, max_batch_size=8, backend_version="test")
+
+
+@pytest.fixture
+def staged_memory(tofu_items):
+    """The post-deletion store every arm starts from, wrapped for staged writes."""
+    from rdl.graph_memory.staged_store import StagedMemory
+    from rdl.studies.graph_leak.runner import build_baseline_memory
+
+    store, blocklist = build_baseline_memory(tofu_items)
+    return StagedMemory(store, blocklist=blocklist)

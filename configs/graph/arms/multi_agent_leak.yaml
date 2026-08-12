@@ -1,0 +1,8 @@
+# MA-LEAK. The generalised C3C: the same graph, edges carrying messages about the SAME
+# forgotten concept, and no defence. Baseline for H1.
+name: multi_agent_leak
+label: MA-LEAK
+mode: multi_agent
+peer_content: same_concept
+defense: none
+description: "same graph, same-concept messages, unguarded"

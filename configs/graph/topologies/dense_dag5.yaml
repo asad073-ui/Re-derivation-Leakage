@@ -1,0 +1,24 @@
+# Dense-DAG-5: the connectivity stress topology.
+#
+# Shortcuts from A to D and E, and from C to E. Tests whether higher connectivity raises
+# leakage — the same variable MAMA (ACL 2026) found to matter for topology-conditioned
+# PII memory leakage. Our question is different (semantic re-entry after unlearning, and
+# graph-wide containment), so topology here is an experimental factor, not the claim.
+name: dense_dag5
+description: "five agents with shortcut edges; high connectivity stress case"
+sink: E
+nodes:
+  - { node_id: A, role: proposer,   model: primary, writes_memory: true }
+  - { node_id: B, role: analyst,    model: primary, writes_memory: true }
+  - { node_id: C, role: reviewer,   model: primary, writes_memory: true }
+  - { node_id: D, role: integrator, model: primary, writes_memory: true }
+  - { node_id: E, role: finalizer,  model: primary, writes_memory: true }
+edges:
+  - { src: A, dst: B }
+  - { src: A, dst: C }
+  - { src: A, dst: D }
+  - { src: A, dst: E }
+  - { src: B, dst: D }
+  - { src: C, dst: D }
+  - { src: C, dst: E }
+  - { src: D, dst: E }

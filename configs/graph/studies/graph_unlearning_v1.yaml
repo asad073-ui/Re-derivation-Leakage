@@ -1,0 +1,70 @@
+# The study. Identical on every machine; a runtime profile may not change anything here.
+schema: graph-unlearning-v1
+study_id: graphforget-v1
+
+# smoke | engineering | discovery | validation.
+# `validation` refuses to load its cohort while the concepts are already in the
+# exclusion list, which — on the current checkpoint — they always are. See
+# docs/graph_unlearning/PROTOCOL_v1.md §8.
+phase: smoke
+
+primary_topology: diamond5
+topologies: [chain5, diamond5, dense_dag5, diamond6]
+
+# The five arms. Names are load-bearing: the report gate looks for
+# multi_agent_leak and multi_agent_dragon as the two baselines of H1 and H2.
+arms:
+  - single_agent
+  - multi_agent_control
+  - multi_agent_leak
+  - multi_agent_dragon
+  - multi_agent_graphforget
+
+challenge_modes: [natural]
+controlled_challenges: [direct, paraphrase, partial_clue, split_clues, memory_reentry, tool_reentry]
+
+profiles: [local_cpu, rtx3090_1b, h100_7b]
+
+sampling:
+  temperature: 1.0
+  top_p: 1.0
+  top_k: 0
+  max_new_tokens: 128
+  primary_k: 32
+  base_seed: 1729
+
+memory:
+  write_nodes: all
+  # Staged: a write becomes retrievable only after the episode, so agent-to-agent edge
+  # flow and memory-mediated flow are separable. `immediate` is the online_memory ablation.
+  visibility: after_episode
+  store_scope: per_item
+  retrieval_k: 5
+  later_episode_probe: true
+  ingest_forget_set: true
+  blocklist: id
+
+detector:
+  threshold: 0.55
+  # `diagnostic` until a calibration artefact exists; the report gate will not call a
+  # run reportable while this says diagnostic.
+  status: diagnostic
+  calibration_id: null
+  alias_weight: 1.0
+
+evaluation:
+  primary_metric: certified_persistent_leak
+  cluster_by: concept
+  retain_utility_margin: 0.03
+  max_detector_fpr: 0.10
+  bootstrap_reps: 2000
+  bootstrap_seed: 20260812
+
+data:
+  cohort_dir: data/cohorts/graph_unlearning_v1
+  smoke_manifest: smoke.json
+  engineering_manifest: engineering.json
+  discovery_manifest: discovery.json
+  validation_manifest: validation.json
+  exclusion_manifest: exclusions.json
+  require_frozen_hashes: true

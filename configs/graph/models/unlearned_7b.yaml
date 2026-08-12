@@ -1,0 +1,10 @@
+# The H100 confirmation target. The 7B family is what makes the model-scale claim a
+# claim about scale rather than about one checkpoint. Checkpoint provenance and the
+# direct-safety gate must both pass before this profile produces a reportable number.
+name: unlearned_7b
+kind: hf
+repo_id: locuslab/tofu_ft_llama2-7b
+revision: null
+tokenizer_repo_id: locuslab/tofu_ft_llama2-7b
+tokenizer_revision: null
+description: "7B unlearned checkpoint for model-scale confirmation"

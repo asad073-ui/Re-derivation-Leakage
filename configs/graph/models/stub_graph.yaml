@@ -1,0 +1,6 @@
+# The CPU development model. Deterministic lookup table, no weights, no network.
+# Every graph, defence, memory and evidence mechanism is green-lighted against this
+# before a GPU is rented.
+name: stub_graph
+kind: stub
+description: "StubLM standing in for an unlearned checkpoint; NOT reportable"

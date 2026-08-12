@@ -1,0 +1,30 @@
+# H100: confirmation and scale.
+#
+# All lower Leak@k values are derived from ONE sample bank of 128 draws. Running a
+# separate experiment per k would give each k its own generations and make the curve a
+# set of unrelated experiments rather than a curve.
+name: h100_7b
+model: unlearned_7b
+
+runtime:
+  backend: vllm
+  dtype: bfloat16
+  gpu_memory_utilization: 0.88
+  max_model_len: 2048
+  max_num_seqs: 64
+  max_num_batched_tokens: 16384
+  tensor_parallel_size: 1
+  detector_device: cuda
+  detector_batch_size: 256
+  shard_size: 128
+  response_cache: true
+
+agents:
+  logical_count: 5
+  share_model_handle: true
+
+sampling:
+  n_samples: 128
+  k_values: [1, 2, 4, 8, 16, 32, 64, 128]
+
+notes: "same DRAGON-style implementation as the 3090 profile; changing it would confound model size with baseline strength"

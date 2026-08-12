@@ -1,0 +1,5 @@
+# No detection, no enforcement. Every surface still records that it was consulted, so a
+# "the guard never fired" and a "the guard was never asked" are distinguishable.
+name: none
+kind: none
+description: "unguarded; used by SA, MA-CONTROL and MA-LEAK"

@@ -1,0 +1,9 @@
+# MA-DRAGON. MA-LEAK plus a DRAGON-style detector and reasoning guard applied
+# independently at EVERY agent's complete incoming context. Baseline for H2. It shares
+# the detector backbone with GraphForget by construction — see studies/graph_leak/arms.py.
+name: multi_agent_dragon
+label: MA-DRAGON
+mode: multi_agent
+peer_content: same_concept
+defense: dragon_style
+description: "node-local inference-time guard at every agent input"

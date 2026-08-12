@@ -1,0 +1,20 @@
+# DRAGON-style node-local baseline.
+#
+# `implementation: template` is the only supported value. The public DRAGON repository is
+# a code skeleton — the detector/guard checkpoints are not released and the WMDP path is
+# incomplete — so this is not a reproduction and is never called one. Setting
+# `sft_checkpoint` raises rather than silently substituting a template.
+#
+# `guard_action: refuse` is deterministic and model-independent. A prompt-only guard on a
+# checkpoint that ignores instructions is a no-op, and a baseline that is a no-op is not
+# a baseline. `guard_prompt` is available for instruction-following checkpoints.
+#
+# `apply_at: every_agent_input` is the STRONGER reading and is what the main comparison
+# uses. `external_prompt_only` is the weaker ablation.
+name: dragon_style
+kind: dragon_style
+guard_action: refuse
+apply_at: every_agent_input
+implementation: template
+propagate_scope: false
+description: "inference-time scope detection at each agent input; no cross-object state"
