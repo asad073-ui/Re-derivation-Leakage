@@ -39,7 +39,29 @@ REPO = Path(__file__).resolve().parents[2]
 CONDITIONS = REPO / "configs" / "conditions"
 FIXTURE = REPO / "tests" / "fixtures" / "tofu_forget10_sample.json"
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+
+def _cuda_present() -> bool:
+    """True when a CUDA device is visible to torch.
+
+    These cases pin ``environment="local_cpu"``, and the runner deliberately refuses that
+    profile on a box with a CUDA device — picking a CPU profile on a rented GPU is a
+    mistake worth failing on. That refusal is correct behaviour, so on a GPU box these
+    cases are inapplicable rather than broken, and they skip instead of failing.
+    """
+    try:
+        import torch
+    except ImportError:
+        return False
+    try:
+        return bool(torch.cuda.is_available())
+    except Exception:  # pragma: no cover - a broken driver is not this suite's problem
+        return False
+
+
+pytestmark = [
+    pytest.mark.skipif(shutil.which("git") is None, reason="needs git"),
+    pytest.mark.skipif(_cuda_present(), reason="pins local_cpu; refused on a CUDA box"),
+]
 
 
 def _git(repo: Path, *args: str) -> str:
