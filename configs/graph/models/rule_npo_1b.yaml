@@ -1,10 +1,24 @@
-# The RTX 3090 target: the 1B RULE/NPO forget10 checkpoint used by the two-agent work.
-# `revision` must be pinned before any reportable run; `null` records "unresolved" in the
-# manifest rather than pretending to a commit.
+# The RTX 3090 target: the released Leak-k RULE-NPO forget10 checkpoint.
+#
+# THIS FILE PREVIOUSLY POINTED AT `..._full` WITH `revision: null`, which is the
+# NOT-unlearned model on a moving branch. A graph run under that config would have
+# measured leakage from a checkpoint that never forgot anything, and every number would
+# have been meaningless. See docs/graph_unlearning/DECISIONS.md GU-0015.
+#
+# `tokenizer_repo_id` is the MODEL repo, not `meta-llama/Llama-3.2-1B-Instruct`. The
+# checkpoint ships its own tokenizer.json/tokenizer_config.json at this revision;
+# upstream's config points `tokenizer_args` at a moving branch with no revision, so
+# every prompt would be rendered by a chat template that can change under us
+# (src/rdl/provenance.py, UPSTREAM_TOKENIZER_REPO). Pinning both to one commit is what
+# makes a serialized-prompt hash mean something.
 name: rule_npo_1b
 kind: hf
-repo_id: open-unlearning/tofu_Llama-3.2-1B-Instruct_full
-revision: null
-tokenizer_repo_id: meta-llama/Llama-3.2-1B-Instruct
-tokenizer_revision: null
-description: "1B unlearned checkpoint; five logical agents share one handle"
+repo_id: OptimAI-Lab/TOFU-forget10_RULE-NPO
+revision: afe117e41a876f815bbd0f336d5036ced666ab06
+tokenizer_repo_id: OptimAI-Lab/TOFU-forget10_RULE-NPO
+tokenizer_revision: afe117e41a876f815bbd0f336d5036ced666ab06
+# Llama-3.2-1B geometry (2048 hidden, 16 layers), unlearned with NPO on TOFU forget10.
+# Recorded so a config review can catch a swap to a differently-sized checkpoint without
+# downloading it.
+description: "released Leak-k RULE-NPO forget10 baseline; five logical agents share one handle"
+expect_unlearned: true

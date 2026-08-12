@@ -1,0 +1,9 @@
+# The node-local refusal upper bound. NOT in the study's default arm list: it is enabled
+# deliberately when the bracket is wanted, so the headline table is not silently
+# comparing against an intervention stronger than the baseline it names.
+name: multi_agent_dragon_refuse
+label: MA-DRAGON-REFUSE
+mode: multi_agent
+peer_content: same_concept
+defense: dragon_style_refuse
+description: "upper bound: node-local deterministic refusal at every agent input"

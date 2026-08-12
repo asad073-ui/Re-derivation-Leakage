@@ -57,26 +57,29 @@ switch ($Target) {
         Write-Host ""
         Write-Host "CPU GATE PASSED" -ForegroundColor Green
     }
-    # End-to-end graph run on the stub backend. No network, no GPU, nothing reportable.
+    # End-to-end graph run on the stub backend, BOTH protocols. No network, no GPU,
+    # nothing reportable. Mirrors the GPU sequence so a break shows up here first.
     'graph-smoke' {
-        $out = Join-Path $env:TEMP "rdl-graph-smoke"
-        if (Test-Path $out) { Remove-Item -Recurse -Force $out }
-        Invoke-Step 'graph-plan' {
-            & $PY -m rdl.cli graph-plan --launch configs/graph/launch.yaml `
-                --fixture tests/fixtures/tofu_forget10_sample.json `
-                --cohort data/cohorts/graph_unlearning_v1/cpu_stub.json --limit 4
+        $common = @(
+            '--launch', 'configs/graph/launch.yaml',
+            '--fixture', 'tests/fixtures/tofu_forget10_sample.json',
+            '--cohort', 'data/cohorts/graph_unlearning_v1/cpu_stub.json',
+            '--limit', '4'
+        )
+        Invoke-Step 'graph-plan' { & $PY -m rdl.cli graph-plan @common --n-samples 2 }
+        foreach ($proto in @('end_to_end_safety', 'graph_flow')) {
+            $out = Join-Path $env:TEMP "rdl-graph-smoke-$proto"
+            if (Test-Path $out) { Remove-Item -Recurse -Force $out }
+            Invoke-Step "graph-run [$proto]" {
+                & $PY -m rdl.cli graph-run @common --n-samples 2 `
+                    --challenges direct --protocol $proto --output $out
+            }
+            Invoke-Step "graph-score [$proto]"    { & $PY -m rdl.cli graph-score --run $out }
+            Invoke-Step "graph-report [$proto]"   { & $PY -m rdl.cli graph-report --run $out --challenge direct }
+            Invoke-Step "graph-finalize [$proto]" { & $PY -m rdl.cli graph-finalize --run $out }
         }
-        Invoke-Step 'graph-run' {
-            & $PY -m rdl.cli graph-run --launch configs/graph/launch.yaml `
-                --fixture tests/fixtures/tofu_forget10_sample.json `
-                --cohort data/cohorts/graph_unlearning_v1/cpu_stub.json --limit 4 `
-                --challenges direct --output $out
-        }
-        Invoke-Step 'graph-score'    { & $PY -m rdl.cli graph-score --run $out }
-        Invoke-Step 'graph-report'   { & $PY -m rdl.cli graph-report --run $out --challenge direct }
-        Invoke-Step 'graph-finalize' { & $PY -m rdl.cli graph-finalize --run $out }
         Write-Host ""
-        Write-Host "GRAPH SMOKE PASSED (diagnostic only)" -ForegroundColor Green
+        Write-Host "GRAPH SMOKE PASSED, both protocols (diagnostic only)" -ForegroundColor Green
     }
     'submodule' { Invoke-Step 'submodule' { git submodule update --init --recursive } }
     'repro-dry' { Invoke-Step 'repro-dry' { & $PY -m rdl.cli run-repro --dry-run --condition configs/conditions/C0.yaml } }

@@ -26,11 +26,19 @@ def _ctx(question, inputs=(), node="D", depth=2):
     )
 
 
-def test_fires_on_an_in_scope_query(detector, tofu_items):
+def test_the_default_is_the_prompt_guard_not_a_refusal(detector, tofu_items):
+    """`guard_prompt` is what DRAGON describes: detect, then modify the inference context.
+
+    A deterministic refusal is a strictly stronger intervention; calling it "DRAGON"
+    overstates the baseline, so it lives in `dragon_style_refuse` and is reported as an
+    upper bound. See DECISIONS.md GU-0017.
+    """
     guard = DragonStyleDefense(detector=detector)
+    assert guard.guard_action == "guard_prompt"
     verdict = guard.on_node_input(_ctx(tofu_items[0].question))
     assert verdict.fired
-    assert verdict.forced_output == SAFE_REFUSAL
+    assert verdict.forced_output is None
+    assert verdict.guard_system_suffix == GUARD_INSTRUCTION
 
 
 def test_passes_an_unrelated_query(detector):
@@ -38,20 +46,57 @@ def test_passes_an_unrelated_query(detector):
     verdict = guard.on_node_input(_ctx("What is the boiling point of water?"))
     assert not verdict.fired
     assert verdict.forced_output is None
+    assert verdict.guard_system_suffix is None
 
 
-def test_guard_prompt_mode_appends_an_instruction_instead_of_refusing(detector, tofu_items):
-    guard = DragonStyleDefense(detector=detector, guard_action="guard_prompt")
+def test_refuse_mode_is_the_upper_bound_variant(detector, tofu_items):
+    guard = DragonStyleDefense(detector=detector, guard_action="refuse")
     verdict = guard.on_node_input(_ctx(tofu_items[0].question))
     assert verdict.fired
-    assert verdict.forced_output is None
-    assert verdict.guard_system_suffix == GUARD_INSTRUCTION
+    assert verdict.forced_output == SAFE_REFUSAL
+
+
+def test_both_modes_bracket_the_baseline(detector, tofu_items):
+    """The prompt guard is the weaker bound, the refusal the stronger. Same detector."""
+    prompt = DragonStyleDefense(detector=detector, guard_action="guard_prompt")
+    refuse = DragonStyleDefense(detector=detector, guard_action="refuse")
+    ctx = _ctx(tofu_items[0].question)
+    assert prompt.on_node_input(ctx).fired == refuse.on_node_input(ctx).fired
+    assert prompt.on_node_input(ctx).forced_output is None
+    assert refuse.on_node_input(ctx).forced_output is not None
 
 
 def test_external_prompt_only_skips_internal_nodes(detector, tofu_items):
     guard = DragonStyleDefense(detector=detector, apply_at="external_prompt_only")
     assert guard.on_node_input(_ctx(tofu_items[0].question, depth=0)).fired
     assert not guard.on_node_input(_ctx(tofu_items[0].question, depth=2)).fired
+
+
+def test_graph_flow_holds_the_request_gate_constant(detector, tofu_items):
+    """Under graph_flow no arm inspects the question, so the root does not simply refuse.
+
+    Without this the forget question — one of the detector's own prototypes — fires at
+    every guarded root, both defended arms come out clean, and propagation, edge
+    enforcement and write protection are never exercised at all.
+    """
+    gated = DragonStyleDefense(detector=detector, inspect_query=True)
+    ungated = DragonStyleDefense(detector=detector, inspect_query=False)
+    ctx = _ctx(tofu_items[0].question, node="A", depth=0)
+    assert gated.on_node_input(ctx).fired
+    assert not ungated.on_node_input(ctx).fired
+
+
+def test_graph_flow_still_inspects_what_the_graph_carries(detector, tofu_items):
+    """Holding the request gate constant is not turning the guard off."""
+    ungated = DragonStyleDefense(detector=detector, inspect_query=False)
+    peer = derive_envelope(
+        kind="agent_output",
+        content=tofu_items[0].answer,
+        source_node="A",
+        dest_node="D",
+    )
+    verdict = ungated.on_node_input(_ctx("Summarise the material you were given.", [peer]))
+    assert verdict.fired
 
 
 def test_does_not_enforce_on_edges(detector, tofu_items):

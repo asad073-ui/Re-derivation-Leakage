@@ -59,6 +59,9 @@ def _monotone(curve: dict[int, float]) -> bool:
 def report_graph(
     run: Path = typer.Option(..., "--run"),
     challenge: str = typer.Option("natural", "--challenge"),
+    protocol: str | None = typer.Option(
+        None, "--protocol", help="defaults to the protocol recorded in the run manifest"
+    ),
     treatment: str = typer.Option("multi_agent_graphforget", "--treatment"),
     allow_incomplete: bool = typer.Option(
         False, "--allow-incomplete", help="write a diagnostic report over a partial sample set"
@@ -68,10 +71,30 @@ def report_graph(
     manifest = json.loads((run / "RUN_MANIFEST.json").read_text(encoding="utf-8"))
     scoring_path = run / "scores" / "SCORING.json"
     scoring = json.loads(scoring_path.read_text(encoding="utf-8")) if scoring_path.exists() else {}
-    rows = _load_scores(run)
-    rows = [r for r in rows if r.get("challenge", "natural") == challenge]
+    all_rows = _load_scores(run)
+    active_protocol = protocol or str(manifest.get("protocol", "end_to_end_safety"))
+
+    # One challenge and one protocol per report, always. Injected gold-derived content
+    # and model-produced content are different populations; request filtering and graph
+    # containment answer different questions. Pooling either pair produces a number that
+    # means nothing, so the filter is applied here and the counts are reported.
+    rows = [
+        r
+        for r in all_rows
+        if r.get("challenge", "natural") == challenge
+        and r.get("protocol", "end_to_end_safety") == active_protocol
+    ]
     if not rows:
-        raise typer.BadParameter(f"no scored rows for challenge '{challenge}'")
+        available = sorted(
+            {
+                (r.get("challenge", "natural"), r.get("protocol", "end_to_end_safety"))
+                for r in all_rows
+            }
+        )
+        raise typer.BadParameter(
+            f"no scored rows for challenge '{challenge}' under protocol "
+            f"'{active_protocol}'. Available (challenge, protocol) pairs: {available}"
+        )
 
     sampling = manifest.get("sampling", {})
     n_samples = int(sampling.get("n_samples", 0))
@@ -89,7 +112,7 @@ def report_graph(
             "refusing to report over an incomplete sample set:\n  " + "\n  ".join(problems[:10])
         )
 
-    tables = leak_curves(rows, k_values=k_values, challenge=challenge)
+    tables = leak_curves(rows, k_values=k_values, challenge=challenge, protocol=active_protocol)
     curves = {
         surface: {arm: table.curve(arm, k_values) for arm in table.arms()}
         for surface, table in tables.items()
@@ -119,8 +142,12 @@ def report_graph(
         else {"hypotheses": [], "all_supported": False, "note": "treatment or baseline absent"}
     )
 
-    raw_rows = list(read_shards(run / "generations"))
-    raw_rows = [r for r in raw_rows if r.get("challenge", "natural") == challenge]
+    raw_rows = [
+        r
+        for r in read_shards(run / "generations")
+        if r.get("challenge", "natural") == challenge
+        and r.get("protocol", "end_to_end_safety") == active_protocol
+    ]
     engine = OfflineSemanticScorer()
     utility = utility_summary(raw_rows, lambda ref, cand: engine.score(ref, cand).leaks)
     # Retain utility needs retain questions. A forget cohort's answer-match rate IS the
@@ -132,6 +159,14 @@ def report_graph(
         "study_id": manifest.get("study_id"),
         "phase": manifest.get("phase"),
         "challenge": challenge,
+        "protocol": active_protocol,
+        "protocol_note": manifest.get("protocol_note"),
+        "n_rows_in_scope": len(rows),
+        "n_rows_total": len(all_rows),
+        "pooling": (
+            "one challenge and one protocol only; challenges and protocols are never "
+            "pooled because they are different populations and different questions"
+        ),
         "study_design_hash": manifest.get("study_design_hash"),
         "profile_hash": manifest.get("profile_hash"),
         "resolved_run_hash": manifest.get("resolved_run_hash"),
@@ -195,6 +230,7 @@ def _markdown(report: dict) -> str:
         f"# Graph leakage report — {report['run']}",
         "",
         f"- study: `{report['study_id']}` phase `{report['phase']}` challenge `{report['challenge']}`",
+        f"- protocol: **`{report['protocol']}`** ({report['n_rows_in_scope']} of {report['n_rows_total']} scored rows)",
         f"- topology: `{report['topology']}`  primary k: **{report['primary_k']}**  n_samples: {report['n_samples']}",
         f"- scorer: `{report['scorer']}` (reportable: {report['scorer_reportable']})",
         f"- detector: `{report['detector_status']}`",
@@ -218,6 +254,23 @@ def _markdown(report: dict) -> str:
         lines += [
             "> Controlled challenge: injected messages were constructed from the gold answer.",
             "> This is a defence stress test and says nothing about natural leakage rates.",
+            "> Never pool these rates with the natural condition's.",
+            "",
+        ]
+    if report["protocol"] == "end_to_end_safety":
+        lines += [
+            "> **Protocol `end_to_end_safety`.** The request gate is part of the defence, so a",
+            "> forget question is refused before the model is called. This answers *does the",
+            "> deployed system release forgotten information* — it does **not** isolate the",
+            "> graph contribution, because both guarded arms fire at the root and nothing",
+            "> downstream is exercised. Use `--protocol graph_flow` for the mechanism claim.",
+            "",
+        ]
+    else:
+        lines += [
+            "> **Protocol `graph_flow`.** The request gate is held constant across every arm —",
+            "> no arm inspects the incoming question — so what is measured is whether forgotten",
+            "> information generated or introduced after the initial boundary can propagate.",
             "",
         ]
     lines += ["## Leak@k by surface", ""]

@@ -57,9 +57,19 @@ class AccumulatedEvidence:
 
 
 class EvidenceAccumulator:
-    def __init__(self, detector: SemanticConceptDetector, *, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        detector: SemanticConceptDetector,
+        *,
+        enabled: bool = True,
+        inspect_query: bool = True,
+    ) -> None:
         self.detector = detector
         self.enabled = enabled
+        # ``False`` under the graph_flow protocol: the request gate is held constant
+        # across arms, so the query is neither scored on its own nor folded into any
+        # combination. See rdl.graph.config.Protocol.
+        self.inspect_query = inspect_query
         self.n_accumulated_only = 0
 
     def evaluate(
@@ -81,18 +91,25 @@ class EvidenceAccumulator:
             combos.append(("parents", "\n".join(parts)))
         if parts and memory:
             combos.append(("parents+memory", "\n".join([*parts, *memory])))
-        combos.append(("node_input", "\n".join([question, *parts, *memory]).strip()))
+        node_input_parts = [question, *parts, *memory] if self.inspect_query else [*parts, *memory]
+        combos.append(("node_input", "\n".join(node_input_parts).strip()))
 
-        texts = [question, *parts, *(text for _label, text in combos)]
+        # The query is scored only when the protocol says the request gate is part of
+        # the defence. Under graph_flow it is not scored at all, so no combination can
+        # inherit its similarity to its own prototype.
+        query_probe = [question] if self.inspect_query else []
+        texts = [*query_probe, *parts, *(text for _label, text in combos)]
         scored = self.detector.score_batch(texts, restrict_to=restrict_to)
-        query_result = scored[0]
-        per_input = tuple(scored[1 : 1 + len(parts)])
-        combo_results = scored[1 + len(parts) :]
+        offset = len(query_probe)
+        query_result = scored[0] if self.inspect_query else None
+        per_input = tuple(scored[offset : offset + len(parts)])
+        combo_results = scored[offset + len(parts) :]
 
         individual: set[str] = set()
         for result in per_input:
             individual |= set(result.forget_ids)
-        query_ids = set(query_result.forget_ids)
+        query_ids = set(query_result.forget_ids) if query_result is not None else set()
+        query_score = query_result.score if query_result is not None else 0.0
 
         joint: set[str]
         if not self.enabled:
@@ -103,7 +120,7 @@ class EvidenceAccumulator:
             return AccumulatedEvidence(
                 forget_ids=tuple(sorted(joint)),
                 score=max(
-                    [node_input.score, query_result.score, *(r.score for r in per_input)],
+                    [node_input.score, query_score, *(r.score for r in per_input)],
                     default=0.0,
                 ),
                 fired=bool(joint),
@@ -121,9 +138,7 @@ class EvidenceAccumulator:
             if result.score > best_score:
                 best_score, best_label = result.score, label
             joint |= set(result.forget_ids)
-        best_score = max(
-            [best_score, query_result.score, *(r.score for r in per_input)], default=0.0
-        )
+        best_score = max([best_score, query_score, *(r.score for r in per_input)], default=0.0)
 
         # A scope that only a COMBINATION of parent messages reveals. The query firing on
         # its own does not count: a node-local guard sees the query too.

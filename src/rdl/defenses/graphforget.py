@@ -64,6 +64,7 @@ class GraphForgetDefense:
         guard_final_output: bool = True,
         allow_safe_refusal: bool = True,
         rescan_untagged_memory: bool = True,
+        inspect_query: bool = True,
         sanitizer: Sanitizer | None = None,
     ) -> None:
         self.detector = detector
@@ -77,7 +78,12 @@ class GraphForgetDefense:
         )
         self.semantic_detection = semantic_detection
         self.propagate_forget_ids = propagate_forget_ids
-        self.accumulator = EvidenceAccumulator(detector, enabled=accumulate_evidence)
+        # Under graph_flow the accumulator does not score the query, so the guard acts
+        # only on what the graph itself carries.
+        self.inspect_query = inspect_query
+        self.accumulator = EvidenceAccumulator(
+            detector, enabled=accumulate_evidence, inspect_query=inspect_query
+        )
         self.rescan_untagged_memory = rescan_untagged_memory
         self.sanitizer = sanitizer or Sanitizer()
         self.counters = DefenseCounters()
@@ -354,6 +360,7 @@ class GraphForgetDefense:
             "propagate_forget_ids": self.propagate_forget_ids,
             "semantic_detection": self.semantic_detection,
             "rescan_untagged_memory": self.rescan_untagged_memory,
+            "inspect_query": self.inspect_query,
             **self.counters.to_dict(),
             **self.accumulator.stats(),
         }

@@ -45,13 +45,20 @@ class NodeInputContext:
     # Scopes already known to be carried by this node's inputs.
     inherited_forget_ids: tuple[str, ...] = ()
 
-    def combined_text(self) -> str:
-        """Query + every incoming message + retrieved memory, concatenated.
+    def combined_text(self, *, include_query: bool = True) -> str:
+        """Every incoming message + retrieved memory, and optionally the query.
 
         This is the object the accumulated-input detector scores. Two clues that are
         individually below threshold are jointly above it precisely here.
+
+        ``include_query=False`` is the ``graph_flow`` protocol: the request gate is held
+        constant across arms and the guard acts only on what the graph itself carries.
+        Without it the forget question — which is one of the detector's own prototypes —
+        fires at the root of every guarded arm and nothing downstream is ever exercised.
         """
-        parts = [self.question, *(e.content for e in self.inputs), *self.memory_texts]
+        parts = [*(e.content for e in self.inputs), *self.memory_texts]
+        if include_query:
+            parts.insert(0, self.question)
         return "\n".join(p for p in parts if p.strip())
 
 

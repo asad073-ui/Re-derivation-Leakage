@@ -32,6 +32,7 @@ class VllmBackend:
         profiles: Sequence[str] = ("primary",),
         revision: str | None = None,
         tokenizer: str | None = None,
+        tokenizer_revision: str | None = None,
         dtype: str = "bfloat16",
         gpu_memory_utilization: float = 0.82,
         max_model_len: int = 2048,
@@ -42,13 +43,21 @@ class VllmBackend:
     ) -> None:
         self.model_path = model_path
         self.revision = revision
+        self.tokenizer_path = tokenizer or model_path
+        self.tokenizer_revision = tokenizer_revision
         # Every logical agent profile maps to ONE engine. Five agents, one checkpoint.
         self.profiles = tuple(profiles)
         self._engine = engine
+        self._resolved: dict[str, str | None] | None = None
+        # `tokenizer_revision` was previously accepted by the CLI, recorded in the
+        # manifest, and never passed here — so the engine loaded the tokenizer from the
+        # branch head while the manifest claimed a pinned commit, and every serialized
+        # prompt hash was attributed to a chat template that may not have rendered it.
         self._engine_kwargs = {
             "model": model_path,
             "revision": revision,
-            "tokenizer": tokenizer or model_path,
+            "tokenizer": self.tokenizer_path,
+            "tokenizer_revision": tokenizer_revision,
             "dtype": dtype,
             "gpu_memory_utilization": gpu_memory_utilization,
             "max_model_len": max_model_len,
@@ -56,6 +65,9 @@ class VllmBackend:
             "max_num_batched_tokens": max_num_batched_tokens,
             "tensor_parallel_size": tensor_parallel_size,
         }
+        # NOTE: no token argument. Authentication comes from HF_TOKEN in the process
+        # environment or from an already-authenticated cache, so a credential can never
+        # be captured into engine kwargs and from there into a manifest.
 
     # ------------------------------------------------------------------- lifecycle --
 
@@ -139,6 +151,40 @@ class VllmBackend:
         if model not in self.profiles:
             raise KeyError(f"unknown model profile '{model}'; have {list(self.profiles)}")
         return f"{self.model_path}@{self.revision or 'unresolved'}"
+
+    def resolved_revisions(self) -> dict[str, str | None]:
+        """The commit SHAs the Hub actually resolved, not the ones we asked for.
+
+        A pinned revision that is a branch name, a tag, or a short SHA resolves to
+        something; recording the request as though it were the outcome cannot tell the
+        difference. Best-effort and cached: never fails a finished run.
+        """
+        if self._resolved is not None:
+            return self._resolved
+        out: dict[str, str | None] = {
+            "requested_model_revision": self.revision,
+            "requested_tokenizer_revision": self.tokenizer_revision,
+            "model_repo": self.model_path,
+            "tokenizer_repo": self.tokenizer_path,
+        }
+        try:
+            import os
+
+            from huggingface_hub import HfApi
+
+            api = HfApi(token=os.environ.get("HF_TOKEN"))
+            out["resolved_model_sha"] = api.model_info(self.model_path, revision=self.revision).sha
+            out["resolved_tokenizer_sha"] = api.model_info(
+                self.tokenizer_path, revision=self.tokenizer_revision
+            ).sha
+            out["model_pin_exact"] = str(out["resolved_model_sha"] == self.revision)
+            out["tokenizer_pin_exact"] = str(
+                out["resolved_tokenizer_sha"] == self.tokenizer_revision
+            )
+        except Exception as exc:  # provenance is best-effort, never a gate here
+            out["error"] = f"{type(exc).__name__}: {exc}"
+        self._resolved = out
+        return out
 
     def shared_handle_ids(self) -> dict[str, int]:
         """All profiles share one engine, which is the point of the 3090 plan."""

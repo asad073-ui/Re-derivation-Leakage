@@ -44,7 +44,7 @@ __all__ = [
 ]
 
 SCHEMA = "graph-unlearning-v1"
-Phase = Literal["smoke", "engineering", "discovery", "validation"]
+Phase = Literal["smoke", "engineering", "discovery", "validation", "retain_utility"]
 ArmMode = Literal["single_agent", "multi_agent"]
 PeerContent = Literal["none", "same_concept", "cross_concept"]
 DefenseKind = Literal["none", "dragon_style", "graphforget", "edge_cut"]
@@ -52,6 +52,28 @@ ChallengeMode = Literal["natural", "controlled"]
 ControlledChallenge = Literal[
     "direct", "paraphrase", "partial_clue", "split_clues", "memory_reentry", "tool_reentry"
 ]
+
+# The two protocols. They answer different questions and are NEVER pooled.
+#
+# ``end_to_end_safety``  the request gate is part of the defence. The guarded arms
+#                        inspect the incoming question as well as everything else, so a
+#                        query that is itself in a forgotten scope is refused before the
+#                        model is called. This measures whether the DEPLOYED SYSTEM
+#                        releases forgotten information.
+#
+# ``graph_flow``         the request gate is held CONSTANT across every arm — no arm
+#                        inspects the question — and detection covers peer messages,
+#                        tool responses, memory reads, agent outputs, edges, writes,
+#                        retrievals and the final output. This measures whether
+#                        forgotten information GENERATED OR INTRODUCED AFTER the initial
+#                        boundary can propagate, which is the GraphForget contribution.
+#
+# Why both are needed: the concept registry's prototypes include the forget questions
+# themselves, so under end_to_end_safety a forget question has near-maximal similarity
+# to its own prototype, both guarded arms fire at the root, and every downstream
+# mechanism — propagation, edge enforcement, write protection — goes untested. That
+# comparison shows request filtering works. It does not show the graph contribution.
+Protocol = Literal["end_to_end_safety", "graph_flow"]
 
 
 # ------------------------------------------------------------------------- arms --
@@ -159,6 +181,13 @@ class GraphMemoryConfig(GraphBase):
 
 
 class GraphDetectorConfig(GraphBase):
+    # ``hashing64`` is the deterministic, torch-free backbone from rdl.memory.index. It
+    # runs on CPU by construction and there is currently no other implementation, so
+    # there are deliberately no `detector_device` / `detector_batch_size` knobs: a
+    # runtime profile that set `detector_device: cuda` would have described a code path
+    # that does not exist. Adding a semantic backbone means adding a value here and the
+    # implementation behind it, together. See DECISIONS.md GU-0021.
+    backend: Literal["hashing64"] = "hashing64"
     threshold: float = 0.55
     # ``diagnostic`` until a calibration artefact exists. A report that claims a
     # calibrated threshold without one is blocked by the report gate.
@@ -181,6 +210,7 @@ class GraphDataConfig(GraphBase):
     engineering_manifest: str = "engineering.json"
     discovery_manifest: str = "discovery.json"
     validation_manifest: str = "validation.json"
+    retain_utility_manifest: str = "retain_utility.json"
     exclusion_manifest: str = "exclusions.json"
     smoke_manifest: str = "smoke.json"
     require_frozen_hashes: bool = True
@@ -195,6 +225,7 @@ class GraphStudyConfig(GraphBase):
     arms: tuple[str, ...]
     challenge_modes: tuple[ChallengeMode, ...] = ("natural",)
     controlled_challenges: tuple[ControlledChallenge, ...] = ()
+    protocols: tuple[Protocol, ...] = ("end_to_end_safety", "graph_flow")
     profiles: tuple[str, ...] = ()
     sampling: GraphSamplingConfig = Field(default_factory=GraphSamplingConfig)
     memory: GraphMemoryConfig = Field(default_factory=GraphMemoryConfig)
@@ -216,6 +247,14 @@ class GraphStudyConfig(GraphBase):
             raise ValueError("primary_topology must appear in topologies")
         if "controlled" in self.challenge_modes and not self.controlled_challenges:
             raise ValueError("challenge_modes includes 'controlled' but no types are listed")
+        if not self.protocols:
+            raise ValueError("a study must enable at least one protocol")
+        if "graph_flow" not in self.protocols:
+            raise ValueError(
+                "graph_flow must be enabled. Without it the study can only show that both "
+                "guarded arms recognise the original forget question and refuse, which is "
+                "request filtering, not the graph contribution."
+            )
         return self
 
 
@@ -230,10 +269,12 @@ class GraphRuntimeConfig(GraphBase):
     max_num_seqs: int = 16
     max_num_batched_tokens: int | None = 8192
     tensor_parallel_size: int = 1
-    detector_device: Literal["cpu", "cuda"] = "cpu"
-    detector_batch_size: int = 128
     shard_size: int = 64
     response_cache: bool = True
+    # NO `detector_device` / `detector_batch_size`. The only detector backbone is the
+    # torch-free hashing embedder, which runs on CPU; those keys described a code path
+    # that does not exist. The detector's identity lives in `study.detector.backend`
+    # where the science is, not in a machine profile. See DECISIONS.md GU-0021.
 
 
 class GraphAgentsConfig(GraphBase):
@@ -260,6 +301,15 @@ class GraphBudgetConfig(GraphBase):
         return self
 
 
+# A checkpoint that has NOT been unlearned on the forget set. A config that declares
+# `expect_unlearned: true` and names one of these is measuring leakage from a model that
+# never forgot anything, and every number it produces is meaningless.
+_NOT_UNLEARNED_MARKERS: tuple[str, ...] = ("_full", "-full", "/full", "_base", "-base", "retain")
+# Config names that assert an unlearning method. If the file is called `rule_npo_1b` it
+# had better not point at a base checkpoint, whatever `expect_unlearned` says.
+_UNLEARNED_NAME_MARKERS: tuple[str, ...] = ("npo", "rule", "unlearn", "forget", "grad_diff", "dpo")
+
+
 class GraphModelConfig(GraphBase):
     name: str
     kind: Literal["hf", "stub"] = "hf"
@@ -268,12 +318,64 @@ class GraphModelConfig(GraphBase):
     tokenizer_repo_id: str | None = None
     tokenizer_revision: str | None = None
     description: str = ""
+    # Whether this checkpoint is claimed to have been unlearned on the forget set. Set
+    # true for every graph-study target; it is what turns the checks below on.
+    expect_unlearned: bool = False
 
     @model_validator(mode="after")
     def _valid(self) -> GraphModelConfig:
-        if self.kind == "hf" and not self.repo_id:
-            raise ValueError(f"model '{self.name}': kind=hf requires repo_id")
+        # `repo_id: null` is permitted so that a deliberately-unselected target can be
+        # composed and compared for study invariance. Starting a RUN with one is not:
+        # `assert_model_provenance` is the gate, and plan and run both call it.
+        if self.kind != "hf":
+            return self
+        name = self.name.lower()
+        if any(marker in name for marker in _UNLEARNED_NAME_MARKERS) and not self.expect_unlearned:
+            raise ValueError(
+                f"model '{self.name}' is named for an unlearning method but does not set "
+                "`expect_unlearned: true`, so none of the checkpoint-provenance checks "
+                "would run on it."
+            )
+        if self.expect_unlearned and self.repo_id:
+            repo = self.repo_id.lower()
+            hit = next((m for m in _NOT_UNLEARNED_MARKERS if m in repo), None)
+            if hit is not None:
+                raise ValueError(
+                    f"model '{self.name}' declares expect_unlearned but repo_id "
+                    f"'{self.repo_id}' contains '{hit}', which marks a checkpoint that was "
+                    "NOT unlearned on the forget set. A graph run against it would measure "
+                    "leakage from a model that never forgot anything."
+                )
         return self
+
+    @property
+    def pinned(self) -> bool:
+        return bool(self.repo_id and self.revision and self.tokenizer_revision)
+
+
+def assert_model_provenance(model: GraphModelConfig) -> GraphModelConfig:
+    """Refuse to start a run against an unresolved or unpinned checkpoint.
+
+    Separate from validation so that an unselected target can still be *composed* — the
+    profile-invariance tests need to load it — while any command that would actually
+    generate fails loudly.
+    """
+    if model.kind == "stub":
+        return model
+    missing = [
+        field
+        for field in ("repo_id", "revision", "tokenizer_repo_id", "tokenizer_revision")
+        if not getattr(model, field)
+    ]
+    if missing:
+        raise GraphConfigError(
+            f"model '{model.name}' cannot start a run: {missing} unset.\n"
+            "A run records the revision it used; recording 'unresolved' means the result "
+            "cannot be reproduced from what it claims. Resolve the checkpoint and the "
+            "tokenizer on a box with Hub access and pin both commits in "
+            f"configs/graph/models/{model.name}.yaml."
+        )
+    return model
 
 
 class GraphProfile(GraphBase):

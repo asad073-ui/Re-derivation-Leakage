@@ -1,0 +1,15 @@
+# A node-local REFUSAL guard: on detection the node emits a fixed safe refusal instead
+# of generating. Deterministic, model-independent, and strictly stronger than modifying
+# the inference context.
+#
+# Reported as a STRONG UPPER BOUND on what node-local guarding can achieve, never as a
+# faithful DRAGON reproduction. It matters because a prompt-only guard on a checkpoint
+# that ignores the instruction is a no-op, and the pair of arms brackets the real
+# baseline: prompt guard below, deterministic refusal above.
+name: dragon_style_refuse
+kind: dragon_style
+guard_action: refuse
+apply_at: every_agent_input
+implementation: template
+propagate_scope: false
+description: "node-local deterministic refusal; upper bound on node-local guarding"

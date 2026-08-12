@@ -8,7 +8,13 @@ import typer
 
 from ..paths import make_run_id, repo_root
 from ..studies.graph_leak.runner import GraphRunner
-from .graph_common import DEFAULT_LAUNCH, build_backend, load_config_or_fail, resolve_cohort_items
+from .graph_common import (
+    DEFAULT_LAUNCH,
+    apply_sample_budget,
+    build_backend,
+    load_config_or_fail,
+    resolve_cohort_items,
+)
 
 __all__ = ["run_graph"]
 
@@ -24,6 +30,12 @@ def run_graph(
         None, "--n-samples", min=1, help="reduce (never exceed) the profile's sample budget"
     ),
     challenges: str = typer.Option("natural", "--challenges", help="comma-separated"),
+    protocol: str = typer.Option(
+        "end_to_end_safety",
+        "--protocol",
+        help="end_to_end_safety (does the deployed system release it) or graph_flow "
+        "(can it propagate once produced)",
+    ),
     output: Path | None = typer.Option(None, "--output"),
     resume: bool = typer.Option(False, "--resume"),
     token: str | None = typer.Option(None, "--hf-token"),
@@ -31,26 +43,14 @@ def run_graph(
     """Run every arm of a graph study and write immutable evidence shards."""
     overrides = [f"active_profile={profile}"] if profile else None
     cfg = load_config_or_fail(launch, overrides=overrides, topology=topology)
-    if n_samples is not None:
-        if n_samples > cfg.profile.sampling.n_samples:
-            raise typer.BadParameter(
-                "--n-samples may reduce, not exceed, the profile's sample budget"
-            )
-        budget = cfg.profile.sampling.model_copy(
-            update={
-                "n_samples": n_samples,
-                "k_values": tuple(k for k in cfg.profile.sampling.k_values if k <= n_samples),
-            }
+    # The SAME function `graph-plan` uses, so the plan describes this run.
+    cfg = apply_sample_budget(cfg, n_samples)
+    if cfg.study.sampling.primary_k not in cfg.profile.sampling.k_values:
+        typer.echo(
+            f"note: primary_k={cfg.study.sampling.primary_k} is outside this run's sample "
+            "budget; the run is a wiring check and its reports will be diagnostic.",
+            err=True,
         )
-        cfg = cfg.model_copy(
-            update={"profile": cfg.profile.model_copy(update={"sampling": budget})}
-        )
-        if cfg.study.sampling.primary_k not in cfg.profile.sampling.k_values:
-            typer.echo(
-                f"note: primary_k={cfg.study.sampling.primary_k} exceeds the reduced sample "
-                "budget; this run is a wiring check and cannot report the primary metric.",
-                err=True,
-            )
 
     cohort_obj, items = resolve_cohort_items(
         cfg, fixture=fixture, cohort_path=cohort, token=token, limit=limit
@@ -64,6 +64,7 @@ def run_graph(
         backend=backend,
         output=out,
         challenges=tuple(c.strip() for c in challenges.split(",") if c.strip()),
+        protocol=protocol,
         tokenizer_revision=tokenizer_revision,
         resume=resume,
     )

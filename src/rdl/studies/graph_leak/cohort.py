@@ -212,6 +212,16 @@ def load_cohort(
             "`rdl graph-freeze-cohort` against the pinned dataset revision before using "
             "this split for anything reportable."
         )
+    # A frozen cohort over real data must name the dataset commit it was frozen against.
+    # Content hashes alone would catch a changed question, but only after the download;
+    # the revision is what makes the download itself reproducible.
+    if require_frozen and cohort.dataset != "fixture" and not cohort.dataset_revision:
+        raise CohortError(
+            f"{path}: frozen cohort has no dataset_revision. Re-freeze it with\n"
+            f"  rdl graph-freeze-cohort --manifest {path} --dataset-revision <sha> --write\n"
+            "Recording a revision that was never passed to load_dataset is worse than "
+            "recording none, and that is exactly what this check prevents."
+        )
 
     # The exclusion list is about the real dataset. The development fixture reuses TOFU
     # item ids for eight invented questions, so applying TOFU exclusions to it would
