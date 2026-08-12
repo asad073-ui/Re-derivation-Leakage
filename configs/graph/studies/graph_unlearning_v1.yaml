@@ -11,13 +11,30 @@ phase: smoke
 primary_topology: diamond5
 topologies: [chain5, diamond5, dense_dag5, diamond6]
 
-# The five arms. Names are load-bearing: the report gate looks for
-# multi_agent_leak and multi_agent_dragon as the two baselines of H1 and H2.
+# The six arms. Names are load-bearing: the report gate looks for multi_agent_leak,
+# multi_agent_dragon and multi_agent_dragon_subsets as the three baselines of H1-H3.
+#
+#   single_agent               direct unlearned-model floor
+#   multi_agent_control        cross-concept collaboration (the negative control)
+#   multi_agent_leak           unprotected same-concept collaboration
+#   multi_agent_dragon         DRAGON as published: node-local guard, ONE context scored
+#   multi_agent_dragon_subsets matched-subset ablation of that baseline. A FAIRNESS
+#                              ABLATION, not the published DRAGON implementation: it
+#                              gives the node-local guard GraphForget's subset battery so
+#                              the remaining contrast is Forget-ID propagation rather
+#                              than how finely each side chops up one node's input. It
+#                              must never be labelled "DRAGON" in a results table.
+#   multi_agent_graphforget    the propagation/enforcement technique under test
+#
+# The subsets arm is what makes the propagation claim falsifiable, so it is part of the
+# engineering study rather than an optional extra: if GraphForget's advantage over
+# multi_agent_dragon largely disappears against it, subset scoring was doing the work.
 arms:
   - single_agent
   - multi_agent_control
   - multi_agent_leak
   - multi_agent_dragon
+  - multi_agent_dragon_subsets
   - multi_agent_graphforget
 
 challenge_modes: [natural]
@@ -62,11 +79,23 @@ detector:
   # runs on CPU by construction — there is no `detector_device` knob, because there is
   # no code path a GPU setting would select.
   backend: hashing64
+  # The FALLBACK operating point, used by any run the calibration artefact does not
+  # cover — the CPU stub cohort, most often. A covered run uses the artefact's threshold
+  # (0.65), never this one.
   threshold: 0.55
-  # `diagnostic` until a calibration artefact exists; the report gate will not call a
-  # run reportable while this says diagnostic.
-  status: diagnostic
-  calibration_id: null
+  # `calibrated`, and now backed by evidence: DETECTOR_CALIBRATION.json records a
+  # threshold of 0.65 selected on the frozen calibration cohorts, with recall 0.950
+  # (FNR 0.050) on 40 held-out forget10 questions and a false-positive rate of 0.056 on
+  # 90 retain90 questions from 45 authors that appear in NO evaluation cohort. That FPR
+  # is under `evaluation.max_detector_fpr`, which the report gate now enforces.
+  #
+  # A run only INHERITS this status when the artefact was calibrated on that run's
+  # forget policy; otherwise the run downgrades itself to diagnostic and says why. So
+  # the CPU smoke, whose policy is the four-concept stub cohort, still reports
+  # `detector_status: diagnostic` — which is the truth about it.
+  status: calibrated
+  calibration_id: 5d479f307957581b
+  calibration_artifact: data/cohorts/graph_unlearning_v1/DETECTOR_CALIBRATION.json
   alias_weight: 1.0
 
 evaluation:

@@ -1,0 +1,142 @@
+{
+  "artifact_sha256": "c7427b6f09a54642c059025176caa593f2b032de2c16951ae2fc309538583629",
+  "calibration_cohort_sha256": {
+    "negatives": "798924498e5217f783dd9187d297c3411d43700b96d9de90147d6af5d0d316eb",
+    "positives": "efbf2b34b97707bb6471e2d4e210bff7f2bad68a1aced96662c15a0cb769829d"
+  },
+  "calibration_cohorts": {
+    "negatives": {
+      "dataset_config": "retain90",
+      "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+      "n_concepts": 45,
+      "n_items": 90,
+      "split": "calibration_negatives"
+    },
+    "positives": {
+      "dataset_config": "forget10",
+      "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+      "n_concepts": 20,
+      "n_items": 40,
+      "split": "calibration_positives"
+    }
+  },
+  "calibration_id": "5d479f307957581b",
+  "detector_alias_weight": 1.0,
+  "detector_backend": "hashing64",
+  "fnr": 0.05,
+  "fpr": 0.055556,
+  "fpr_ceiling": 0.1,
+  "grid": [
+    0.3,
+    0.35,
+    0.4,
+    0.45,
+    0.5,
+    0.55,
+    0.6,
+    0.65,
+    0.7,
+    0.75,
+    0.8,
+    0.85,
+    0.9
+  ],
+  "held_out_from_evaluation": true,
+  "n_negative": 90,
+  "n_positive": 40,
+  "negatives_held_out_at": "author",
+  "note": "FPR is measured on retain90 authors that appear in no evaluation cohort, so it is held out at the author level. Recall is measured on held-out QUESTIONS about the forget-policy authors and cannot be held out at the author level: the detector's prototypes are those authors. Author-level held-out positives need a new unlearning checkpoint over a fresh concept split.",
+  "ok": true,
+  "positives_held_out_at": "question",
+  "reason": "highest threshold meeting the recall floor within the FPR ceiling",
+  "recall": 0.95,
+  "recall_floor": 0.9,
+  "registry_from": {
+    "fingerprint": "051eadbbdf2f00be1b0f774b7f5bff0381f33085c380f238065a75a9db9d9282",
+    "n_concepts": 20,
+    "split": "engineering"
+  },
+  "schema": "graph-detector-calibration-v1",
+  "study_id": "graphforget-v1",
+  "sweep": [
+    {
+      "fpr": 0.822222,
+      "recall": 1.0,
+      "threshold": 0.3,
+      "youden": 0.177778
+    },
+    {
+      "fpr": 0.6,
+      "recall": 0.975,
+      "threshold": 0.35,
+      "youden": 0.375
+    },
+    {
+      "fpr": 0.433333,
+      "recall": 0.975,
+      "threshold": 0.4,
+      "youden": 0.541667
+    },
+    {
+      "fpr": 0.344444,
+      "recall": 0.975,
+      "threshold": 0.45,
+      "youden": 0.630556
+    },
+    {
+      "fpr": 0.266667,
+      "recall": 0.975,
+      "threshold": 0.5,
+      "youden": 0.708333
+    },
+    {
+      "fpr": 0.155556,
+      "recall": 0.95,
+      "threshold": 0.55,
+      "youden": 0.794444
+    },
+    {
+      "fpr": 0.077778,
+      "recall": 0.95,
+      "threshold": 0.6,
+      "youden": 0.872222
+    },
+    {
+      "fpr": 0.055556,
+      "recall": 0.95,
+      "threshold": 0.65,
+      "youden": 0.894444
+    },
+    {
+      "fpr": 0.022222,
+      "recall": 0.75,
+      "threshold": 0.7,
+      "youden": 0.727778
+    },
+    {
+      "fpr": 0.011111,
+      "recall": 0.75,
+      "threshold": 0.75,
+      "youden": 0.738889
+    },
+    {
+      "fpr": 0.0,
+      "recall": 0.575,
+      "threshold": 0.8,
+      "youden": 0.575
+    },
+    {
+      "fpr": 0.0,
+      "recall": 0.575,
+      "threshold": 0.85,
+      "youden": 0.575
+    },
+    {
+      "fpr": 0.0,
+      "recall": 0.575,
+      "threshold": 0.9,
+      "youden": 0.575
+    }
+  ],
+  "threshold": 0.65
+}

@@ -42,7 +42,11 @@ from ...runtime.backend import GenerationBackend, GenRequest
 from ...runtime.batch_scheduler import BatchScheduler
 from ...runtime.resource_monitor import ResourceMonitor
 from .arms import ArmPlan, build_arm_runtime, build_detector, build_registry
-from .cohort import Cohort
+from .cohort import (
+    Cohort,
+    assert_forget_policy_cohort,
+    assert_policy_excludes_evaluation_concepts,
+)
 from .controls import ControlledChallengeSet, build_controlled_challenges, concept_control_mapping
 from .evidence import ShardWriter, atomic_json, verify_ledger, verify_shards
 from .response_bank import ResponseBank
@@ -153,11 +157,37 @@ def build_baseline_memory(
 
 @dataclass
 class GraphRunner:
+    """One graph study run.
+
+    **Two cohorts, deliberately.** ``cohort``/``items`` is the EVALUATION cohort — the
+    questions that get asked — and ``policy_cohort``/``policy_items`` is the frozen
+    FORGET cohort that defines what the system must withhold. They are the same object
+    for a forget-cohort run and different objects for a retain-utility run, and the
+    forget-policy role is the one that must never move:
+
+        concept registry        always the policy cohort's concepts
+        deleted baseline memory always the policy cohort's content
+
+    Deriving either of those from the evaluation cohort is what made a retain-utility
+    run register retained authors as forgotten, so ``policy_cohort`` defaults to the
+    evaluation cohort only while that cohort is itself a forget cohort; a retain
+    evaluation cohort with no explicit policy cohort is refused rather than guessed at.
+
+    The policy cohort is deliberately NOT subject to ``--limit``. A limit narrows which
+    questions are asked; it does not narrow what the deployed system forgot, and a
+    registry that shrank with the question budget would make the guard's scope a
+    function of how much GPU time was bought.
+    """
+
     cfg: ResolvedGraphConfig
     items: Sequence[TofuItem]
     cohort: Cohort
     backend: GenerationBackend
     output: Path
+    # The frozen forget cohort. ``None`` means "the evaluation cohort is itself the
+    # forget cohort", which is checked rather than assumed.
+    policy_cohort: Cohort | None = None
+    policy_items: Sequence[TofuItem] | None = None
     challenges: tuple[str, ...] = ("natural",)
     # ``end_to_end_safety`` or ``graph_flow``. One protocol per run; the resume
     # fingerprint refuses to continue a run under a different one, because pooling the
@@ -177,11 +207,51 @@ class GraphRunner:
                 f"protocol '{self.protocol}' is not enabled by study "
                 f"'{self.cfg.study.study_id}'; available: {list(self.cfg.study.protocols)}"
             )
-        self.concept_by_item = {entry.item_id: entry.concept_id for entry in self.cohort.items}
+        # ---- the two cohorts, and the rule that keeps them apart --------------------
+        # `policy_cohort` / `policy_items` are the constructor's INPUTS and may be None;
+        # `forget_policy` / `forget_policy_items` are the resolved, always-present
+        # attributes everything downstream reads. Keeping the two names apart is what
+        # stops "did the caller pass one?" and "which cohort is the policy?" from being
+        # the same question.
+        if self.policy_cohort is None:
+            # An unqualified cohort may serve both roles only if it is a forget cohort.
+            # `assert_forget_policy_cohort` is what turns "retain cohort with no policy
+            # cohort" from a silently wrong registry into a refusal.
+            self.forget_policy: Cohort = self.cohort
+            self.forget_policy_items: Sequence[TofuItem] = self.items
+        else:
+            if self.policy_items is None:
+                raise ValueError("policy_cohort was given without policy_items")
+            self.forget_policy = self.policy_cohort
+            self.forget_policy_items = self.policy_items
+        assert_forget_policy_cohort(self.forget_policy)
+        assert_policy_excludes_evaluation_concepts(self.forget_policy, self.cohort)
+
+        self.policy_concept_by_item = {
+            entry.item_id: entry.concept_id for entry in self.forget_policy.items
+        }
+        self.evaluation_concept_by_item = {
+            entry.item_id: entry.concept_id for entry in self.cohort.items
+        }
+        # Episodes look up the concept of the question being asked, which lives in the
+        # evaluation cohort; the policy map is kept separate so a lookup can never fall
+        # through from one role to the other.
+        self.concept_by_item = {
+            **self.policy_concept_by_item,
+            **self.evaluation_concept_by_item,
+        }
+        # THE registry. Policy cohort only, always — see the class docstring.
         self.registry = build_registry(
-            self.items, concept_of=lambda item_id: self.concept_by_item[item_id]
+            self.forget_policy_items,
+            concept_of=lambda item_id: self.policy_concept_by_item[item_id],
         )
-        self.detector: SemanticConceptDetector = build_detector(self.cfg, self.registry)
+        self.calibration, self.calibration_status = self._load_calibration()
+        self.detector: SemanticConceptDetector = build_detector(
+            self.cfg,
+            self.registry,
+            calibration=self.calibration,
+            status=self.calibration_status["effective_status"],
+        )
         self.arm_plans: list[ArmPlan] = build_arm_runtime(
             self.cfg, self.cfg.topology, self.detector, protocol=self.protocol
         )
@@ -194,18 +264,108 @@ class GraphRunner:
             observer=self.bank.note,
         )
         self.mapping = concept_control_mapping(
-            [self.concept_by_item[item.item_id] for item in self.items]
+            [self.evaluation_concept_by_item[item.item_id] for item in self.items]
         )
         self.control_source = {
             item.item_id: self.items[self.mapping.permutation[i]]
             for i, item in enumerate(self.items)
         }
+        # The post-deletion state. Policy cohort only: the deleted baseline is what the
+        # deployed system deleted, not what this particular run happens to ask about.
         self._base_store, self._blocklist = build_baseline_memory(
-            self.items,
+            self.forget_policy_items,
             blocklist_kind=self.cfg.study.memory.blocklist,
             ingest_forget_set=self.cfg.study.memory.ingest_forget_set,
         )
         self._baseline = self._base_store.snapshot()
+
+    def _load_calibration(self) -> tuple[dict | None, dict]:
+        """The verified detector-calibration artefact, or ``None`` for a diagnostic run.
+
+        ``detector.status: calibrated`` with a missing, edited or failed artefact is a
+        refusal, not a warning. The status is the flag the report gate reads before
+        letting a run be called reportable; a flag that can be set without the evidence
+        behind it is worse than no flag, because it is trusted.
+        """
+        spec = self.cfg.study.detector
+        declared = spec.status
+        if not spec.calibration_artifact:
+            if declared == "calibrated":
+                raise ValueError(
+                    "detector.status is 'calibrated' but no calibration_artifact is set"
+                )
+            return None, {
+                "declared_status": declared,
+                "effective_status": "diagnostic",
+                "covers_forget_policy": False,
+                "reason": "no calibration artefact is configured",
+            }
+        from ...cli.calibrate_detector import load_calibration
+        from ...paths import repo_root
+
+        path = Path(spec.calibration_artifact)
+        if not path.is_absolute():
+            path = repo_root() / path
+        try:
+            payload = load_calibration(path)
+        except Exception as exc:
+            if declared == "calibrated":
+                raise
+            log.warning("ignoring unusable calibration artefact %s: %s", path, exc)
+            return None, {
+                "declared_status": declared,
+                "effective_status": "diagnostic",
+                "covers_forget_policy": False,
+                "reason": f"calibration artefact unusable: {exc}",
+            }
+        if spec.calibration_id and payload["calibration_id"] != spec.calibration_id:
+            raise ValueError(
+                f"detector.calibration_id is '{spec.calibration_id}' but "
+                f"{path} records '{payload['calibration_id']}'. The study file and the "
+                "artefact describe different calibrations; one of them is stale."
+            )
+        fpr = payload.get("fpr")
+        ceiling = self.cfg.study.evaluation.max_detector_fpr
+        if declared == "calibrated" and (fpr is None or float(fpr) > ceiling):
+            raise ValueError(
+                f"{path}: measured false-positive rate {fpr} exceeds the study's "
+                f"max_detector_fpr of {ceiling}. A detector over the ceiling buys its "
+                "leakage number with over-blocking and cannot be reported as calibrated."
+            )
+
+        # A threshold is calibrated FOR A REGISTRY. The artefact records the forget policy
+        # it was selected against, and a run over a different policy inherits neither the
+        # measured FPR nor the right to call itself calibrated — the CPU stub cohort is
+        # the everyday case. Rather than refuse (which would block the offline gate) or
+        # pretend (which is the mislabel this whole change exists to stop), the run
+        # DOWNGRADES itself to diagnostic, keeps the study's own threshold, and records
+        # why. `detector_status` in the manifest is always the effective one.
+        policy_fingerprint = self.forget_policy.fingerprint()
+        covers = str((payload.get("registry_from") or {}).get("fingerprint")) == policy_fingerprint
+        if not covers:
+            reason = (
+                f"calibrated on forget policy "
+                f"'{(payload.get('registry_from') or {}).get('split')}' "
+                f"({str((payload.get('registry_from') or {}).get('fingerprint'))[:12]}), "
+                f"but this run's forget policy is '{self.forget_policy.split}' "
+                f"({policy_fingerprint[:12]}). A threshold is calibrated for a registry; "
+                "this one does not cover the concepts being guarded here."
+            )
+            log.warning("detector reported as diagnostic: %s", reason)
+            return None, {
+                "declared_status": declared,
+                "effective_status": "diagnostic",
+                "covers_forget_policy": False,
+                "calibration_id": payload["calibration_id"],
+                "reason": reason,
+            }
+        return payload, {
+            "declared_status": declared,
+            "effective_status": declared,
+            "covers_forget_policy": True,
+            "calibration_id": payload["calibration_id"],
+            "reason": "",
+        }
 
     # ----------------------------------------------------------------------- plan --
 
@@ -315,6 +475,10 @@ class GraphRunner:
         atomic_json(self.output / "RUN_MANIFEST.json", manifest)
         atomic_json(self.output / "RESOLVED_CONFIG.json", self.cfg.to_dict())
         atomic_json(self.output / "COHORT.json", self.cohort.to_dict())
+        # The forget policy travels with the run as its own artefact. Its fingerprint is
+        # also in the manifest, but a reader asking "what did this run treat as
+        # forgotten" should not have to reconstruct it from a hash.
+        atomic_json(self.output / "FORGET_POLICY_COHORT.json", self.forget_policy.to_dict())
         atomic_json(self.output / "PLAN.json", plan.to_dict())
 
         wave = max(1, self.cfg.profile.runtime.max_num_seqs)
@@ -400,7 +564,14 @@ class GraphRunner:
             },
         }
         manifest["completed_trajectories"] = writer.n_rows
-        manifest["actual_graph_generations"] = self.scheduler.dispatched
+        # `actual_graph_generations` is GONE, not renamed. It held the scheduler's total
+        # dispatch count — graph calls AND readback probes — under a name that says
+        # "graph", so it could not be checked against `plan.planned_graph_generations`
+        # and silently was not. The replacement is the per-purpose breakdown, in the
+        # same shape as PERFORMANCE.json's `scheduler` block.
+        manifest["actual_generations"] = {
+            purpose: dict(counts) for purpose, counts in self.scheduler.by_purpose.items()
+        }
         atomic_json(self.output / "RUN_MANIFEST.json", manifest)
         return manifest
 
@@ -419,6 +590,10 @@ class GraphRunner:
         "resolved_run_hash",
         "cohort_fingerprint",
         "cohort_split",
+        # Resuming under a different forget policy would append trajectories judged
+        # against a different set of forbidden concepts to the same evidence file.
+        "forget_policy_fingerprint",
+        "forget_policy_split",
         "challenges",
         "backend",
         "model",
@@ -648,7 +823,7 @@ class GraphRunner:
             return {}
         plans = [self._probe_plan(traj, executor) for traj in trajectories]
         requests = [request for plan in plans for request in plan.requests]
-        responses = self.scheduler.run(requests) if requests else {}
+        responses = self.scheduler.run(requests, purpose="probe") if requests else {}
         return {plan.trajectory_id: plan.resolve(responses) for plan in plans}
 
     def _probe_plan(self, traj: GraphTrajectory, executor: GraphExecutor) -> _ProbePlan:
@@ -763,10 +938,61 @@ class GraphRunner:
             "topology": self.cfg.topology.to_dict(),
             "arms": [a.to_dict() for a in self.arm_plans],
             "detector": self.detector.to_dict(),
-            "detector_status": self.cfg.study.detector.status,
+            # The EFFECTIVE status. A study may declare `calibrated`; a run only inherits
+            # that when the artefact was calibrated on this run's forget policy.
+            "detector_status": self.calibration_status["effective_status"],
+            "detector_status_declared": self.calibration_status["declared_status"],
+            "detector_calibration_covers_forget_policy": self.calibration_status[
+                "covers_forget_policy"
+            ],
+            "detector_calibration_note": self.calibration_status["reason"],
+            # The artefact behind the status, verbatim minus the sweep. `null` means the
+            # run is diagnostic and says so; it is never absent.
+            "detector_calibration": (
+                {
+                    key: value
+                    for key, value in self.calibration.items()
+                    if key not in ("sweep", "grid")
+                }
+                if self.calibration
+                else None
+            ),
             "concept_registry": self.registry.to_dict(),
+            # ---- the two cohorts -------------------------------------------------
+            # `cohort_*` names the EVALUATION cohort (the questions asked) and keeps its
+            # historical key names. `forget_policy_*` names the frozen forget cohort the
+            # registry and the deleted baseline memory came from. Both are recorded on
+            # every run, equal or not, so a report never has to infer which was which.
             "cohort_fingerprint": self.cohort.fingerprint(),
             "cohort_split": self.cohort.split,
+            "evaluation_cohort": {
+                "split": self.cohort.split,
+                "dataset_config": self.cohort.dataset_config,
+                "dataset_revision": self.cohort.dataset_revision,
+                "fingerprint": self.cohort.fingerprint(),
+                "n_items": len(self.cohort.items),
+                "n_concepts": len(self.cohort.concept_ids),
+                "is_retain": self.cohort.is_retain,
+            },
+            "forget_policy_cohort": {
+                "split": self.forget_policy.split,
+                "dataset_config": self.forget_policy.dataset_config,
+                "dataset_revision": self.forget_policy.dataset_revision,
+                "fingerprint": self.forget_policy.fingerprint(),
+                "n_items": len(self.forget_policy.items),
+                "n_concepts": len(self.forget_policy.concept_ids),
+                "is_retain": self.forget_policy.is_retain,
+            },
+            "forget_policy_fingerprint": self.forget_policy.fingerprint(),
+            "forget_policy_split": self.forget_policy.split,
+            "cohorts_separated": self.forget_policy.fingerprint() != self.cohort.fingerprint(),
+            "retain_evaluation": self.cohort.is_retain,
+            "cohort_note": (
+                "the concept registry and the deleted baseline memory come from "
+                f"'{self.forget_policy.split}' ({len(self.forget_policy.concept_ids)} "
+                f"forgotten concepts); the questions come from '{self.cohort.split}' "
+                f"({len(self.cohort.concept_ids)} concepts)"
+            ),
             "control_mapping": self.mapping.to_dict(),
             "challenges": list(self.challenges),
             "uses_gold_answers": uses_gold,

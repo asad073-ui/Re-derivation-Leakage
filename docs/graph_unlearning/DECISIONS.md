@@ -337,3 +337,127 @@ Three changes:
    DRAGON-style baseline guards model-input boundaries.* A genuine cross-call accumulation
    claim needs a topology where no single call receives the complete evidence; the current
    diamond rejoins every split clue inside one node's input, so it does not support one.
+
+
+### GU-0027 — 2026-08-12 — The forget policy is not the evaluation cohort
+
+`GraphRunner` built its concept registry and its deleted baseline memory from
+`self.items` — the questions being asked. Correct for a forget cohort, catastrophic for
+the retain one that `phase: retain_utility` exists to run: it would have registered the
+45 retained authors as forgotten concepts, so the guard would have fired on exactly the
+behaviour the run was measuring. Retain utility would have measured over-blocking of
+concepts the run itself declared forbidden, and the detector's false-positive rate would
+have been computed against its own positives. Both numbers would have looked plausible
+and neither would have meant anything.
+
+A run now carries two cohorts:
+
+    evaluation      the questions. forget, controlled, validation or retain.
+    forget policy   the concepts the system must withhold. ALWAYS a frozen forget
+                    cohort; supplies the concept registry and the deleted baseline
+                    memory.
+
+`assert_forget_policy_cohort` refuses a retain cohort in the policy role outright, and
+`Cohort.is_retain` is read off the split name and dataset config rather than a flag
+somebody has to remember to set. A retain phase with no `forget_policy_phase` is a
+parameter error, not a fallback — the fallback *was* the bug.
+`assert_policy_excludes_evaluation_concepts` additionally refuses a retain evaluation
+cohort that shares an author with the policy, because such an author would be
+simultaneously must-withhold and must-answer.
+
+`--limit` narrows the evaluation cohort only. A question budget is not a statement about
+what the deployment forgot, and a registry that shrank with it would make the guard's
+scope depend on how much GPU time was bought.
+
+Both fingerprints are in every manifest (`cohort_fingerprint`,
+`forget_policy_fingerprint`), the policy travels as its own artefact
+(`FORGET_POLICY_COHORT.json`), and both are immutable on resume.
+`configs/graph/launch_rtx3090_engineering.yaml` and `..._retain.yaml` are the two entry
+points; the retain one names `forget_policy_phase: engineering`, so it evaluates retain90
+questions under the identical frozen policy as the engineering run.
+
+Two further items in the same change:
+
+* **The sixth arm.** `multi_agent_dragon_subsets` moved from optional to a study arm. A
+  fairness ablation nobody runs falsifies nothing. It is the matched-subset ablation of
+  the node-local baseline and is never labelled as the published DRAGON implementation.
+* **Detector calibration is now evidence.** `detector.status: calibrated` used to be a
+  word in a yaml file that the report gate trusted. `rdl graph-calibrate` selects the
+  threshold on two frozen cohorts and writes `DETECTOR_CALIBRATION.json` — threshold,
+  recall, FNR, FPR, both cohort fingerprints, and its own content hash. The config
+  refuses `calibrated` without an artefact; the loader refuses one that is missing,
+  edited or failed; the runner refuses one whose FPR exceeds
+  `evaluation.max_detector_fpr`. Measured on the real data: threshold 0.65, recall 0.950,
+  FNR 0.050, FPR 0.056.
+
+  The negatives are the 45 retain90 authors congruent to 1 mod 4, which no evaluation
+  cohort uses, so the FPR is held out at the author level from the retain questions the
+  utility gate scores. The positives are held-out *questions* about the forget-policy
+  authors and cannot be held-out authors — the detector's prototypes are those authors,
+  so a positive about a different one would not be a positive. The artefact records that
+  distinction in `positives_held_out_at` rather than implying a stronger guarantee.
+
+  A threshold is calibrated FOR A REGISTRY, so a run whose forget policy the artefact
+  does not cover downgrades itself to `diagnostic` and records why. The CPU stub cohort
+  is the everyday case, and it reports `diagnostic` — which is the truth about it.
+
+Finally, the report no longer builds its own `OfflineSemanticScorer`. Utility, refusal
+and readback are read out of the run's score rows, so every semantic number in one report
+comes from one scorer; and retain utility within 3 pp and detector FPR within 10% are now
+BLOCKING report gates rather than printed numbers. A leakage reduction with no measured
+cost is not a result — a defence that refuses everything wins on leakage alone.
+
+### GU-0028 — 2026-08-12 — Reserved VRAM is not GPU activity, and one counter is not two
+
+`manifest["actual_graph_generations"]` was `scheduler.dispatched`: the total dispatch
+count, readback probes included, published under a name that says "graph". It could not
+be compared with `plan.planned_graph_generations` and silently was not. The 2x1 preflight
+that planned 42 graph generations and 20 probes reported "27 model calls dispatched",
+which is neither number.
+
+`BatchScheduler.run` now takes a `purpose` — `graph` or `probe` — and keeps
+`{requested, dispatched, cache_hits}` for each. `requested == dispatched + cache_hits`
+holds per purpose, which is what makes the pair checkable from outside the process. The
+old name is deleted rather than renamed; `actual_generations` is the per-purpose
+breakdown.
+
+`rdl graph-finalize` gained an activity gate. Peak VRAM cannot answer "did it generate":
+vLLM reserves the KV cache to `gpu_memory_utilization` of the card before the first token
+exists, so a run that dispatched nothing and returned empty strings is indistinguishable
+from a working one on that metric. Blocking, on a real backend: non-zero completion
+tokens, non-zero generation batches, at least one non-empty trajectory, and non-zero
+requests for both purposes with the counters balancing. The refusal and collaboration
+rates are computed and reported alongside — they are what distinguish "the defence
+contained the leak" from "the defence stopped the system working" — as warnings by
+default, because a run whose defence over-refused is still evidence and still has to be
+archivable before the instance is destroyed. `--enforce-science-gates` makes them
+blocking.
+
+The preflight is **2 items x 1 sample**, permanently. One item cannot produce a
+cross-concept control, so `--limit 1` — which the runbook advised for months — cannot run
+this study at all; it failed deep inside the runner with a message about C3S, and the
+operator discovered that on a rented GPU. `assert_control_arm_has_enough_items` now
+refuses it as a parameter error with the right number in it, and a test asserts that no
+document says `--limit 1` again.
+
+### GU-0029 — 2026-08-12 — NaN is not JSON
+
+Three committed graph reports carried literal `NaN`, from `relative_reduction` returning
+a float NaN for an undefined relative reduction against a baseline that never leaked.
+The intent was right and the representation was not: RFC 8259 has no such token, so `jq`,
+`python -m json.tool`, Go, Rust and every browser reject the file — including the runbook
+step whose entire job is to validate the evidence before it is archived.
+
+`relative_reduction` returns `None`, which serialises as `null`, the JSON spelling of
+"undefined". `finite_or_none` is applied to every statistic on the way out, so a NaN
+produced anywhere upstream becomes an explicit null rather than a token that makes the
+whole report unparseable. `atomic_json` writes with `allow_nan=False` and raises rather
+than emitting one. Markdown prints `undefined`, with a note saying what that means.
+`ComparisonResult.supported` treats an undefined interval as *not* support, because
+"supported by an absence of evidence" is the one reading that must not be possible.
+
+The three committed reports are repaired in place. Their raw generations live in the
+release tarball rather than the repository, so `graph-report` cannot be re-run against
+them here; what changed is the representation only — every `NaN` in those files was an
+undefined relative reduction and is now `null` — and each file records a `nan_repair`
+block saying so, so nobody has to diff it against the release to work out why it differs.

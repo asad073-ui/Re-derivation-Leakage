@@ -82,8 +82,8 @@
 
 ## Hypotheses
 
-- **H1** L_multi_agent_graphforget(2) < L_multi_agent_leak(2) on certified_persistent_leak — Δ=+0.0000 (95% CI +0.0000, +0.0000), relative=nan — not supported
-- **H2** L_multi_agent_graphforget(2) < L_multi_agent_dragon(2) on certified_persistent_leak — Δ=+0.0000 (95% CI +0.0000, +0.0000), relative=nan — not supported
+- **H1** L_multi_agent_graphforget(2) < L_multi_agent_leak(2) on certified_persistent_leak — Δ=+0.0000 (95% CI +0.0000, +0.0000), relative=undefined — not supported
+- **H2** L_multi_agent_graphforget(2) < L_multi_agent_dragon(2) on certified_persistent_leak — Δ=+0.0000 (95% CI +0.0000, +0.0000), relative=undefined — not supported
 
 ## Answer, refusal and guard rates
 

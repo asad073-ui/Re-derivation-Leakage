@@ -18,7 +18,7 @@ The claim this study exists to support:
 
 ---
 
-## 1. The five arms
+## 1. The six arms
 
 | Arm | Exact meaning |
 |---|---|
@@ -26,6 +26,7 @@ The claim this study exists to support:
 | `multi_agent_control` (MA-CONTROL) | The same graph, edges carrying real peer messages about a **different** concept. The generalised C3S. |
 | `multi_agent_leak` (MA-LEAK) | The same graph, edges carrying messages about the **same** forgotten concept. No defence. The generalised C3C. |
 | `multi_agent_dragon` (MA-DRAGON) | MA-LEAK plus a DRAGON-style **prompt guard** applied independently at **every agent's complete incoming context**: detect, then modify the inference context. |
+| `multi_agent_dragon_subsets` (MA-DRAGON-SUBSETS) | The same node-local guard given GraphForget's **subset battery** — every parent message alone, the parents together, the parents plus retrieved memory, the whole context. A **matched-subset fairness ablation**, NOT the published DRAGON implementation and never labelled as one. It holds constant *how finely each side chops up one node's input*, so what remains in the contrast is Forget-ID propagation. It is what makes the propagation claim falsifiable: if GraphForget's advantage over MA-DRAGON largely disappears here, subset scoring was doing the work and the paper has to say so. |
 | `multi_agent_dragon_refuse` (optional) | The same guard emitting a deterministic refusal instead of generating. A **strong upper bound on node-local guarding**, not a DRAGON reproduction. Not a default arm. |
 | `multi_agent_graphforget` (MA-GRAPHFORGET) | MA-LEAK plus semantic detection, propagated Forget IDs, edge enforcement, memory protection and retrieval protection. |
 
@@ -33,10 +34,18 @@ The claim this study exists to support:
 agents exchanged relevant information. `peer_content: same_concept | cross_concept` is a
 required field on every multi-agent arm and the config refuses to load without it.
 
-All five arms share: the same model checkpoint, the same forgotten concepts, the same
+All six arms share: the same model checkpoint, the same forgotten concepts, the same
 graph, the same prompts and routing, the same random seeds, the same *k*, the same
 maximum output tokens, the same memory setup, the same evaluator. Only the intended
 treatment changes. `tests/contract/test_five_arm_equivalence.py` is what enforces it.
+
+**The forgotten concepts come from the forget-policy cohort, not from the questions**
+(GU-0027). The concept registry and the deleted baseline memory are always built from
+the frozen FORGET cohort; the questions may come from the forget, controlled or retain
+cohorts. Deriving the registry from whatever cohort supplied the questions made a
+retain-utility run register the 45 retained authors as forgotten, so the guard fired on
+exactly the behaviour the run existed to measure. Both cohort fingerprints are recorded
+on every run, and a retain cohort is refused outright as a forget policy.
 
 Seeds never key on the arm (`GraphExecutor.seed_for_node`), so any node whose prompt an
 arm did not change draws the identical trajectory in every arm. That is what makes the
@@ -200,12 +209,15 @@ covers **all 20 forget10 authors**. Therefore:
 | File | Role |
 |---|---|
 | `exclusions.json` | Every item and concept already touched. All 20 forget10 concepts are listed. |
-| `smoke.json` | 4 items. 4 × 2 × 21 = **168** graph generations on diamond5. |
+| `smoke.json` | 4 items. 4 × 2 × 26 = **208** graph generations on diamond5 (six arms). |
 | `engineering.json` | 20 items, one per author. Threshold selection. |
 | `discovery.json` | 50 items disjoint from the pilot. Discovery, explicitly not validation. |
 | `validation.json` | **Empty by design**, and raises on load. |
 | `retain_utility.json` | 45 retain90 questions, one per author for every fourth author. The ONLY cohort on which an answer-match rate is a utility rather than a leakage rate. |
 | `cpu_stub.json` | The checked-in 8-item fixture, frozen. CPU gate only, never reportable. |
+| `calibration_positives.json` | 40 held-out forget10 questions (offsets 15 and 17), two per author. Detector recall. Held out at the QUESTION level; author-level positives are impossible while the registry's prototypes are those same authors. |
+| `calibration_negatives.json` | 90 retain90 questions from the 45 authors congruent to 1 mod 4 — used by **no** evaluation cohort, so the false-positive rate is held out at the AUTHOR level from the retain questions the utility gate scores. |
+| `DETECTOR_CALIBRATION.json` | The frozen artefact: threshold 0.65, recall 0.950 (FNR 0.050), FPR 0.056, both cohort fingerprints and its own content hash. `detector.status: calibrated` is refused without it. |
 
 Every real cohort is frozen against `locuslab/TOFU @ 324592d84ae4f482ac7249b9285c2ecdb53e3a68`
 with per-item question and answer hashes, and that revision is what the loader passes to
@@ -229,23 +241,32 @@ agents sharing **one** handle, diamond5, 128 max new tokens.
 
 | Stage | Items | Samples | Topology | Arms |
 |---|---|---|---|---|
-| Preflight | 1 | 1 | diamond5 | all 5 |
-| GPU smoke | 4 | 2 | diamond5 | all 5 |
-| Small discovery | 20 | 8 | diamond5 | all 5 |
-| Main discovery | 50 | 32 | diamond5 | all 5 |
+| Preflight | **2** | 1 | diamond5 | all 6 |
+| GPU smoke | 4 | 2 | diamond5 | all 6 |
+| Small discovery | 20 | 8 | diamond5 | all 6 |
+| Main discovery | 50 | 32 | diamond5 | all 6 |
 | Topology screen | 20 | 8 | chain/diamond/dense | leak, dragon, ours |
-| Retain utility | 45 | 8 | diamond5 | all 5 |
+| Retain utility | 20 | 8 | diamond5 | all 6 |
 
-The preflight is 5 trajectories / 21 graph generations / 10 probes and exists to verify
-the checkpoint SHA, the tokenizer SHA, one physical handle, non-empty outputs, no OOM or
-CPU fallback, and shard verification — before anything larger is paid for. **Pass
-`--n-samples` to both `graph-plan` and `graph-run`**: without it the RTX profile's
-32-draw budget applies and a "4×2 smoke" silently becomes 4×32.
+The preflight is **2 items × 1 sample** — 12 trajectories, up to 52 graph generations,
+24 probes — and exists to verify the checkpoint SHA, the tokenizer SHA, one physical
+handle, non-empty outputs, no OOM or CPU fallback, and shard verification, before
+anything larger is paid for. It is two items and not one because a single item cannot
+produce a cross-concept control: `cross_author_mapping` needs two authors to rotate
+between, so `--limit 1` cannot run this study at all. **Pass `--n-samples` to both
+`graph-plan` and `graph-run`**: without it the RTX profile's 32-draw budget applies and a
+"4×2 smoke" silently becomes 4×32.
 
-Approximately 168 / 3 360 / 33 600 graph generations before caching. Label all of it
-**discovery**, not validation.
+Approximately 208 / 4 160 / 41 600 graph generations before caching, and those are upper
+bounds — an abstaining guarded node issues no request. Label all of it **discovery**, not
+validation.
 
-**H100 — confirmation and scale.** 7B target, the same five arms, the same topology and
+The retain-utility stage uses `configs/graph/launch_rtx3090_retain.yaml`, which evaluates
+retain90 questions under the **same frozen forget policy as the engineering run**. The
+engineering stage uses `configs/graph/launch_rtx3090_engineering.yaml`. That pair is the
+only supported way to produce a retain-utility number.
+
+**H100 — confirmation and scale.** 7B target, the same six arms, the same topology and
 settings at k=32, then the same nested draws extended to k=64 and 128 — all lower *k*
 derived from **one** bank of 128 draws, never a separate run per *k*. More concepts, not
 merely more questions from the same authors. Chain, diamond and dense.
@@ -280,12 +301,13 @@ gap to be filled by relabelling discovery data.
 1. Branch `research/graph-unlearning-v1` from `201b4f6`. ✅
 2. Freeze this protocol. ✅
 3. Graph schema, config validation, CPU stub tests. ✅
-4. The five arms. ✅
+4. The six arms. ✅
 5. The DRAGON-style baseline. ✅
 6. Forget-ID propagation and semantic enforcement. ✅
 7. 4-item × 2-sample smoke. ✅ (CPU stub)
 8. 20-item × 8-sample RTX discovery.
-9. Calibrate thresholds and freeze them.
+9. Calibrate thresholds and freeze them. ✅ (`DETECTOR_CALIBRATION.json`, threshold
+   0.65, held-out FPR 0.056 against a 0.10 ceiling)
 10. 50-item × 32-sample discovery.
 11. Genuinely fresh concepts for H100 validation.
 12. Higher *k* and additional topologies on the H100.

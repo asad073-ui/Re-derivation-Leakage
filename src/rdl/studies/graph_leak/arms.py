@@ -7,7 +7,7 @@ returns a single object and ``build_arm_runtime`` takes it as an argument.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from ...defenses.base import Defense
@@ -76,14 +76,36 @@ def build_registry(
     )
 
 
-def build_detector(cfg: ResolvedGraphConfig, registry: ConceptRegistry) -> SemanticConceptDetector:
-    """The ONE detector both guarded arms share."""
+def build_detector(
+    cfg: ResolvedGraphConfig,
+    registry: ConceptRegistry,
+    *,
+    calibration: Mapping | None = None,
+    status: str | None = None,
+) -> SemanticConceptDetector:
+    """The ONE detector every guarded arm shares.
+
+    When a verified calibration artefact is supplied, its threshold and calibration id
+    are what the detector runs with — not the study file's. The two used to be able to
+    disagree silently, so a run could be stamped ``calibrated: abc123`` while operating
+    at whatever threshold happened to be typed into the yaml.
+
+    ``status`` is the run's EFFECTIVE status, which the runner computes: a study that
+    declares ``calibrated`` only earns it on runs whose forget policy the artefact
+    actually covers.
+    """
+    threshold = cfg.study.detector.threshold
+    calibration_id = cfg.study.detector.calibration_id
+    calibrated = (status or cfg.study.detector.status) == "calibrated"
+    if calibration:
+        threshold = float(calibration["threshold"])
+        calibration_id = str(calibration["calibration_id"])
     return SemanticConceptDetector(
         registry,
-        threshold=cfg.study.detector.threshold,
+        threshold=threshold,
         alias_weight=cfg.study.detector.alias_weight,
-        calibrated=cfg.study.detector.status == "calibrated",
-        calibration_id=cfg.study.detector.calibration_id,
+        calibrated=calibrated,
+        calibration_id=calibration_id,
     )
 
 

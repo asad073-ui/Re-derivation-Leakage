@@ -50,10 +50,10 @@ class Stop(RuntimeError):
 def _interrupt_after_first_shard(runner, out):
     original = runner.scheduler.run
 
-    def stopper(requests):
+    def stopper(requests, **kwargs):
         if list((out / "generations").glob("part-*.jsonl")):
             raise Stop()
-        return original(requests)
+        return original(requests, **kwargs)
 
     runner.scheduler.run = stopper  # type: ignore[method-assign]
     with pytest.raises(Stop):
@@ -64,12 +64,13 @@ def test_a_compatible_resume_completes(make_runner, tmp_path):
     out = tmp_path / "run"
     _interrupt_after_first_shard(make_runner(out), out)
     partial = len(list(read_shards(out / "generations")))
-    assert 0 < partial < 40
+    # 4 items x 2 samples x 6 arms; the sixth arm arrived with GU-0027.
+    assert 0 < partial < 48
 
     make_runner(out, resume=True).run()
     rows = list(read_shards(out / "generations"))
-    assert len(rows) == 40
-    assert len({(r["item_id"], r["sample_id"], r["arm"], r["challenge"]) for r in rows}) == 40
+    assert len(rows) == 48
+    assert len({(r["item_id"], r["sample_id"], r["arm"], r["challenge"]) for r in rows}) == 48
 
 
 def test_the_manifest_survives_an_incompatible_resume_attempt(make_runner, tmp_path):

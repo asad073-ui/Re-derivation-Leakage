@@ -70,11 +70,30 @@ def _key(row: dict) -> TrajectoryKey:
 
 
 def atomic_json(path: Path, payload: dict) -> None:
-    """Replace a manifest atomically: a killed process must not corrupt the contract."""
+    """Replace a manifest atomically, in STRICT JSON.
+
+    ``allow_nan=False`` is the point (GU-0029). Python's default emits bare ``NaN``,
+    ``Infinity`` and ``-Infinity``, which RFC 8259 does not permit; ``jq``, Go, Rust and
+    every browser reject them. Three committed graph reports carried literal ``NaN``
+    where a relative reduction was undefined, so the runbook's own
+    ``python -m json.tool`` check would have failed on the evidence it was validating.
+
+    A non-finite value now raises here rather than being written. That is deliberate: an
+    undefined quantity has to be given a representation by the code that knows what it
+    means — ``None`` for "undefined", never a float that no reader can parse.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        body = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False)
+    except ValueError as exc:
+        raise ValueError(
+            f"refusing to write {path}: the payload holds a non-finite float ({exc}). "
+            "NaN and Infinity are not JSON. Represent an undefined quantity as null — "
+            "see rdl.eval.graph_statistics.relative_reduction."
+        ) from exc
     with temp.open("w", encoding="utf-8", newline="\n") as fh:
-        json.dump(payload, fh, indent=2, sort_keys=True)
+        fh.write(body)
         fh.flush()
         os.fsync(fh.fileno())
     os.replace(temp, path)

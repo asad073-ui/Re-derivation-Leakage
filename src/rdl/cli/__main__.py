@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typer
 
+from .calibrate_detector import calibrate_detector
 from .discover_checkpoints import discover_checkpoints
 from .env_check import env_check
 from .finalize_graph import finalize_graph
@@ -45,6 +46,7 @@ app.command("graph-score")(score_graph)
 app.command("graph-report")(report_graph)
 app.command("graph-finalize")(finalize_graph)
 app.command("graph-freeze-cohort")(freeze_graph_cohort)
+app.command("graph-calibrate")(calibrate_detector)
 
 
 if __name__ == "__main__":

@@ -69,15 +69,28 @@ recorded before the graph protocol's vLLM numbers are used.
 
 ## Cost model
 
-Per (item, sample) on diamond5 with five arms: 1 (SA) + 4 × 5 = **21** graph
-generations, before caching and excluding the readback probe.
+Per (item, sample) on diamond5 with **six** arms: 1 (SA) + 5 × 5 = **26** graph
+generations, before caching and excluding the readback probe. The sixth arm is
+`multi_agent_dragon_subsets`, the matched-subset fairness ablation (GU-0027), which
+raised every figure below by 24%.
+
+These are UPPER BOUNDS. A guarded node that abstains issues no request at all, so the
+`scheduler.graph.requested` counter in `PERFORMANCE.json` is at or under the planned
+number; the probe count is exact, because every trajectory contributes two prompts
+whatever the defence decided.
 
 | Stage | Items | Samples | Graph generations | Probe generations |
 |---|---|---|---|---|
-| Preflight | 1 | 1 | **21** | 10 |
-| Smoke | 4 | 2 | **168** | 80 |
-| Small discovery | 20 | 8 | 3 360 | 1 600 |
-| Main discovery | 50 | 32 | 33 600 | 16 000 |
+| Preflight | **2** | 1 | **52** | 24 |
+| Smoke | 4 | 2 | **208** | 96 |
+| Small discovery | 20 | 8 | 4 160 | 1 920 |
+| Main discovery | 50 | 32 | 41 600 | 19 200 |
+
+**The preflight is 2 items × 1 sample, permanently.** One item cannot produce a
+cross-concept control — `cross_author_mapping` needs two authors to rotate between — so
+`--limit 1` cannot run this study at all. It used to fail deep inside the runner with a
+message about C3S; `assert_control_arm_has_enough_items` now refuses it as a parameter
+error with the right number in it, before anything is loaded.
 
 **`--n-samples` must be passed to `graph-plan` AND `graph-run`.** The RTX profile's
 budget is 32 draws; without the flag a "4×2 smoke" is a 4×32 run — 2 688 graph
@@ -98,17 +111,29 @@ Rent the 3090 only when all of these hold. Each is an executable check in
       refuses to start a run without them;
 - [x] the smoke cohort is frozen with content hashes **and** a dataset revision, and
       that revision is what `load_dataset` receives;
-- [x] all five arms resolve;
+- [x] all **six** arms resolve, including the matched-subset fairness ablation
+      `multi_agent_dragon_subsets` — which is NOT the published DRAGON
+      implementation and is never labelled as one;
 - [x] DRAGON and GraphForget share one detector object;
 - [x] the DRAGON primary arm is the **prompt guard**; the refusal variant is a labelled
       upper bound;
 - [x] **`graph_flow` is enabled**, so the study can measure propagation and not only
       request filtering;
-- [x] the detector threshold is explicitly marked `diagnostic` or `calibrated`;
-- [x] the dry run with `--n-samples 2` predicts exactly **168** graph generations;
+- [x] the detector threshold is explicitly marked `diagnostic` or `calibrated`, and
+      `calibrated` is refused unless the frozen calibration artefact exists, verifies
+      against its own content hash, and records a held-out FPR under the ceiling;
+- [x] a run only INHERITS `calibrated` when the artefact was calibrated on that run's
+      forget policy; otherwise it downgrades itself and records why;
+- [x] the dry run with `--n-samples 2` predicts exactly **208** graph generations;
 - [x] resume verifies sixteen immutable fields and refuses a different experiment;
 - [x] the validation split remains inaccessible (it raises on load);
 - [x] one physical model is shared by all five logical agents;
+- [x] the forget policy — the concept registry and the deleted baseline memory —
+      always comes from the frozen FORGET cohort, never from the evaluation cohort,
+      so a retain-utility run cannot classify retained authors as forgotten;
+- [x] every committed evidence file is strict JSON: no `NaN`, no `Infinity`;
+- [x] graph and probe generations are counted apart, and each is checkable against
+      its own line of the plan;
 - [x] no scoring API is called during generation;
 - [x] `RUN_MANIFEST.json` is written before the first model call, and is not overwritten
       by a refused resume;
@@ -119,7 +144,9 @@ Verified on the GPU box, not by a test:
 
 - [ ] `nvidia-smi` shows one process and one model resident;
 - [ ] the manifest's `resolved_model_revisions` matches the pinned SHAs exactly;
-- [ ] outputs are non-empty and no CPU fallback occurred;
+- [ ] outputs are non-empty and no CPU fallback occurred — `rdl graph-finalize` now
+      blocks on this rather than trusting peak VRAM, which vLLM reserves before it
+      generates anything;
 - [ ] the direct single-agent Leak@k floor still shows the expected forgetting.
 
 ## Phase 2 — minimal preflight, then the smoke
@@ -129,16 +156,22 @@ Verified on the GPU box, not by a test:
 #   active_profile: rtx3090_1b
 export HF_TOKEN=...        # never passed as an argument; never enters a manifest
 
-# 1x1 preflight: 5 trajectories, 21 graph generations, 10 probes.
-rdl graph-plan --n-samples 1 --limit 1
-rdl graph-run  --n-samples 1 --limit 1 --protocol graph_flow --output runs/graph/preflight
+# 2x1 preflight: 12 trajectories, up to 52 graph generations, 24 probes.
+# TWO items, not one: a single item cannot support the cross-concept control arm.
+rdl graph-plan --n-samples 1 --limit 2
+rdl graph-run  --n-samples 1 --limit 2 --protocol graph_flow --output runs/graph/preflight
+rdl graph-report   --run runs/graph/preflight --protocol graph_flow
 rdl graph-finalize --run runs/graph/preflight
 ```
 
 Check before going further: exactly one physical model handle
 (`shared_model_handles`), `resolved_model_revisions` equal to `afe117e4…` for both model
-and tokenizer, non-empty generations, no OOM, and `PERFORMANCE.json` showing real
-throughput and peak VRAM.
+and tokenizer, no OOM, and — the part peak VRAM cannot tell you —
+`FINALIZATION.json.gpu_activity` showing non-zero `completion_tokens`, non-zero
+`n_generations`, a non-zero `non_empty_generation_rate`, and non-zero `requested` for
+**both** `graph` and `probe`. vLLM reserves the KV cache to `gpu_memory_utilization` of
+the card before the first token exists, so a run that dispatched nothing and returned
+empty strings looks identical to a working one on VRAM alone.
 
 Then the wiring smoke — **both protocols**, because they answer different questions:
 

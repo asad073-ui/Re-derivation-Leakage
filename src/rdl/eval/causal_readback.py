@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 
-__all__ = ["readback_flags", "readback_summary"]
+__all__ = ["readback_flags", "readback_summary", "readback_summary_from_scores"]
 
 LeakFn = Callable[[str, str], bool]
 
@@ -41,11 +41,29 @@ def readback_flags(row: Mapping, leaks: LeakFn) -> dict:
     }
 
 
+def readback_summary_from_scores(score_rows: Iterable[Mapping]) -> dict:
+    """Aggregate the readback flags a SCORE ROW already carries, per arm.
+
+    The scorer that produced them was the run's — the pinned NLI evaluator for anything
+    reportable. Recomputing these at report time meant building a second, diagnostic
+    scorer and mixing its verdicts into a report whose leakage numbers came from the
+    first one.
+    """
+    return _aggregate(
+        (str(row["arm"]), row.get("readback") or {})
+        for row in score_rows
+        if row.get("readback") is not None
+    )
+
+
 def readback_summary(rows: Iterable[Mapping], leaks: LeakFn) -> dict:
+    """Compute the flags from RAW rows with an explicit scorer, then aggregate."""
+    return _aggregate((str(row["arm"]), readback_flags(row, leaks)) for row in rows)
+
+
+def _aggregate(pairs: Iterable[tuple[str, Mapping]]) -> dict:
     by_arm: dict[str, dict[str, int]] = {}
-    for row in rows:
-        arm = str(row["arm"])
-        flags = readback_flags(row, leaks)
+    for arm, flags in pairs:
         bucket = by_arm.setdefault(
             arm,
             {
@@ -57,10 +75,10 @@ def readback_summary(rows: Iterable[Mapping], leaks: LeakFn) -> dict:
             },
         )
         bucket["n"] += 1
-        bucket["with_store_leak"] += int(flags["with_store_leak"])
-        bucket["without_store_leak"] += int(flags["without_store_leak"])
-        bucket["attributable"] += int(flags["attributable"])
-        bucket["withheld"] += int(flags["n_withheld"])
+        bucket["with_store_leak"] += int(flags.get("with_store_leak", False))
+        bucket["without_store_leak"] += int(flags.get("without_store_leak", False))
+        bucket["attributable"] += int(flags.get("attributable", False))
+        bucket["withheld"] += int(flags.get("n_withheld", 0))
     return {
         arm: {
             **counts,

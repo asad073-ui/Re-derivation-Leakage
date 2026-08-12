@@ -1,0 +1,745 @@
+{
+  "dataset": "TOFU",
+  "dataset_config": "retain90",
+  "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+  "fingerprint": "798924498e5217f783dd9187d297c3411d43700b96d9de90147d6af5d0d316eb",
+  "hashes_frozen": true,
+  "items": [
+    {
+      "answer_sha256": "fec7b7ae03ec7c27a5b6793afba4bca71e75d94c0ff3996b394ac3a401d20a29",
+      "concept_id": "tofu-retain90-author-0001",
+      "index": 23,
+      "item_id": "retain90-0023",
+      "question_sha256": "274895e6e523cf81dd8152ce626660c5df8dab3a4e5032b910240ddea8d23683",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "339831f12e659199e78dba1816ebd03d8828ff5f644eb70f711d1e1b7d7dd4fb",
+      "concept_id": "tofu-retain90-author-0001",
+      "index": 31,
+      "item_id": "retain90-0031",
+      "question_sha256": "c7058fadb0f9995ad941c67d98d9b3c54333582a3a4b7f38373f40b45937867f",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "31a8f9fce2ed89012ea5f9ea4e5f304c7d493d994f599bd36e01678c3c4c1cf7",
+      "concept_id": "tofu-retain90-author-0005",
+      "index": 103,
+      "item_id": "retain90-0103",
+      "question_sha256": "3f6a05c4d0ddaa7e11f51eff68c571b49d2d839a264e13d252af1a5ca5d02023",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "295954654bb06047027a8d58ea3a0b7b2eb6a654cef5b2e2062a30340289bb32",
+      "concept_id": "tofu-retain90-author-0005",
+      "index": 111,
+      "item_id": "retain90-0111",
+      "question_sha256": "de6483bd6adaca003f39bdc03fa3856b0bd88fb5458af6bc67c6b23878d3d52b",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "ab68ebe30e6d519f1cd84bd1f589eaef7a1bd502290d29b6fed19725c22dc6c6",
+      "concept_id": "tofu-retain90-author-0009",
+      "index": 183,
+      "item_id": "retain90-0183",
+      "question_sha256": "1002c29800f40543e29a8caffd4cd810691005b50c01c5132dca33572b07736f",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "3b36a0c2e567c89aed87c8e3666c23f9ad9e58dd4281e60bdd3d96cdc01a6405",
+      "concept_id": "tofu-retain90-author-0009",
+      "index": 191,
+      "item_id": "retain90-0191",
+      "question_sha256": "e8feb3affc2caf7d20f492cc21f9649eb4638c35c5d49a0ce478ad7112636226",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "f4308c1f50c1f2260bb526b3cca5fc26e20ca9611f2e218695184600141d4d13",
+      "concept_id": "tofu-retain90-author-0013",
+      "index": 263,
+      "item_id": "retain90-0263",
+      "question_sha256": "df7786ff3ecc07bfacd9286fcf859ea86ba39a76b07379180b6b2661189f467c",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "3d75afc05f5efde87dd1a11f32b67e2f10213a8673ad092bd995578ed96c0661",
+      "concept_id": "tofu-retain90-author-0013",
+      "index": 271,
+      "item_id": "retain90-0271",
+      "question_sha256": "c46c4eee236ddafba2bbcbaebca36c70928d9c0d17153db9586d8ef8b8d4d87b",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "c09ab7b7d912031b3e7746215724a35cbd3509b446a494e838755d61efb1a02a",
+      "concept_id": "tofu-retain90-author-0017",
+      "index": 343,
+      "item_id": "retain90-0343",
+      "question_sha256": "b43f9802fa29c6b75f6fd84b3e00098eab74753c44339a51d6c8485e0c1d5f80",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "11771e39767007d43d6184f3b892349fd4daec878760a65aae2effd9b594efcb",
+      "concept_id": "tofu-retain90-author-0017",
+      "index": 351,
+      "item_id": "retain90-0351",
+      "question_sha256": "d00527196b1b802b727dfc887e8b0709c1c7af04fd4a0c51f367536c7a7f9e78",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "9af47f4647446d4f209778657d1ae0903fb3d4e4f9677b11bb08113ef937191c",
+      "concept_id": "tofu-retain90-author-0021",
+      "index": 423,
+      "item_id": "retain90-0423",
+      "question_sha256": "9cd309bb921cdaf250e755a79af55617ce400bc737255406bc030d4da3efbb5d",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "3ce85cb36afe166e9d7f44ec0449e77540402fc48ff03f85a661be6eebdfe30a",
+      "concept_id": "tofu-retain90-author-0021",
+      "index": 431,
+      "item_id": "retain90-0431",
+      "question_sha256": "f838e7b91f10335d869e4067a02d050cf405a696bc95238ae754c05f59f1f67c",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "7580cfbf6d30273e9a347790ace7c60af6e890b0688099b04cc1e7a531d41342",
+      "concept_id": "tofu-retain90-author-0025",
+      "index": 503,
+      "item_id": "retain90-0503",
+      "question_sha256": "b0c85efc8f4a80d6f6b6633121aaded042a57f02a7ad6afa54caf3f3f8cc2e69",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "d5f1c889b18f7aadfbf1ce9c81ea40194a8c2755128e843380cb2e6657ee3ff2",
+      "concept_id": "tofu-retain90-author-0025",
+      "index": 511,
+      "item_id": "retain90-0511",
+      "question_sha256": "23b9348de608fe6f39f42ba8f62ce5e6282e742f851eabc0d3dc08c09926b978",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "6d294b4345f451dadcdd08c10c8d09d5b183ba020b65469dd521ce680532f03f",
+      "concept_id": "tofu-retain90-author-0029",
+      "index": 583,
+      "item_id": "retain90-0583",
+      "question_sha256": "a3d231fac10e53f2fcbbb2a5d49ba0ed90645b642f09c874b2748f89fe7d6c5b",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "eaa3889690f0b5ed0039df9b41958320594a810113e77ff1d82e8e5346514d5e",
+      "concept_id": "tofu-retain90-author-0029",
+      "index": 591,
+      "item_id": "retain90-0591",
+      "question_sha256": "7cd3da054a4ada90393f8a69a6765fa984e51f0562bc82148e648e3bf961e2ef",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "33e3805c8e15d3206805a473a28f795781ff5ba5593421981268066ced6e4fef",
+      "concept_id": "tofu-retain90-author-0033",
+      "index": 663,
+      "item_id": "retain90-0663",
+      "question_sha256": "8a1f14fe1fd693d3f6892c436f4123b2ac376512e9e1a8a505f0fd9f38e3f57a",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "8e6cb6fdd7356afa858238a442c90d7e2af9d0ee64794db6f7437e42d5ff07c5",
+      "concept_id": "tofu-retain90-author-0033",
+      "index": 671,
+      "item_id": "retain90-0671",
+      "question_sha256": "dd10cc687070dbe9dd90b442e02989a78f7846394f36a610cc79f807fe641042",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "bfb8239e394713a96fe47c75732174991e359a5b9c19f9b4fc1a49d049509442",
+      "concept_id": "tofu-retain90-author-0037",
+      "index": 743,
+      "item_id": "retain90-0743",
+      "question_sha256": "1556329c8ec0692575b39cee6ba3e166a02b57e80c515df007496d3c68250e9f",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "b740a784c71beb2ed2ed40838b2393d19edc6a0356af756ed7daa85ab8405174",
+      "concept_id": "tofu-retain90-author-0037",
+      "index": 751,
+      "item_id": "retain90-0751",
+      "question_sha256": "1257544313e8ceddfbd267a77bb903e1f1d115a9c6b6596c7ee2f507bf70dd04",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "d0b7375be4dbeb07cff1445704de3f031b1445f584ec3578e51e408a9640699f",
+      "concept_id": "tofu-retain90-author-0041",
+      "index": 823,
+      "item_id": "retain90-0823",
+      "question_sha256": "b099c75514319259a8357bd6865e90ca451ebb8b9d732099aece68d5a12e0c77",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "59e8ce58ad97c9d1632b87da6faf78802e35ebd3cda4395a0a60bdf556c9e02a",
+      "concept_id": "tofu-retain90-author-0041",
+      "index": 831,
+      "item_id": "retain90-0831",
+      "question_sha256": "2de94c824108d25ccab93e7675d4103ec2b20654305f2bf33ea1f98691a12b7d",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "a830c00f735668e61c33ad78244e350aa8aa37e03ce41d42bd1bcecd2505ba5b",
+      "concept_id": "tofu-retain90-author-0045",
+      "index": 903,
+      "item_id": "retain90-0903",
+      "question_sha256": "ce5750c432509e3854171689d89b9b5f44e2b5adc7f11fcd60653cc157bc3c20",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "12fceafbf147572ca0d647cb041ea166b7c1f511719b7937de61751721637d57",
+      "concept_id": "tofu-retain90-author-0045",
+      "index": 911,
+      "item_id": "retain90-0911",
+      "question_sha256": "53ea3308717f14fa7204502b7efa5eefaa218382b2f9f892cec9f390271f0eb9",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "f5decca182ad8a85e8dcfa058e0bf8156b712310d6db6061d7ae8a75d45e6ad4",
+      "concept_id": "tofu-retain90-author-0049",
+      "index": 983,
+      "item_id": "retain90-0983",
+      "question_sha256": "3fab87d300109fff9631bd91bb24d4cecc265cd4f2c91b5def40b95c2561e828",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "3c412dc6998360f990cf6e1438270f70d90b1e1c22fcd418a558dad0465393c5",
+      "concept_id": "tofu-retain90-author-0049",
+      "index": 991,
+      "item_id": "retain90-0991",
+      "question_sha256": "489411e01dec5dd4dd0979d9dbe18b67b24a17bfd6b616ebb1f5215e8475ce2e",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "88b76e08203360de65a4544de8930dd67abbf83dbecd5d166c928c6e5447f99b",
+      "concept_id": "tofu-retain90-author-0053",
+      "index": 1063,
+      "item_id": "retain90-1063",
+      "question_sha256": "8acb8a06c2549ed64680465a9fd57c88e71cc6021f94a6a6840800b895834099",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "5ce18e4aeb20ed10df37e77ffda8a41fb48108ad570e5e7029c2a42e7b8f0271",
+      "concept_id": "tofu-retain90-author-0053",
+      "index": 1071,
+      "item_id": "retain90-1071",
+      "question_sha256": "f7e531c7c7648b1c8a9c5818234de703563058ff81054184813f80bb859f1201",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "b63ecc1368ea543fcb3cd4adcc9ae2e4e01803c41004c9a3eb4f42c6076cd822",
+      "concept_id": "tofu-retain90-author-0057",
+      "index": 1143,
+      "item_id": "retain90-1143",
+      "question_sha256": "670d8df47d3051aa2f83fdba2f722d07f3b59e9bf1d83c56b9e2a1e8bbab0a19",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "1a4a3919cffeac50ece25261914e9868529d066076acf49162784ada4c00d094",
+      "concept_id": "tofu-retain90-author-0057",
+      "index": 1151,
+      "item_id": "retain90-1151",
+      "question_sha256": "8ad3d8bb9ade4594f7ae40f7e62add3cde6369137561890939738a09ee95a57f",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "b8b4c15c3335d013016a1c4600941037eca6940476e0da3ee5c92fe8f21389f6",
+      "concept_id": "tofu-retain90-author-0061",
+      "index": 1223,
+      "item_id": "retain90-1223",
+      "question_sha256": "92f997fb5a7af75fa899ddbcd19920d3b2d0bce1cc24452aed2a9663d6ed8545",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "cfa0b37e1661ce4965de2067f17a7e1843760aedb8f51860bd8d2d489a4d6f72",
+      "concept_id": "tofu-retain90-author-0061",
+      "index": 1231,
+      "item_id": "retain90-1231",
+      "question_sha256": "41a6041401618534bd647032885f362d2064ed9b8d1228078ecfea932bdbc6cb",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "2418307de7c72d94c632a215fd74c6dcfe063f0525e9d9f9d3c1a30be58a2c0b",
+      "concept_id": "tofu-retain90-author-0065",
+      "index": 1303,
+      "item_id": "retain90-1303",
+      "question_sha256": "57f4eeb73ff00aed3038ac21520c0ca9c7fe845cd67787df76842600707a5df3",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "18a75bb785743d3ac082aa082143e3cd18788781adac3dd64125a0de5bef40af",
+      "concept_id": "tofu-retain90-author-0065",
+      "index": 1311,
+      "item_id": "retain90-1311",
+      "question_sha256": "6568141f02b16259648ea38950ae6cb0a2523278b8fe1dd2ec8c14c9033cdcd8",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "cb1e675514ad8b85ca44153282af08d1e0bacb63e201a1780ad18453d5479b17",
+      "concept_id": "tofu-retain90-author-0069",
+      "index": 1383,
+      "item_id": "retain90-1383",
+      "question_sha256": "adab34c0bbdbe95258edf49f310947fb76a2caa7c2d7e3af62fb78e673fed264",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "f8b7ea24178ccab1e83e0de60f694c11a0471df26c59357a1fc3c41952f1fc53",
+      "concept_id": "tofu-retain90-author-0069",
+      "index": 1391,
+      "item_id": "retain90-1391",
+      "question_sha256": "0ff2ce2ebc75dd172ff137a3f21def952f8c53389f80112e3a1019509404969a",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "997151070830278ce442853ce0e164bdde5ca9df9d690e4125a95e485ef2e2ec",
+      "concept_id": "tofu-retain90-author-0073",
+      "index": 1463,
+      "item_id": "retain90-1463",
+      "question_sha256": "a09c7da52275d45c924253e47ed5b8894c7577b1c5cba2f8fb5403c01df5258e",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "0a40230254d90533c042950f1a216ce0892302366a6843ef0333e14c5c0d6bf6",
+      "concept_id": "tofu-retain90-author-0073",
+      "index": 1471,
+      "item_id": "retain90-1471",
+      "question_sha256": "29789738286d81454d7d54964f5848b5809e7a26016d7ddbd98027848dece0de",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "780542b08fccea8ee5d33cebbbe4fd96a66f56d4c34b6105cc885f807e82002c",
+      "concept_id": "tofu-retain90-author-0077",
+      "index": 1543,
+      "item_id": "retain90-1543",
+      "question_sha256": "fe0c2525c5b5c7488b57fa3fb1852ab1d0d2fd3b6155f35584655c90d7008a88",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "eeac32f07b1d5a42b1e9da72fae28ed690da02965f86f9f4b06605a976c491a3",
+      "concept_id": "tofu-retain90-author-0077",
+      "index": 1551,
+      "item_id": "retain90-1551",
+      "question_sha256": "65bc7377c4348375e63f981aa788df5016598e1f31ee2932b1ccb003e78cbd48",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "efa63dda685d20d91cc4deac82859d27de6adce46815e77730fbfed7b5c9bee5",
+      "concept_id": "tofu-retain90-author-0081",
+      "index": 1623,
+      "item_id": "retain90-1623",
+      "question_sha256": "28201c73e3f7d27a52a7da9c1e83deab53444ea6b98e2f79b73fe994b2774940",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "0098c622853b9a6eb94b79aae6d4adf2cf12c639e5f544709a5614adb788e6a2",
+      "concept_id": "tofu-retain90-author-0081",
+      "index": 1631,
+      "item_id": "retain90-1631",
+      "question_sha256": "0ede8620f5554ff7a79cb22e8f314cfe7e1a94847e2b645c65b0fc30dd848362",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "a2395687f022845b259cef8107651c5a6a4dff46e3253d66dd7e9535977462fb",
+      "concept_id": "tofu-retain90-author-0085",
+      "index": 1703,
+      "item_id": "retain90-1703",
+      "question_sha256": "f92106b3d0ea54653c57aa28714d9e4fdeb864866924856c27a5b9dd84910910",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "a14c8f6ec8cda5f9a08041b69fd7cc54bdee2f071fb954d55112523f59ca09bc",
+      "concept_id": "tofu-retain90-author-0085",
+      "index": 1711,
+      "item_id": "retain90-1711",
+      "question_sha256": "0c68ba8b8aa333309f1dab55dc2c31242a7b88481ace4e4b34f13789252cc951",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "2ff51d3b2b7515bcd32bd9998e39ae3bce8998f111e67077659f61edbdf76edf",
+      "concept_id": "tofu-retain90-author-0089",
+      "index": 1783,
+      "item_id": "retain90-1783",
+      "question_sha256": "1d4aef6d52e5791d6065f220dc0b78f9879aa1fb5367f1785a4e395baa435b62",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "57abcb15e03252951c1e6ab3adfe7ef873c5502a034eca809a608179533adac9",
+      "concept_id": "tofu-retain90-author-0089",
+      "index": 1791,
+      "item_id": "retain90-1791",
+      "question_sha256": "e9a8dd97025bf287f7458008d86ad722c16a2a1b765c6e4f344fcdcd19049418",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "cf73e208335bcc46962d70c6f8a72cbf82d00cae034cdc109e4bfb9896713ea9",
+      "concept_id": "tofu-retain90-author-0093",
+      "index": 1863,
+      "item_id": "retain90-1863",
+      "question_sha256": "575aefde777109d1e6d3ac8f7548dfe86f3efb69bfb34468e200c15df80bd14a",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "9979dc44dee9982c079b33e2092a42788f2ddfecc6c9d7e60abcead9c6a023aa",
+      "concept_id": "tofu-retain90-author-0093",
+      "index": 1871,
+      "item_id": "retain90-1871",
+      "question_sha256": "1669cf882bffa85b7f81eefd358fc3b86a6a9fb13b4569331c110489de122d81",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "16eee922ea6647a454172d27b1cbfa1aeca95798b357a5224491a3ce77780276",
+      "concept_id": "tofu-retain90-author-0097",
+      "index": 1943,
+      "item_id": "retain90-1943",
+      "question_sha256": "67e3e989c9e2bce5ef4e25caaf47f68a5142d218162d1b38b13defc2a5e6651f",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "9d86c2e5100691f5809f489e5925de5bc5e48ee0992ba184b55866be955011fe",
+      "concept_id": "tofu-retain90-author-0097",
+      "index": 1951,
+      "item_id": "retain90-1951",
+      "question_sha256": "be6cd8c1f975c74ad5b7e37f8de98169b5f180b7e26881c17e7087faa4aa86c8",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "14b2b1ecd3f6d3a34383e47b321db806d57b7af33a8a243e9590a62e8a7827cc",
+      "concept_id": "tofu-retain90-author-0101",
+      "index": 2023,
+      "item_id": "retain90-2023",
+      "question_sha256": "c761b4bfb2d24374666f01ff60dd1f1fb27d4edd5e7409e442f7d2da84a53bc7",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "079465fc9ef5f6427be936b424f6206c6bb53b09a1c3ab36100d62a56cebabc7",
+      "concept_id": "tofu-retain90-author-0101",
+      "index": 2031,
+      "item_id": "retain90-2031",
+      "question_sha256": "7c7e8ceca61a1920f6a5004040bd7ec4aa8fa413df336cba0f71af53de3aa7c7",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "c7e078cd4016f73da102b7bc0f9973cecde3420df772da1c8c544b25f91612f2",
+      "concept_id": "tofu-retain90-author-0105",
+      "index": 2103,
+      "item_id": "retain90-2103",
+      "question_sha256": "ef7a2b6c4bb00747dbb9efa1d80004392a2c26a26566af09be84fcf8853101e3",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "40d74b8823a25d50bc8099edc6017a99718a49db2daa4fc794d8e722238b1537",
+      "concept_id": "tofu-retain90-author-0105",
+      "index": 2111,
+      "item_id": "retain90-2111",
+      "question_sha256": "109a5722e32ac63c53ec5847f261619937c22c07d9436e18a852ebb2adfb48c5",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "dcd33bb7e971628cdc70000e94d6100d882c63cc0ce36a032ef3289875f760cb",
+      "concept_id": "tofu-retain90-author-0109",
+      "index": 2183,
+      "item_id": "retain90-2183",
+      "question_sha256": "b1070332ee5dfa21b7ca7c295f40a91295a3552ef6bc021de9215878c6899e27",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "10a660a3210e2017af6e2ff513056001cee2307ec229e758345f496773af41fa",
+      "concept_id": "tofu-retain90-author-0109",
+      "index": 2191,
+      "item_id": "retain90-2191",
+      "question_sha256": "b80d6bf09e907fa8ad245ba61bb8441165cf50462541d092eaa409f75d95daf6",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "5ebbca3110a6992b06e3b98e2d86b3635faa7220351df4362b4216f802900b8f",
+      "concept_id": "tofu-retain90-author-0113",
+      "index": 2263,
+      "item_id": "retain90-2263",
+      "question_sha256": "8801ba4a874442f9ef42a3ceb41e41dcb46233616f17a60edc1820af026b19f6",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "1ce73c4c532dc896be9c7dc793ef3c4a52e80a9f4fc2c946092d7c81cd19d19b",
+      "concept_id": "tofu-retain90-author-0113",
+      "index": 2271,
+      "item_id": "retain90-2271",
+      "question_sha256": "300910ef9b2a19846a47ac4ca9d1390f8a40016ab637c7e31c6dfd75e4a28753",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "2446f6032ac68dd51a43a36ae19bf976f858761f70f270b6e620fced6448945c",
+      "concept_id": "tofu-retain90-author-0117",
+      "index": 2343,
+      "item_id": "retain90-2343",
+      "question_sha256": "b64fa8f40c319edbf7106b0f49bf59df3137d9a8db13bc77b8d8f82e6e732913",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "09f8a9ee737b55dd27cd070bd026246a370861924704ca10357b885bdb1ddd62",
+      "concept_id": "tofu-retain90-author-0117",
+      "index": 2351,
+      "item_id": "retain90-2351",
+      "question_sha256": "71b837ae0a30e42a19f6fea4baafc5fc918c722b0263fd90d067fca7d0f61460",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "6ed5877db9d48850817e47a4ea268fa8bc8c5af47456616ff4a9ec5fb7679484",
+      "concept_id": "tofu-retain90-author-0121",
+      "index": 2423,
+      "item_id": "retain90-2423",
+      "question_sha256": "8b61d2a76f7f9e703fb03f00a8e634893a78c83a19d01587d2a844924913d6a8",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "96d24a0d034a34ba69fa8e9ac091b429062cff1e443abceee783f94f8a0c3000",
+      "concept_id": "tofu-retain90-author-0121",
+      "index": 2431,
+      "item_id": "retain90-2431",
+      "question_sha256": "98be6334ad77d5453784632577942859d82e033bf34e2282d048bd8b33b12eec",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "97c820c4a642b710c532c0d10ad6f2eab0d398a51341c185dd32e2607e3b2d32",
+      "concept_id": "tofu-retain90-author-0125",
+      "index": 2503,
+      "item_id": "retain90-2503",
+      "question_sha256": "449da2f617e74018de7ca914348afaa9f48198111a3ad74043bec83776a43221",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "6948088b944bc6d51c4678242ef4784408f194e7f6695b48609d66b786e2762b",
+      "concept_id": "tofu-retain90-author-0125",
+      "index": 2511,
+      "item_id": "retain90-2511",
+      "question_sha256": "68632a892c6ce90e9e03ebef6ec0e737d808fd95c63f210b917c375b57441f07",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "c323ae1b9b6aa218c58d0ab2b2dacc3b70a34f540d652f40eaf4f7f57df9b00c",
+      "concept_id": "tofu-retain90-author-0129",
+      "index": 2583,
+      "item_id": "retain90-2583",
+      "question_sha256": "50446741aaa479d0b96d7299cb2ab81b287123847d4fde43442eb645a567a838",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "2bd246907ce7f8deb7b7d3409a62578574c29edaa83fe4d78fcdb87196bdf2f1",
+      "concept_id": "tofu-retain90-author-0129",
+      "index": 2591,
+      "item_id": "retain90-2591",
+      "question_sha256": "8bb822d6c1fe408066e4507d3ea2ba3fe02c0617deb9ec52eda7e623678b4bb3",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "5efe9ffdcaa0bc1e73a1d8ef29bb2f4add34f4f7a35819ca607725c3be82fcd4",
+      "concept_id": "tofu-retain90-author-0133",
+      "index": 2663,
+      "item_id": "retain90-2663",
+      "question_sha256": "4695a65934b9003213dd9b3fa4b14ae9a661a1eb8f1a4d91760e868fa1b13ad6",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "d0631988ed29da8dec4b1b7a7bfd1fd5541b242aa47bdbdf7a97d6f308ef2765",
+      "concept_id": "tofu-retain90-author-0133",
+      "index": 2671,
+      "item_id": "retain90-2671",
+      "question_sha256": "70a07c7a5c13ee35fd247c25b31f2e8bd96eefe7b229fd4db54940c2a0ca2ea4",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "7134050c515115802294e8c868ab863bd4ce081b9c7628c044d6ec0e03c395f7",
+      "concept_id": "tofu-retain90-author-0137",
+      "index": 2743,
+      "item_id": "retain90-2743",
+      "question_sha256": "b6544900e4e2c04d4eea96de460039cb9acf1a66855b590327243310ffd3b9d7",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "fe7edde1a6e571383128d5f1a1400981c5c2460d516495f574221c556c64129c",
+      "concept_id": "tofu-retain90-author-0137",
+      "index": 2751,
+      "item_id": "retain90-2751",
+      "question_sha256": "d5c037965c78f4c9585a713c5f06290ac451005acf3ae060588f45875cd60dcb",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "57ab57d63c28cd3b0dc5e17f0a17ff99f4e47efc0ee8c822c9270c4282cdaa41",
+      "concept_id": "tofu-retain90-author-0141",
+      "index": 2823,
+      "item_id": "retain90-2823",
+      "question_sha256": "f6870f2a553ad66afeb10895c7c8f3db5c2ba464e7ce41648aff607efeba137f",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "faddb548a48c48e226e8c82b0ca2a1d8f720ae88d882840b41c87f0f7911e4db",
+      "concept_id": "tofu-retain90-author-0141",
+      "index": 2831,
+      "item_id": "retain90-2831",
+      "question_sha256": "71e499dcf4f6ca93dc6ca2bd4f7aca15ef3b6484d09443254672d7802efa2fcb",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "112cd49285a2d96603e4f78661a399ae76ae895aea6dbb757966ec2420bda2ea",
+      "concept_id": "tofu-retain90-author-0145",
+      "index": 2903,
+      "item_id": "retain90-2903",
+      "question_sha256": "f152a259da4c3db0ab19e94069911510a0d13dc85442214df8e7c15608d330ff",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "1b8fb9be9165703720550441dc1962402751b8ff00539ea41c969c1fb6528a8d",
+      "concept_id": "tofu-retain90-author-0145",
+      "index": 2911,
+      "item_id": "retain90-2911",
+      "question_sha256": "533daa9f0408f9af3eb84d11afd0da320b229a41e1265849e127ed97dfe05524",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "57f3b822640be66f6c4b1f72830dc6001f7c06958edd5baacebe146bc6a2f48d",
+      "concept_id": "tofu-retain90-author-0149",
+      "index": 2983,
+      "item_id": "retain90-2983",
+      "question_sha256": "0172a6d93031b9203fdec2d8ac148dfbd5193c171e3debdd355aeb1b402b61d0",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "cd8100eca4fdf1ccefc0ae90e78831467f37432b60d04f3d712552f15a5558ea",
+      "concept_id": "tofu-retain90-author-0149",
+      "index": 2991,
+      "item_id": "retain90-2991",
+      "question_sha256": "6fffaa1dc7e513a2271e05d4433ff7ada609082b58c84e2e03010c20fe176cd7",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "be6b4f0b09f01d6410ef13b12e2ee27c4184040489832a7230349c30ae0cf0da",
+      "concept_id": "tofu-retain90-author-0153",
+      "index": 3063,
+      "item_id": "retain90-3063",
+      "question_sha256": "ded78cadbb307b82dea9b7e5aad0e4d8eaeb833b352015f052609486e32889af",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "22507171323447adb5fba47182534456e64ca7435de213aec17564600f951719",
+      "concept_id": "tofu-retain90-author-0153",
+      "index": 3071,
+      "item_id": "retain90-3071",
+      "question_sha256": "872be9c91583857efda16fa89b5b4d4dee181016aeb9d6b35c2a833fbee82ca6",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "9793d22a299234ec64a1feb011685a18885eca625c54006ded3ac0b4ec85730c",
+      "concept_id": "tofu-retain90-author-0157",
+      "index": 3143,
+      "item_id": "retain90-3143",
+      "question_sha256": "0d37ec5c40f758b95076a73f1dc819c69f6015c7db91877af02cf53a7271828c",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "5bf5895a8118a20450f2ce128d4635566ef32deef19e224a2e4cc048295bc902",
+      "concept_id": "tofu-retain90-author-0157",
+      "index": 3151,
+      "item_id": "retain90-3151",
+      "question_sha256": "5a0fe69ef7ef4c7fa697cc920c8bd492145037c0610d2c219e9708dcbf888f25",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "f9c643b91d8cb3990d785f24aa7dd1711aa1e92feb3890f29820bdc2fa97e94f",
+      "concept_id": "tofu-retain90-author-0161",
+      "index": 3223,
+      "item_id": "retain90-3223",
+      "question_sha256": "1eec2b7fab06dd2e8b895fc40a7e6b681cff9f1ebaec1f40377daa29c29aa431",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "7a2712d57e3190c4d1469bf33e92816bb729587048372b711f6fdfcdff9f413f",
+      "concept_id": "tofu-retain90-author-0161",
+      "index": 3231,
+      "item_id": "retain90-3231",
+      "question_sha256": "30bbab2e2eb6703195509f1c664dab28da017a68b379daa089e25d8a204b98df",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "4acab84ee6e402017cfd0a4c8675b00980008d7bfc9b7e415310a62437f212d5",
+      "concept_id": "tofu-retain90-author-0165",
+      "index": 3303,
+      "item_id": "retain90-3303",
+      "question_sha256": "ab3496d1dbbaf348812a7f0268681b680b0c6f147382428ae83fb6ea7698602a",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "6d388e91cf6a6056f4a42aef80922430115bd7081b7f39d8bd135cd1eb6e292d",
+      "concept_id": "tofu-retain90-author-0165",
+      "index": 3311,
+      "item_id": "retain90-3311",
+      "question_sha256": "bd920a028df54ede44085e77dd36c3bec336406792a0f63d9d763981ddb19bb3",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "a17cad2f7e712b0d9ec6a15e1bfcb1d40675800b351e4d142da98f9e64c998e0",
+      "concept_id": "tofu-retain90-author-0169",
+      "index": 3383,
+      "item_id": "retain90-3383",
+      "question_sha256": "67d1f3f259904ac6e54a34883a7b7aa0778736a32f0d74e8449f34f8bfc4a470",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "a0e32c0c096e10cd32e91fd2318c8b44f644159ffc981fe1f5c8c725710479d0",
+      "concept_id": "tofu-retain90-author-0169",
+      "index": 3391,
+      "item_id": "retain90-3391",
+      "question_sha256": "4612858e775e4c39c7b4d02a9636418dc60e250f200cd7cf20faea36f8629bc4",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "70030e6f2396c567027e30ef34e0386bb36e0042a7aec27690863cc6769b7b30",
+      "concept_id": "tofu-retain90-author-0173",
+      "index": 3463,
+      "item_id": "retain90-3463",
+      "question_sha256": "3a93f6a486a0695b13399ef310e31be108447e40180143dc1923694f5ca24f4f",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "bb92a778f81a5a0e00fb3757468708199bca8ed1c7f28b73086f04aeb60b3956",
+      "concept_id": "tofu-retain90-author-0173",
+      "index": 3471,
+      "item_id": "retain90-3471",
+      "question_sha256": "7b5d896536a6bb4e2c7649833a8de8bc49b6152efb6c5f82b483952912e1dee2",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "8cfd9870b220eab59d74b28e084f2b319e1ca043996d5379cd9ed30d9d83385b",
+      "concept_id": "tofu-retain90-author-0177",
+      "index": 3543,
+      "item_id": "retain90-3543",
+      "question_sha256": "354d837269a58be0c332e674d2117c922e59c9792ac9f3f5dfefb0fd844ab49d",
+      "usage": "calibration_negative"
+    },
+    {
+      "answer_sha256": "a7ba3ad87109f639f0c805c67c0d5450bed914e70d0605f4ff4a62ef892a40f0",
+      "concept_id": "tofu-retain90-author-0177",
+      "index": 3551,
+      "item_id": "retain90-3551",
+      "question_sha256": "a7acd1f329102fb5949cd5f46bfeec461ca5139efbb4be3103aab5aa43a55d34",
+      "usage": "calibration_negative"
+    }
+  ],
+  "n_concepts": 45,
+  "n_items": 90,
+  "note": "Detector-calibration NEGATIVES: two questions each from the 45 retain90 authors congruent to 1 mod 4, which no other cohort uses. The retain-utility cohort draws from authors 0 mod 4, so the false-positive rate measured here is held out from the retain questions the utility gate is computed on \u2014 selecting a threshold on the same retain authors it is later judged against would make the FPR an in-sample quantity.",
+  "schema": "graph-cohort-v1",
+  "source_provenance": {
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "dataset_revision_pinned": true,
+    "expected_split_size": 3600,
+    "is_real_data": true,
+    "n_items": 3600,
+    "sample": "head",
+    "source": "locuslab/TOFU",
+    "split": "retain90",
+    "truncated": false
+  },
+  "split": "calibration_negatives"
+}

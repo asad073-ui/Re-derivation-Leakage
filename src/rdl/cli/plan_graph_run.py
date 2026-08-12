@@ -12,13 +12,16 @@ from pathlib import Path
 
 import typer
 
+from ..studies.graph_leak.evidence import atomic_json
 from ..studies.graph_leak.runner import GraphRunner
 from .graph_common import (
     DEFAULT_LAUNCH,
     apply_sample_budget,
+    assert_control_arm_has_enough_items,
     build_backend,
     load_config_or_fail,
-    resolve_cohort_items,
+    resolve_run_cohorts,
+    stub_source_items,
 )
 
 __all__ = ["plan_graph_run"]
@@ -30,7 +33,12 @@ def plan_graph_run(
     topology: str | None = typer.Option(None, "--topology"),
     fixture: Path | None = typer.Option(None, "--fixture", help="offline fixture; CPU only"),
     cohort: Path | None = typer.Option(None, "--cohort", help="explicit cohort manifest"),
-    limit: int | None = typer.Option(None, "--limit", min=1),
+    policy_cohort: Path | None = typer.Option(
+        None, "--forget-policy-cohort", help="explicit FORGET cohort for the concept registry"
+    ),
+    limit: int | None = typer.Option(
+        None, "--limit", min=1, help="evaluation questions only; never narrows the forget policy"
+    ),
     n_samples: int | None = typer.Option(
         None, "--n-samples", min=1, help="reduce (never exceed) the profile's sample budget"
     ),
@@ -49,15 +57,23 @@ def plan_graph_run(
     overrides = [f"active_profile={profile}"] if profile else None
     cfg = load_config_or_fail(launch, overrides=overrides, topology=topology)
     cfg = apply_sample_budget(cfg, n_samples)
-    cohort_obj, items = resolve_cohort_items(
-        cfg, fixture=fixture, cohort_path=cohort, token=token, limit=limit
+    cohorts = resolve_run_cohorts(
+        cfg,
+        fixture=fixture,
+        cohort_path=cohort,
+        policy_cohort_path=policy_cohort,
+        token=token,
+        limit=limit,
     )
-    backend, tokenizer_revision = build_backend(cfg, items, token=token)
+    assert_control_arm_has_enough_items(cfg, cohorts.evaluation_items)
+    backend, tokenizer_revision = build_backend(cfg, stub_source_items(cohorts), token=token)
     modes = tuple(c.strip() for c in challenges.split(",") if c.strip())
     runner = GraphRunner(
         cfg=cfg,
-        items=items,
-        cohort=cohort_obj,
+        items=cohorts.evaluation_items,
+        cohort=cohorts.evaluation,
+        policy_cohort=cohorts.policy,
+        policy_items=cohorts.policy_items,
         backend=backend,
         output=output or Path("."),
         challenges=modes,
@@ -65,6 +81,7 @@ def plan_graph_run(
         tokenizer_revision=tokenizer_revision,
     )
     plan = runner.plan()
+    cohort_obj = cohorts.evaluation
     payload = {
         "study_id": cfg.study.study_id,
         "phase": cfg.phase,
@@ -75,6 +92,7 @@ def plan_graph_run(
         "cohort_fingerprint": cohort_obj.fingerprint(),
         "cohort_dataset_revision": cohort_obj.dataset_revision,
         "n_concepts": len(cohort_obj.concept_ids),
+        **cohorts.to_dict(),
         "protocol": protocol,
         **cfg.hashes(),
         **plan.to_dict(),
@@ -92,9 +110,9 @@ def plan_graph_run(
         "model_pinned": cfg.model.pinned,
     }
     backend.close()
-    typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+    typer.echo(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
     if output:
         output.mkdir(parents=True, exist_ok=True)
-        (output / "PLAN.json").write_text(
-            json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
-        )
+        # Through `atomic_json`, so the plan is written strictly and atomically by the
+        # same code path as every other artefact.
+        atomic_json(output / "PLAN.json", payload)

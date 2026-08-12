@@ -116,7 +116,7 @@ def test_plan_and_run_share_one_sample_budget_function():
 
 
 def test_the_rtx_profile_with_two_samples_plans_the_smoke_not_the_full_run():
-    """The blocker: `graph-plan` ignored --n-samples, so it printed 2 688, not 168."""
+    """The blocker: `graph-plan` ignored --n-samples, so it printed the full budget."""
     from rdl.cli.graph_common import apply_sample_budget
     from rdl.graph.scheduler import planned_generations
 
@@ -135,8 +135,11 @@ def test_the_rtx_profile_with_two_samples_plans_the_smoke_not_the_full_run():
         arms=arms,
         single_agent_arms=("single_agent",),
     )
-    assert plan["planned_generations"] == 168
-    assert plan["planned_trajectories"] == 40
+    # 208 and 48, not 168 and 40: the sixth arm (multi_agent_dragon_subsets, the
+    # matched-subset fairness ablation) joined the study in GU-0027. 4 items x 2 samples
+    # x (1 single-agent node + 5 multi-agent arms x 5 diamond5 nodes).
+    assert plan["planned_generations"] == 208
+    assert plan["planned_trajectories"] == 48
 
 
 def test_reducing_below_the_primary_k_marks_the_run_unreportable():
@@ -198,7 +201,13 @@ def test_no_runtime_profile_declares_a_detector_device():
 def test_the_detector_backend_is_declared_where_the_science_is():
     cfg = load_graph_config(LAUNCH)
     assert cfg.study.detector.backend == "hashing64"
-    assert cfg.study.detector.status == "diagnostic"
+    # GU-0027: the study now declares `calibrated`, and a declaration is only allowed
+    # while the artefact behind it exists and verifies. What a given RUN reports is the
+    # EFFECTIVE status, which the runner downgrades whenever the artefact was calibrated
+    # on a different forget policy — see test_detector_calibration_artifact.py.
+    assert cfg.study.detector.status == "calibrated"
+    assert cfg.study.detector.calibration_artifact
+    assert cfg.study.detector.calibration_id
 
 
 # --------------------------------------------------------------------------- vLLM --
@@ -318,14 +327,27 @@ def test_the_refusal_upper_bound_exists_but_is_not_a_default_arm():
     assert "upper bound" in spec["description"]
 
 
-def test_the_matched_subset_baseline_exists_and_is_not_a_default_arm():
-    """GU-0026. The arm that makes the propagation claim falsifiable.
+def test_the_matched_subset_baseline_is_a_study_arm_and_is_labelled_an_ablation():
+    """GU-0026/GU-0027. The arm that makes the propagation claim falsifiable.
 
     Without it, "GraphForget beats DRAGON" confounds Forget-ID propagation with the fact
-    that one side scores subsets of a node's input and the other scores it whole.
+    that one side scores subsets of a node's input and the other scores it whole. It was
+    optional; the pre-rental review made it part of the six-arm engineering study, because
+    a comparison nobody runs falsifies nothing.
+
+    It is NOT the published DRAGON implementation, and both the arm file and the report
+    have to say so — mislabelling a strengthened baseline as the paper's would understate
+    the paper and overstate this ablation at the same time.
     """
     cfg = load_graph_config(LAUNCH)
-    assert "multi_agent_dragon_subsets" not in [a.name for a in cfg.arms]
+    assert "multi_agent_dragon_subsets" in [a.name for a in cfg.arms]
+    arm = yaml.safe_load(
+        (repo_root() / "configs/graph/arms/multi_agent_dragon_subsets.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert arm["defense"] == "dragon_style_subsets"
+    assert "matched-subset" in arm["description"]
     spec = yaml.safe_load(
         (repo_root() / "configs/graph/defenses/dragon_style_subsets.yaml").read_text(
             encoding="utf-8"

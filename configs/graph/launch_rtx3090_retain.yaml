@@ -1,0 +1,25 @@
+# RTX 3090 — retain utility, under the SAME frozen forget policy as the engineering run.
+#
+# This is the file the retain-utility correctness fix exists for.
+#
+#   phase: retain_utility     the QUESTIONS come from retain90 — questions the system is
+#                             supposed to answer. An answer-match rate over these is a
+#                             utility.
+#   forget_policy_phase:      the CONCEPT REGISTRY and the DELETED BASELINE MEMORY come
+#     engineering             from the frozen forget cohort, exactly as in the engineering
+#                             run. Same 20 forgotten authors, same deletions, same guard
+#                             scope — the only thing that changes is which questions are
+#                             asked.
+#
+# Without the second key the registry would be built from the retain cohort, the system
+# would treat retained authors as forgotten, the guard would fire on correct behaviour,
+# and the resulting "retain utility" and "false-positive rate" would be measuring the
+# run's own mislabelling. `_forget_policy_phase` refuses a retain phase with this key
+# unset rather than falling back, so the failure cannot recur silently.
+#
+# The forget policy is NEVER narrowed by `--limit`: a question budget is not a statement
+# about what the deployment forgot.
+study: graph_unlearning_v1
+active_profile: rtx3090_1b
+phase: retain_utility
+forget_policy_phase: engineering

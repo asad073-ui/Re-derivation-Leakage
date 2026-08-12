@@ -33,6 +33,8 @@ __all__ = [
     "Cohort",
     "CohortError",
     "CohortItem",
+    "assert_forget_policy_cohort",
+    "assert_policy_excludes_evaluation_concepts",
     "cohort_dir",
     "load_cohort",
     "load_exclusions",
@@ -99,6 +101,17 @@ class Cohort:
     @property
     def frozen(self) -> bool:
         return all(i.frozen for i in self.items)
+
+    @property
+    def is_retain(self) -> bool:
+        """Does this cohort hold questions the system is SUPPOSED to answer?
+
+        Read off the split name and the dataset config rather than a hand-set flag,
+        because the one thing that must never happen is a retain cohort being taken for
+        a forget cohort through a manifest someone forgot to annotate. ``retain90`` and
+        any split whose name contains ``retain`` answer yes.
+        """
+        return "retain" in self.split.lower() or "retain" in self.dataset_config.lower()
 
     def fingerprint(self) -> str:
         payload = json.dumps(
@@ -258,6 +271,52 @@ def load_cohort(
                     "concepts would make the validation run a second discovery run."
                 )
     return cohort
+
+
+def assert_forget_policy_cohort(cohort: Cohort) -> Cohort:
+    """The cohort that defines what was forgotten must be a FORGET cohort.
+
+    The forget-policy cohort is what builds the runtime concept registry and the deleted
+    baseline memory: every concept in it is a concept the system is required to withhold.
+    Handing a retain cohort to that role registers questions the system is *supposed* to
+    answer as forgotten, so the guard fires on correct behaviour, the retain-utility
+    number measures over-blocking of concepts it just declared forbidden, and the
+    detector's false-positive rate is computed against its own positives. Nothing
+    downstream can recover from it, so it is refused here rather than reported.
+    """
+    if cohort.is_retain:
+        raise CohortError(
+            f"cohort '{cohort.split}' (dataset_config '{cohort.dataset_config}') is a "
+            "RETAIN cohort and cannot be the forget-policy cohort. The concept registry "
+            "and the deleted baseline memory define what the system must withhold; "
+            "building them from retain questions would classify retained concepts as "
+            "forgotten and make every retain-utility and false-positive number invalid.\n"
+            "Pass the frozen forget cohort as the policy cohort and the retain cohort as "
+            "the evaluation cohort — see `forget_policy_phase` in the launch file."
+        )
+    if not cohort.items:
+        raise CohortError(f"forget-policy cohort '{cohort.split}' is empty")
+    return cohort
+
+
+def assert_policy_excludes_evaluation_concepts(policy: Cohort, evaluation: Cohort) -> None:
+    """A retain evaluation cohort must share no concept with the forget policy.
+
+    This is the check the registry bug would have had to survive. Retain90 and forget10
+    are disjoint author sets by construction, so any overlap here means the wrong
+    manifest was selected — and an overlapping author would be simultaneously
+    'must withhold' and 'must answer', which is not a measurable condition.
+    """
+    if not evaluation.is_retain:
+        return
+    shared = sorted(set(policy.concept_ids) & set(evaluation.concept_ids))
+    if shared:
+        raise CohortError(
+            f"retain evaluation cohort '{evaluation.split}' shares concepts {shared[:5]} "
+            f"with the forget-policy cohort '{policy.split}'. Those concepts would be "
+            "both forbidden and required in one run, and the resulting utility and "
+            "false-positive rates would be uninterpretable."
+        )
 
 
 def resolve_cohort(

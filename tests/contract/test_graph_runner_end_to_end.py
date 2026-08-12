@@ -39,22 +39,33 @@ def runner_factory(tofu_items, graph_backend, tmp_path):
     return make
 
 
+# 4 items x 2 samples x 6 arms. The sixth arm (multi_agent_dragon_subsets, the
+# matched-subset fairness ablation) joined the study in GU-0026/GU-0027, so every count
+# below moved: 40 -> 48 trajectories, and 168 -> 208 graph generations, because
+# diamond5 runs 5 nodes for each of the five multi-agent arms and 1 for single_agent.
+N_ARMS = 6
+N_TRAJECTORIES = 4 * 2 * N_ARMS
+N_GRAPH_GENERATIONS = 4 * 2 * (1 + 5 * (N_ARMS - 1))
+N_PROBES = 2 * N_TRAJECTORIES
+
+
 def test_the_plan_matches_the_protocols_smoke_number(runner_factory, tmp_path):
     plan = runner_factory(tmp_path / "plan").plan()
-    assert plan.planned_graph_generations == 168
-    assert plan.planned_trajectories == 40
-    assert plan.planned_probe_generations == 80
+    assert plan.planned_graph_generations == N_GRAPH_GENERATIONS == 208
+    assert plan.planned_trajectories == N_TRAJECTORIES == 48
+    assert plan.planned_probe_generations == N_PROBES == 96
 
 
 def test_a_full_run_produces_the_declared_artifacts(runner_factory, tmp_path):
     out = tmp_path / "run"
     manifest = runner_factory(out).run()
     assert manifest["complete"]
-    assert manifest["completed_trajectories"] == 40
+    assert manifest["completed_trajectories"] == N_TRAJECTORIES
     for name in (
         "RUN_MANIFEST.json",
         "RESOLVED_CONFIG.json",
         "COHORT.json",
+        "FORGET_POLICY_COHORT.json",
         "PLAN.json",
         "PERFORMANCE.json",
     ):
@@ -71,11 +82,11 @@ def test_the_manifest_exists_before_the_first_model_call(runner_factory, tmp_pat
     calls = {"n": 0}
     original = runner.scheduler.run
 
-    def counting(requests):
+    def counting(requests, **kwargs):
         if requests:
             calls["n"] += 1
             assert (out / "RUN_MANIFEST.json").exists()
-        return original(requests)
+        return original(requests, **kwargs)
 
     runner.scheduler.run = counting  # type: ignore[method-assign]
     runner.run()
@@ -94,20 +105,20 @@ def test_the_readback_probes_of_a_wave_are_dispatched_as_one_batch(runner_factor
     per_call: list[int] = []
     original = runner.scheduler.run
 
-    def counting(requests):
+    def counting(requests, **kwargs):
         probes = [r for r in requests if "|probe-" in r.request_id]
         if probes:
             per_call.append(len(probes))
-        return original(requests)
+        return original(requests, **kwargs)
 
     runner.scheduler.run = counting  # type: ignore[method-assign]
     plan = runner.plan()
     runner.run()
 
-    assert sum(per_call) == plan.planned_probe_generations == 80
+    assert sum(per_call) == plan.planned_probe_generations == N_PROBES
     # 4 items x 2 samples = 8 trajectories per arm, which is exactly one wave at
-    # max_num_seqs=8, so each of the five arms contributes ONE probe dispatch of 16.
-    assert per_call == [16, 16, 16, 16, 16]
+    # max_num_seqs=8, so each of the six arms contributes ONE probe dispatch of 16.
+    assert per_call == [16] * N_ARMS
 
 
 def test_batching_the_probes_does_not_change_what_they_ask(runner_factory, tmp_path):
@@ -116,7 +127,7 @@ def test_batching_the_probes_does_not_change_what_they_ask(runner_factory, tmp_p
     runner_factory(out).run()
     rows = list(read_shards(out / "generations"))
     probes = [row["raw_outputs"]["probe"] for row in rows]
-    assert len(probes) == 40
+    assert len(probes) == N_TRAJECTORIES
     for probe in probes:
         assert set(probe) >= {
             "with_store_text",
@@ -164,24 +175,24 @@ def test_resume_completes_an_interrupted_run_without_duplicates(runner_factory, 
 
     original = runner.scheduler.run
 
-    def stop_after_first_committed_shard(requests):
+    def stop_after_first_committed_shard(requests, **kwargs):
         # Deterministic interruption point: as soon as one shard is durable on disk,
         # which is exactly the state resume has to recover from.
         if list((out / "generations").glob("part-*.jsonl")):
             raise Stop()
-        return original(requests)
+        return original(requests, **kwargs)
 
     runner.scheduler.run = stop_after_first_committed_shard  # type: ignore[method-assign]
     with pytest.raises(Stop):
         runner.run()
     partial = len(list(read_shards(out / "generations")))
-    assert 0 < partial < 40
+    assert 0 < partial < N_TRAJECTORIES
 
     manifest = runner_factory(out, resume=True).run()
     rows = list(read_shards(out / "generations"))
-    assert len(rows) == 40
+    assert len(rows) == N_TRAJECTORIES
     keys = [(r["item_id"], r["sample_id"], r["arm"], r["challenge"]) for r in rows]
-    assert len(set(keys)) == 40
+    assert len(set(keys)) == N_TRAJECTORIES
     assert manifest["complete"]
 
 
@@ -206,12 +217,13 @@ def test_scoring_is_a_separate_pass_over_the_shards(runner_factory, tmp_path):
         score_row(row, lambda r, c: engine.score(r, c).leaks, scorer_version=engine.version)
         for row in read_shards(out / "generations")
     ]
-    assert len(rows) == 40
+    assert len(rows) == N_TRAJECTORIES
     assert {r["arm"] for r in rows} == {
         "single_agent",
         "multi_agent_control",
         "multi_agent_leak",
         "multi_agent_dragon",
+        "multi_agent_dragon_subsets",
         "multi_agent_graphforget",
     }
 
