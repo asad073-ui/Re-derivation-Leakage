@@ -54,7 +54,12 @@ class VllmBackend:
         # manifest, and never passed here — so the engine loaded the tokenizer from the
         # branch head while the manifest claimed a pinned commit, and every serialized
         # prompt hash was attributed to a chat template that may not have rendered it.
-        self._engine_kwargs = {
+        # Annotated `dict[str, Any]`, not left to inference. Inference widens this to
+        # `dict[str, float | int | str]`, and because `dict` is invariant mypy then
+        # rejects the `LLM(**kwargs)` splat in `_ensure_engine` against every one of
+        # vLLM's parameter types — but ONLY on a box where vllm is installed, which the
+        # CPU gate never is. See the note in `_ensure_engine`.
+        self._engine_kwargs: dict[str, Any] = {
             "model": model_path,
             "revision": revision,
             "tokenizer": self.tokenizer_path,
@@ -94,7 +99,11 @@ class VllmBackend:
         try:
             from vllm import SamplingParams
         except ImportError:  # pragma: no cover - satisfied by the injected test engine
-            SamplingParams = _SamplingParamsShim  # type: ignore[assignment]
+            # `misc` as well as `assignment`: when vllm IS installed the imported name is
+            # a real class, and rebinding it is "Cannot assign to a type" [misc] rather
+            # than an assignment error. `warn_unused_ignores = false`, so the extra code
+            # stays silent on a CPU box where the import fails and the name is Any.
+            SamplingParams = _SamplingParamsShim  # type: ignore[assignment,misc]
 
         prompts: list[str] = []
         params: list[Any] = []
