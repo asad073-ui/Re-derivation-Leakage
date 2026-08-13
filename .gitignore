@@ -119,6 +119,18 @@ runs/graph/**
 !runs/graph/*/GRAPH_LEAK_REPORT.json
 !runs/graph/*/GRAPH_LEAK_REPORT.md
 !runs/graph/*/FINALIZATION.json
+!runs/graph/*/FORGET_POLICY_COHORT.json
+# GU-0030 reanalysis artefacts. Small, and each is a claim a reader has to be able to
+# check: which surfaces ranked the arms, and how much of the leakage the detector could
+# see at all. `missed_examples` is capped at 50 short excerpts, so this stays reviewable.
+!runs/graph/*/DETECTOR_RECALL.json
+# One report per (challenge, protocol). The fixed-name copy above is whichever was built
+# last; these are the addressable ones.
+!runs/graph/*/reports/
+!runs/graph/*/reports/*.json
+!runs/graph/*/reports/*.md
+!runs/graph/*/STUDY_BUNDLE.json
+!runs/graph/*/STUDY_BUNDLE.md
 !runs/graph/*/scores/
 !runs/graph/*/scores/detector-calibration.json
 !runs/graph/*/scores/SCORING.json

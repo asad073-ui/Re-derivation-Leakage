@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import typer
 
+from .bundle_graph import bundle_graph
 from .calibrate_detector import calibrate_detector
+from .detector_recall import detector_recall
 from .discover_checkpoints import discover_checkpoints
 from .env_check import env_check
 from .finalize_graph import finalize_graph
@@ -47,6 +49,9 @@ app.command("graph-report")(report_graph)
 app.command("graph-finalize")(finalize_graph)
 app.command("graph-freeze-cohort")(freeze_graph_cohort)
 app.command("graph-calibrate")(calibrate_detector)
+# Reanalysis phases (GU-0030). Both read committed evidence and generate nothing.
+app.command("graph-detector-recall")(detector_recall)
+app.command("graph-bundle")(bundle_graph)
 
 
 if __name__ == "__main__":

@@ -116,7 +116,7 @@ class DefenseSpec(GraphBase):
     # The matched-subset ablation (GU-0026). Gives the node-local baseline the same
     # subset-scoring battery GraphForget uses, so that the remaining contrast is
     # Forget-ID propagation and multi-surface enforcement rather than how finely each
-    # side chops up one node's input. False on the primary baseline: DRAGON as published
+    # side chops up one node's input. False on the primary baseline: DRAGON as described
     # scores one context, and a baseline that does more than the paper is not the paper.
     score_subsets: bool = False
     # graphforget
@@ -514,7 +514,7 @@ class ResolvedGraphConfig(GraphBase):
                 )
         # Exactly one dragon_style defence may score subsets: the matched-subset
         # ablation. If the PRIMARY baseline started scoring subsets it would no longer be
-        # DRAGON as published, and the headline table would be comparing against
+        # DRAGON as described in the paper, and the headline table would be comparing against
         # something the paper does not describe.
         primary = self.defenses.get("dragon_style")
         if primary is not None and primary.score_subsets:

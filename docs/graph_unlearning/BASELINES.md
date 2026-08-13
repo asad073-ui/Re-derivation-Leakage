@@ -9,9 +9,23 @@ is usable; the released code cannot currently provide a complete faithful reprod
 
 Therefore this repository implements and reports a
 
-> **DRAGON-style node-local baseline**
+> **DRAGON-style node-local template baseline**
 
 and never calls it a reproduction. The repository is not copied into this codebase.
+
+**The one sentence that must appear wherever this arm appears** (GU-0030). The arm
+`multi_agent_dragon` is a prompt-guard *template* standing in for DRAGON's node-local
+detect-then-modify behaviour; `dragon_style.yaml` declares `implementation: template`,
+and `implementation: sft_checkpoint` raises rather than substituting a template for
+weights that were never released. So:
+
+* Say **"DRAGON-style node-local template baseline"**, never "DRAGON as published" as a
+  label for the arm. The phrase "as described in the paper" refers to the *algorithm*,
+  which is what our template imitates; it never describes our *measurements*.
+* An observed higher leakage number for this arm is a fact about the template. It is
+  **not** a finding that published DRAGON leaks more, and no report may say so. The
+  discovery run's 0.50 vs 0.44 was additionally never given a paired interval, so it was
+  not even a comparison between the arms actually run.
 
 ### What our implementation does
 
@@ -69,8 +83,8 @@ constant, and it is what makes the propagation claim falsifiable: if GraphForget
 reduction largely disappears against it, the mechanism doing the work was subset scoring
 and the paper has to say so.
 
-It is **not** the primary baseline. DRAGON as published scores one context, and a baseline
-that does more than the paper describes is not the paper.
+It is **not** the primary baseline. DRAGON as described in the paper scores one context,
+and a baseline that does more than the paper describes is not the paper.
 
 ## Shared detector
 
