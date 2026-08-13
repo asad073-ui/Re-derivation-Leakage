@@ -42,8 +42,13 @@ class NodeInputContext:
     question: str
     inputs: tuple[Envelope, ...] = ()
     memory_texts: tuple[str, ...] = ()
-    # Scopes already known to be carried by this node's inputs.
+    # Scopes already known to be carried by this node's inputs (peer messages).
     inherited_forget_ids: tuple[str, ...] = ()
+    # Scopes carried by the RETRIEVED MEMORY this node was allowed to read. Kept separate
+    # from `inherited_forget_ids` because the two arrive by different routes and a report
+    # that could not tell them apart could not say whether re-entry came through the graph
+    # or through the store — which is the distinction this whole study is about.
+    memory_forget_ids: tuple[str, ...] = ()
 
     def combined_text(self, *, include_query: bool = True) -> str:
         """Every incoming message + retrieved memory, and optionally the query.
@@ -106,7 +111,13 @@ class NodeInputVerdict:
 
     inputs: tuple[Envelope, ...]
     memory_texts: tuple[str, ...]
+    # The scopes THIS DECISION WAS MADE ON. Always recorded in the trace.
     forget_ids: tuple[str, ...] = ()
+    # The scopes this decision FORWARDS onto what the node produces. ``None`` means "the
+    # same as `forget_ids`", which is what every defence did before the consume/forward
+    # split and is therefore the compatible default. An arm that enforces a tag where it
+    # finds one but never spreads it returns ``()`` here with a non-empty `forget_ids`.
+    propagated_forget_ids: tuple[str, ...] | None = None
     score: float = 0.0
     fired: bool = False
     # When set, the node does NOT generate; this text becomes its output. That is the
@@ -135,6 +146,11 @@ class WriteVerdict:
     reason: str = ""
     score: float = 0.0
     forget_ids: tuple[str, ...] = ()
+    # What the COMMITTED NODE is tagged with, as distinct from what the write decision
+    # was made on. ``None`` means "the same as `forget_ids`". A stored tag is the longest
+    # lived piece of state in the system — it outlives the episode and is what a later
+    # retrieval enforces — so an arm that does not forward must not write one.
+    propagated_forget_ids: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -160,9 +176,17 @@ class FinalVerdict:
 @runtime_checkable
 class Defense(Protocol):
     name: str
+
     # Whether this defence maintains cross-object policy state. Recorded in the manifest
     # so a report cannot describe a node-local baseline as a propagating one.
-    propagates_scope: bool
+    #
+    # READ-ONLY on purpose (GU-0032). It used to be a settable attribute, which is what
+    # allowed `GraphForgetDefense` to declare a class-level `propagates_scope = True` for
+    # every variant of itself — including the ablations built specifically not to
+    # propagate. A defence must DERIVE this from its own configuration, so the protocol
+    # asks for a property and a constant no longer satisfies it silently.
+    @property
+    def propagates_scope(self) -> bool: ...
 
     def on_node_input(self, ctx: NodeInputContext) -> NodeInputVerdict: ...
     def on_edge(self, ctx: EdgeContext) -> EdgeVerdict: ...
@@ -189,6 +213,10 @@ class DefenseCounters:
     final_blocked: int = 0
     accumulated_only_hits: int = 0
     inherited_only_hits: int = 0
+    # Node inputs where a scope arrived through RETRIEVED MEMORY rather than through a
+    # peer message. The non-vacuity counter for the propagation contrast: if this is zero,
+    # no tagged content ever reached a model and forwarding had nothing to forward.
+    memory_borne_scope_hits: int = 0
     extra: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:

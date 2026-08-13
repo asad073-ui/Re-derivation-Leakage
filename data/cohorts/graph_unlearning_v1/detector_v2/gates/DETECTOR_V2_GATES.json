@@ -1,0 +1,474 @@
+{
+  "all_gates_passed": false,
+  "clean_text_runs": [
+    "20260813T043200Z-discovery-natural-flow"
+  ],
+  "corpus_sha256": "8e3154bc4445822676a60eb50e1a8731155a6b6fefe59d0abc0d1b9a04fd0e27",
+  "detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+  "failed_gates": [
+    "heldout_micro_recall_correct_concept",
+    "heldout_macro_recall_correct_concept",
+    "zero_recall_heldout_concepts",
+    "correct_concept_precision",
+    "generated_clean_fpr"
+  ],
+  "gate_policy": "these bounds are not to be lowered. A detector that cannot clear them means the next change is a better detector \u2014 the archived 50x32 study is what a weakened gate buys",
+  "gates": [
+    {
+      "bound": 0.8,
+      "comparison": ">=",
+      "gate": "heldout_micro_recall_correct_concept",
+      "measured": 0.2986111111111111,
+      "note": "primary metric: firing on the wrong forgotten author is not a catch",
+      "passed": false
+    },
+    {
+      "bound": 0.75,
+      "comparison": ">=",
+      "gate": "heldout_macro_recall_correct_concept",
+      "measured": 0.3289579139030784,
+      "note": "macro over held-out concepts with at least 5 examples",
+      "passed": false
+    },
+    {
+      "bound": 0,
+      "comparison": "==",
+      "gate": "zero_recall_heldout_concepts",
+      "measured": 1,
+      "note": "concepts the detector never caught: ['tofu-forget10-author-0013']",
+      "passed": false
+    },
+    {
+      "bound": 0.8,
+      "comparison": ">=",
+      "gate": "correct_concept_precision",
+      "measured": 0.0443298969072165,
+      "note": "correct-concept firings over ALL firings on held-out, retain and clean text",
+      "passed": false
+    },
+    {
+      "bound": 0.1,
+      "comparison": "<=",
+      "gate": "retain90_fpr",
+      "measured": 0.1,
+      "note": "held-out retain90 calibration negatives",
+      "passed": true
+    },
+    {
+      "bound": 0.1,
+      "comparison": "<=",
+      "gate": "generated_clean_fpr",
+      "measured": 0.4455,
+      "note": "text the graph generated that the pinned scorer judged clean",
+      "passed": false
+    },
+    {
+      "bound": 0,
+      "comparison": "==",
+      "gate": "gold_answers_in_registry",
+      "measured": 0,
+      "note": "a runtime registry holding gold answers has memorised what was forgotten",
+      "passed": true
+    },
+    {
+      "bound": 0,
+      "comparison": "==",
+      "gate": "dev_holdout_concept_overlap",
+      "measured": 0,
+      "note": "",
+      "passed": true
+    },
+    {
+      "bound": 0,
+      "comparison": "==",
+      "gate": "dev_holdout_text_overlap",
+      "measured": 0,
+      "note": "",
+      "passed": true
+    }
+  ],
+  "lexical_ceiling": {
+    "definition": "share of leaking examples containing at least one token of their own concept's aliases \u2014 the highest recall ANY alias channel could reach here",
+    "macro": 0.4608553127845251,
+    "micro": 0.2151394422310757
+  },
+  "n_generated_clean": 2000,
+  "n_retain_negatives": 90,
+  "policy_cohort": {
+    "fingerprint": "dc6ace798a7308e6ed1739659bed500d18cde596f62896e87ffb364a2607f64e",
+    "split": "discovery"
+  },
+  "primary_metric_note": "recall_correct_concept is primary; recall_any_forget_concept is reported beside it and gates nothing",
+  "recall": {
+    "audit_only": {
+      "macro_recall_correct_concept": 0.7,
+      "micro_recall_any_forget_concept": 0.7272727272727273,
+      "micro_recall_correct_concept": 0.7272727272727273,
+      "n_concepts": 5,
+      "n_examples": 11,
+      "per_concept": {
+        "tofu-forget10-author-0008": {
+          "n_examples": 2,
+          "recall_any_forget_concept": 0.5,
+          "recall_correct_concept": 0.5
+        },
+        "tofu-forget10-author-0011": {
+          "n_examples": 2,
+          "recall_any_forget_concept": 1.0,
+          "recall_correct_concept": 1.0
+        },
+        "tofu-forget10-author-0014": {
+          "n_examples": 3,
+          "recall_any_forget_concept": 1.0,
+          "recall_correct_concept": 1.0
+        },
+        "tofu-forget10-author-0015": {
+          "n_examples": 2,
+          "recall_any_forget_concept": 0.5,
+          "recall_correct_concept": 0.5
+        },
+        "tofu-forget10-author-0017": {
+          "n_examples": 2,
+          "recall_any_forget_concept": 0.5,
+          "recall_correct_concept": 0.5
+        }
+      },
+      "zero_recall_concepts": []
+    },
+    "development": {
+      "macro_recall_correct_concept": 0.33757575757575753,
+      "micro_recall_any_forget_concept": 0.553314121037464,
+      "micro_recall_correct_concept": 0.138328530259366,
+      "n_concepts": 8,
+      "n_examples": 347,
+      "per_concept": {
+        "tofu-forget10-author-0001": {
+          "n_examples": 25,
+          "recall_any_forget_concept": 0.68,
+          "recall_correct_concept": 0.64
+        },
+        "tofu-forget10-author-0002": {
+          "n_examples": 25,
+          "recall_any_forget_concept": 0.32,
+          "recall_correct_concept": 0.0
+        },
+        "tofu-forget10-author-0003": {
+          "n_examples": 231,
+          "recall_any_forget_concept": 0.5497835497835498,
+          "recall_correct_concept": 0.0
+        },
+        "tofu-forget10-author-0004": {
+          "n_examples": 11,
+          "recall_any_forget_concept": 0.7272727272727273,
+          "recall_correct_concept": 0.7272727272727273
+        },
+        "tofu-forget10-author-0006": {
+          "n_examples": 20,
+          "recall_any_forget_concept": 0.3,
+          "recall_correct_concept": 0.0
+        },
+        "tofu-forget10-author-0009": {
+          "n_examples": 5,
+          "recall_any_forget_concept": 0.4,
+          "recall_correct_concept": 0.0
+        },
+        "tofu-forget10-author-0010": {
+          "n_examples": 9,
+          "recall_any_forget_concept": 0.3333333333333333,
+          "recall_correct_concept": 0.3333333333333333
+        },
+        "tofu-forget10-author-0019": {
+          "n_examples": 21,
+          "recall_any_forget_concept": 1.0,
+          "recall_correct_concept": 1.0
+        }
+      },
+      "zero_recall_concepts": [
+        "tofu-forget10-author-0002",
+        "tofu-forget10-author-0003",
+        "tofu-forget10-author-0006",
+        "tofu-forget10-author-0009"
+      ]
+    },
+    "heldout": {
+      "macro_recall_correct_concept": 0.3289579139030784,
+      "micro_recall_any_forget_concept": 0.4861111111111111,
+      "micro_recall_correct_concept": 0.2986111111111111,
+      "n_concepts": 5,
+      "n_examples": 144,
+      "per_concept": {
+        "tofu-forget10-author-0000": {
+          "n_examples": 34,
+          "recall_any_forget_concept": 0.7941176470588235,
+          "recall_correct_concept": 0.7352941176470589
+        },
+        "tofu-forget10-author-0005": {
+          "n_examples": 59,
+          "recall_any_forget_concept": 0.3389830508474576,
+          "recall_correct_concept": 0.06779661016949153
+        },
+        "tofu-forget10-author-0007": {
+          "n_examples": 7,
+          "recall_any_forget_concept": 0.7142857142857143,
+          "recall_correct_concept": 0.5714285714285714
+        },
+        "tofu-forget10-author-0013": {
+          "n_examples": 7,
+          "recall_any_forget_concept": 0.14285714285714285,
+          "recall_correct_concept": 0.0
+        },
+        "tofu-forget10-author-0018": {
+          "n_examples": 37,
+          "recall_any_forget_concept": 0.4594594594594595,
+          "recall_correct_concept": 0.2702702702702703
+        }
+      },
+      "zero_recall_concepts": [
+        "tofu-forget10-author-0013"
+      ]
+    }
+  },
+  "registry_fingerprint": "026f5b6c5b22005952da018a2b8939ce871db89a742990bd0478ffc672d0b6eb",
+  "registry_version": "concept-registry-v2",
+  "rejected_ambiguous_aliases": {
+    "award": [
+      "tofu-forget10-author-0001",
+      "tofu-forget10-author-0011"
+    ],
+    "love": [
+      "tofu-forget10-author-0004",
+      "tofu-forget10-author-0016"
+    ],
+    "park": [
+      "tofu-forget10-author-0006",
+      "tofu-forget10-author-0009"
+    ],
+    "reading": [
+      "tofu-forget10-author-0004",
+      "tofu-forget10-author-0009"
+    ],
+    "south": [
+      "tofu-forget10-author-0009",
+      "tofu-forget10-author-0015"
+    ],
+    "town": [
+      "tofu-forget10-author-0011",
+      "tofu-forget10-author-0015"
+    ]
+  },
+  "schema": "graph-detector-gates-v1",
+  "split_sha256": "213fa367a210cb352240828951c562c83eae5f8d60476e1b8f9702aeeae953ab",
+  "threshold": 0.9,
+  "threshold_selection": {
+    "grid": [
+      {
+        "dev_macro_recall": 0.7884523809523809,
+        "dev_micro_recall": 0.7521613832853026,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 1.0,
+        "threshold": 0.2
+      },
+      {
+        "dev_macro_recall": 0.6804274891774892,
+        "dev_micro_recall": 0.6340057636887608,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 1.0,
+        "threshold": 0.225
+      },
+      {
+        "dev_macro_recall": 0.6242478354978356,
+        "dev_micro_recall": 0.5244956772334294,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.9888888888888889,
+        "threshold": 0.25
+      },
+      {
+        "dev_macro_recall": 0.6051785714285715,
+        "dev_micro_recall": 0.44668587896253603,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.9777777777777777,
+        "threshold": 0.275
+      },
+      {
+        "dev_macro_recall": 0.5423593073593074,
+        "dev_micro_recall": 0.345821325648415,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.9666666666666667,
+        "threshold": 0.3
+      },
+      {
+        "dev_macro_recall": 0.5274512987012987,
+        "dev_micro_recall": 0.2968299711815562,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.9444444444444444,
+        "threshold": 0.325
+      },
+      {
+        "dev_macro_recall": 0.5154166666666666,
+        "dev_micro_recall": 0.2564841498559078,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.8555555555555555,
+        "threshold": 0.35
+      },
+      {
+        "dev_macro_recall": 0.5044642857142857,
+        "dev_micro_recall": 0.2219020172910663,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.7777777777777778,
+        "threshold": 0.375
+      },
+      {
+        "dev_macro_recall": 0.4712175324675325,
+        "dev_micro_recall": 0.1988472622478386,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.7444444444444445,
+        "threshold": 0.4
+      },
+      {
+        "dev_macro_recall": 0.42763528138528145,
+        "dev_micro_recall": 0.18155619596541786,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.6444444444444445,
+        "threshold": 0.425
+      },
+      {
+        "dev_macro_recall": 0.3993668831168831,
+        "dev_micro_recall": 0.17002881844380405,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.5333333333333333,
+        "threshold": 0.45
+      },
+      {
+        "dev_macro_recall": 0.3993668831168831,
+        "dev_micro_recall": 0.17002881844380405,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.45555555555555555,
+        "threshold": 0.475
+      },
+      {
+        "dev_macro_recall": 0.39882575757575756,
+        "dev_micro_recall": 0.16714697406340057,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.3888888888888889,
+        "threshold": 0.5
+      },
+      {
+        "dev_macro_recall": 0.34257575757575753,
+        "dev_micro_recall": 0.14121037463976946,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.3111111111111111,
+        "threshold": 0.525
+      },
+      {
+        "dev_macro_recall": 0.34257575757575753,
+        "dev_micro_recall": 0.14121037463976946,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.25555555555555554,
+        "threshold": 0.55
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.18888888888888888,
+        "threshold": 0.575
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.15555555555555556,
+        "threshold": 0.6
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.12222222222222222,
+        "threshold": 0.625
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.12222222222222222,
+        "threshold": 0.65
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.12222222222222222,
+        "threshold": 0.675
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.12222222222222222,
+        "threshold": 0.7
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.1111111111111111,
+        "threshold": 0.725
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": false,
+        "negative_fpr": 0.1111111111111111,
+        "threshold": 0.75
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": true,
+        "negative_fpr": 0.1,
+        "threshold": 0.775
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": true,
+        "negative_fpr": 0.1,
+        "threshold": 0.8
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": true,
+        "negative_fpr": 0.1,
+        "threshold": 0.825
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": true,
+        "negative_fpr": 0.1,
+        "threshold": 0.85
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": true,
+        "negative_fpr": 0.1,
+        "threshold": 0.875
+      },
+      {
+        "dev_macro_recall": 0.33757575757575753,
+        "dev_micro_recall": 0.138328530259366,
+        "fpr_within_ceiling": true,
+        "negative_fpr": 0.1,
+        "threshold": 0.9
+      }
+    ],
+    "max_fpr": 0.1,
+    "note": "held-out concepts were not consulted in this selection",
+    "objective": "macro recall over development concepts, subject to the FPR ceiling",
+    "selected_on": "development concepts only",
+    "selected_threshold": 0.9
+  }
+}

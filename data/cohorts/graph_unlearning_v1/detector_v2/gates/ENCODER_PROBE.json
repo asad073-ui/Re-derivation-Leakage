@@ -1,0 +1,225 @@
+{
+  "best_within_fpr_ceiling": {
+    "dev_macro_recall": 0.0,
+    "fpr_within_ceiling": true,
+    "heldout_macro_recall": 0.0058823529411764705,
+    "retain90_fpr": 0.08888888888888889,
+    "threshold": 0.575
+  },
+  "corpus_sha256": "8e3154bc4445822676a60eb50e1a8731155a6b6fefe59d0abc0d1b9a04fd0e27",
+  "grid": [
+    {
+      "dev_macro_recall": 0.7562500000000001,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.7972776650742752,
+      "retain90_fpr": 1.0,
+      "threshold": 0.2
+    },
+    {
+      "dev_macro_recall": 0.7212500000000001,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.7123748445782343,
+      "retain90_fpr": 0.9888888888888889,
+      "threshold": 0.225
+    },
+    {
+      "dev_macro_recall": 0.6799999999999999,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.6836609861535086,
+      "retain90_fpr": 0.9888888888888889,
+      "threshold": 0.25
+    },
+    {
+      "dev_macro_recall": 0.6212698412698413,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.5567132579096687,
+      "retain90_fpr": 0.9888888888888889,
+      "threshold": 0.275
+    },
+    {
+      "dev_macro_recall": 0.5774350649350649,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.5019204933462161,
+      "retain90_fpr": 0.9888888888888889,
+      "threshold": 0.3
+    },
+    {
+      "dev_macro_recall": 0.4793452380952381,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.4711910600245595,
+      "retain90_fpr": 0.9888888888888889,
+      "threshold": 0.325
+    },
+    {
+      "dev_macro_recall": 0.46701298701298705,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.43690742444481223,
+      "retain90_fpr": 0.9666666666666667,
+      "threshold": 0.35
+    },
+    {
+      "dev_macro_recall": 0.4008116883116883,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.3987570108208194,
+      "retain90_fpr": 0.9111111111111111,
+      "threshold": 0.375
+    },
+    {
+      "dev_macro_recall": 0.377245670995671,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.26640965135481587,
+      "retain90_fpr": 0.8111111111111111,
+      "threshold": 0.4
+    },
+    {
+      "dev_macro_recall": 0.2975036075036075,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.19814918179823465,
+      "retain90_fpr": 0.7111111111111111,
+      "threshold": 0.425
+    },
+    {
+      "dev_macro_recall": 0.230995670995671,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.15750624574153987,
+      "retain90_fpr": 0.6555555555555556,
+      "threshold": 0.45
+    },
+    {
+      "dev_macro_recall": 0.1261904761904762,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.1,
+      "retain90_fpr": 0.4111111111111111,
+      "threshold": 0.475
+    },
+    {
+      "dev_macro_recall": 0.08655844155844157,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.07647058823529411,
+      "retain90_fpr": 0.2777777777777778,
+      "threshold": 0.5
+    },
+    {
+      "dev_macro_recall": 0.04476190476190476,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.041176470588235294,
+      "retain90_fpr": 0.2111111111111111,
+      "threshold": 0.525
+    },
+    {
+      "dev_macro_recall": 0.01,
+      "fpr_within_ceiling": false,
+      "heldout_macro_recall": 0.011764705882352941,
+      "retain90_fpr": 0.14444444444444443,
+      "threshold": 0.55
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0058823529411764705,
+      "retain90_fpr": 0.08888888888888889,
+      "threshold": 0.575
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.05555555555555555,
+      "threshold": 0.6
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.05555555555555555,
+      "threshold": 0.625
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.022222222222222223,
+      "threshold": 0.65
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.011111111111111112,
+      "threshold": 0.675
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.011111111111111112,
+      "threshold": 0.7
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.0,
+      "threshold": 0.725
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.0,
+      "threshold": 0.75
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.0,
+      "threshold": 0.775
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.0,
+      "threshold": 0.8
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.0,
+      "threshold": 0.825
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.0,
+      "threshold": 0.85
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.0,
+      "threshold": 0.875
+    },
+    {
+      "dev_macro_recall": 0.0,
+      "fpr_within_ceiling": true,
+      "heldout_macro_recall": 0.0,
+      "retain90_fpr": 0.0,
+      "threshold": 0.9
+    }
+  ],
+  "model": {
+    "pooling": "mean, L2",
+    "repo_id": "sentence-transformers/all-MiniLM-L6-v2",
+    "revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+  },
+  "schema": "graph-detector-encoder-probe-v1",
+  "split_sha256": "213fa367a210cb352240828951c562c83eae5f8d60476e1b8f9702aeeae953ab",
+  "status": "PROBE ONLY \u2014 not wired into the runtime detector",
+  "verdict": "no operating point clears the FPR ceiling with usable recall",
+  "why": "the negatives are retain90 QUESTIONS and the prototypes are forget QUESTIONS. In an encoder that represents text type, every TOFU author question is close to every other one, so recall only rises where the FPR is already near 1.0."
+}

@@ -55,6 +55,17 @@ from .trace import (
 __all__ = ["EpisodeSpec", "GraphExecutor", "GraphTrajectory"]
 
 
+def _forwards(verdict) -> tuple[str, ...]:
+    """The scopes a verdict FORWARDS, as opposed to the ones it was decided on.
+
+    ``propagated_forget_ids is None`` means the defence does not distinguish the two —
+    which is every defence except the mechanism ablations, and was every defence before
+    GU-0033 — so its enforced set is also what it forwards.
+    """
+    forwarded = getattr(verdict, "propagated_forget_ids", None)
+    return tuple(verdict.forget_ids if forwarded is None else forwarded)
+
+
 @dataclass(frozen=True)
 class EpisodeSpec:
     """One (item, sample, arm) trajectory to run."""
@@ -159,6 +170,11 @@ class GraphExecutor:
         self.prompt_style = prompt_style
         self.model_profile = model_profile
         self.monitor = monitor if monitor is not None else ResourceMonitor()
+        # Whether THIS ARM forwards Forget-IDs along derivation edges. Read once, from the
+        # defence, because the executor and the envelope layer both perform inheritance on
+        # a defence's behalf and an arm built not to propagate must not have propagation
+        # done for it (GU-0033).
+        self._forwards_scope = bool(getattr(defense, "propagates_scope", False))
 
     # --------------------------------------------------------------------- seeding --
 
@@ -300,6 +316,7 @@ class GraphExecutor:
                 inputs=visible,
                 memory_texts=retrieved.texts,
                 inherited_forget_ids=tuple(sorted(inherited)),
+                memory_forget_ids=retrieved.forget_ids,
             )
         )
 
@@ -338,7 +355,15 @@ class GraphExecutor:
             question=question,
             inputs=tuple(verdict.inputs),
             memory_node_ids=tuple(retrieved.node_ids),
-            forget_ids=tuple(sorted(set(verdict.forget_ids) | inherited)),
+            # What this node's OUTPUT carries, which is forwarding and is therefore the
+            # arm's decision, not the executor's. `propagated_forget_ids` is the scopes
+            # the guard chose to forward; `None` means "same as what it enforced on",
+            # which is what every defence did before the consume/forward split.
+            forget_ids=(
+                tuple(sorted(set(_forwards(verdict)) | inherited))
+                if self._forwards_scope
+                else tuple(_forwards(verdict))
+            ),
             score=verdict.score,
             prompt=prompt,
             system=system,
@@ -368,6 +393,10 @@ class GraphExecutor:
                     "forced_by_guard": plan.forced_by_guard,
                     "injected": plan.request is None and not plan.forced_by_guard,
                 },
+                # The parent ids — the provenance record — are kept either way. Only the
+                # SCOPES stop crossing the derivation edge, and only for an arm whose
+                # whole definition is that they do not.
+                inherit_scopes=self._forwards_scope,
             )
         )
         if plan.forget_ids:
@@ -451,7 +480,9 @@ class GraphExecutor:
                     # derivation edge: a parametric answer legitimately has no parents,
                     # and that absence is the finding, not a gap to paper over.
                     parent_store_ids=plan.memory_node_ids,
-                    forget_ids=verdict.forget_ids,
+                    # The stored tag is forwarding: it outlives the episode and is what a
+                    # later retrieval enforces. An arm that does not forward writes none.
+                    forget_ids=_forwards(verdict),
                     score=verdict.score,
                     detector_version=getattr(
                         getattr(self.defense, "detector", None), "version", ""

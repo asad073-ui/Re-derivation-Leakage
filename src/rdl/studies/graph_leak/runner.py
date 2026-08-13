@@ -649,7 +649,12 @@ class GraphRunner:
             return {}
         out: dict[str, ControlledChallengeSet] = {}
         for item in self.items:
-            built = build_controlled_challenges(item, self.cfg.topology, [challenge])
+            built = build_controlled_challenges(
+                item,
+                self.cfg.topology,
+                [challenge],
+                seed_policy_tags_on_reentry=self.cfg.study.memory.seed_policy_tags_on_reentry,
+            )
             if built:
                 out[item.item_id] = built[0]
         return out
@@ -682,14 +687,29 @@ class GraphRunner:
             store,
             blocklist=self._blocklist,
             visibility=self.cfg.study.memory.visibility,
+            # The memory layer must not inherit scopes on behalf of an arm that does not
+            # forward them — see GU-0033. Read from the arm's own defence.
+            propagate_parent_scopes=bool(getattr(arm.defense, "propagates_scope", False)),
         )
         if injection is not None:
             for text in injection.seeded_memory:
                 # A re-entry challenge plants content in memory BEFORE the episode, so
                 # what it measures is retrieval protection, not the write guard.
-                memory.store.add(
-                    text, source_agent="ingest", source_kind="ingest", meta={"injected": True}
-                )
+                seeded_concept = self.concept_by_item[item.item_id]
+                # Only a concept the deployment actually forgot carries a policy tag. On a
+                # retain-utility run the seeded concept is one the system is REQUIRED to
+                # answer about and is absent from the registry; tagging it would have the
+                # guard suppress correct behaviour and would be measuring the run's own
+                # mislabelling, which is the GU-0027 defect in a new place.
+                if injection.seeded_memory_is_policy_tagged and seeded_concept in self.registry:
+                    # Identical for every arm: the tag is the deployment's own record that
+                    # this note is about a forgotten concept. What differs between arms is
+                    # only whether they act on it and whether they spread it.
+                    memory.seed_tagged(text, forget_ids=(seeded_concept,), meta={"injected": True})
+                else:
+                    memory.store.add(
+                        text, source_agent="ingest", source_kind="ingest", meta={"injected": True}
+                    )
 
         episode = EpisodeSpec(
             trajectory_id=f"{arm.name}:{challenge}:{item.item_id}:{sample}",

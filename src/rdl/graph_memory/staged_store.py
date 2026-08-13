@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from ..memory.blocklist import Blocklist, NoBlocklist
-from ..memory.node import MemoryNode
+from ..memory.node import MemoryNode, SourceKind
 from ..memory.store import MemoryStore, StoreSnapshot
 from .policy_node import PolicyRecord, node_forget_ids, tag_node
 from .scope_index import ScopeIndex
@@ -49,6 +49,7 @@ class StagedMemory:
         blocklist: Blocklist | None = None,
         index: ScopeIndex | None = None,
         visibility: str = "after_episode",
+        propagate_parent_scopes: bool = True,
     ) -> None:
         if visibility not in ("after_episode", "immediate"):
             raise ValueError(
@@ -58,6 +59,12 @@ class StagedMemory:
         self.blocklist: Blocklist = blocklist if blocklist is not None else NoBlocklist()
         self.scopes = index if index is not None else ScopeIndex()
         self.visibility = visibility
+        # Whether a committed write inherits its store parents' scopes. This is the third
+        # place inheritance happens — after the envelope layer and the executor — and an
+        # arm that does not forward Forget-IDs must not have the memory layer forward them
+        # on its behalf. Defaults to True so that direct constructions and every existing
+        # caller keep the full-defence rule; the runner passes the arm's own flag.
+        self.propagate_parent_scopes = propagate_parent_scopes
         self._staged: list[WriteCandidate] = []
         self.committed_ids: list[str] = []
         self._baseline: StoreSnapshot | None = None
@@ -117,8 +124,9 @@ class StagedMemory:
         # explicit parent list is empty is not thereby clean, and a write derived from a
         # tagged node is tagged even when its own content scores below threshold.
         inherited = set(candidate.forget_ids)
-        for parent in parents:
-            inherited |= set(self.scopes.forget_ids(parent))
+        if self.propagate_parent_scopes:
+            for parent in parents:
+                inherited |= set(self.scopes.forget_ids(parent))
         ids = tuple(sorted(inherited))
         if ids:
             self.scopes.tag(node.node_id, ids)
@@ -135,6 +143,47 @@ class StagedMemory:
             ),
         )
         self.committed_ids.append(node.node_id)
+        return node.node_id
+
+    def seed_tagged(
+        self,
+        content: str,
+        *,
+        forget_ids: Sequence[str],
+        source_agent: str = "ingest",
+        source_kind: SourceKind = "ingest",
+        meta: dict | None = None,
+    ) -> str:
+        """Plant a node that ALREADY carries a policy tag, before the episode starts.
+
+        This is how a scope enters a taint-only arm at all. A re-entry challenge models a
+        note written in an earlier session under a deployment that knows the concept is
+        forgotten, so the note carries the deployment's own policy tag — the tag is
+        recorded metadata, not something the detector has to rediscover.
+
+        Seeded identically for every arm, so it advantages none of them: the arms differ
+        only in whether they CONSUME the tag and whether they FORWARD it. Without it,
+        `taint_only` and `tag_source_quarantine` have no scope to inherit and are unguarded arms
+        wearing a defence's name.
+        """
+        node = self.store.add(
+            content,
+            source_agent=source_agent,
+            source_kind=source_kind,
+            meta=dict(meta or {}),
+        )
+        ids = tuple(sorted({str(x) for x in forget_ids}))
+        if ids:
+            self.scopes.tag(node.node_id, ids)
+            tag_node(
+                node,
+                PolicyRecord(
+                    forget_ids=ids,
+                    source_nodes=(source_agent,),
+                    release_status="blocked",
+                    reason="policy tag seeded with the pre-existing store",
+                ),
+            )
         return node.node_id
 
     # ------------------------------------------------------------------ retrieval --
@@ -165,6 +214,7 @@ class StagedMemory:
     def stats(self) -> dict:
         return {
             "visibility": self.visibility,
+            "propagate_parent_scopes": self.propagate_parent_scopes,
             "n_staged": len(self._staged),
             "n_committed": len(self.committed_ids),
             "n_tagged": len(self.scopes),

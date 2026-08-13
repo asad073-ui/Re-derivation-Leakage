@@ -1,0 +1,9 @@
+# MA-GF-QUARANTINE. Source quarantine with no forwarding.
+# The POSITIVE CONTROL for tagged-source blocking, contrasted against MA-LEAK. It is not
+# the baseline for the propagation claim — see graphforget_tag_source_quarantine.yaml.
+name: multi_agent_graphforget_tag_source_quarantine
+label: MA-GF-QUARANTINE
+mode: multi_agent
+peer_content: same_concept
+defense: graphforget_tag_source_quarantine
+description: "withhold a tagged source at retrieval; never forward the scope"

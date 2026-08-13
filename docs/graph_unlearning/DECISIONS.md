@@ -700,3 +700,297 @@ The mechanism decomposition GU-0030's corrected bullet calls for lives in a sepa
 study, `graphforget_mechanism_v2`, and not as new arms bolted onto `graph_unlearning_v1`:
 that study and its 50×32 evidence are frozen, and adding arms to it would present a
 different experiment as the same one (GU-0001's rule, applied within the family).
+
+---
+
+### GU-0032 — 2026-08-13 — Detector v2, and the measurement that says do not rent the GPU
+
+Detector v2 was built against the frozen corpus (GU-0031), measured against the CPU gates,
+and **does not clear them**. That is the finding, and it is recorded here rather than
+worked around.
+
+#### What v2 changed
+
+The lexical channel, and only the lexical channel. `normalise_scope_text` folds unicode
+punctuation, strips ASCII and unicode possessives and splits hyphens; it is applied to
+alias tokens and to the text being scored. Aliases are now built in two phases over the
+whole registry: canonical full names, hyphen-preserving and hyphen-split variants, and
+partial names that survive two ambiguity checks — a token claimed by more than one
+forgotten concept is dropped from **all** of them, and a token appearing in more than one
+concept's question text is not treated as a name at all. Versions bumped to
+`concept-registry-v2` and `semantic-scope-v2`, both of which reach the registry
+fingerprint and the run manifest.
+
+The embedding channel is untouched. Moving both at once would make any resulting threshold
+un-attributable to either.
+
+#### What it measures, on the frozen 502-example corpus
+
+| | v1 | v2 |
+|---|---|---|
+| Held-out micro recall (correct concept) | 0.000 | **0.299** |
+| Held-out macro recall | 0.000 | **0.329** |
+| retain90 FPR | 0.056 | **0.100** |
+| Generated-clean FPR | 0.032 | **0.446** |
+| Correct-concept precision | — | **0.044** |
+
+Against gates of 0.80 micro, 0.75 macro, ≤0.10 on both FPRs and ≥0.80 precision. Five of
+nine gates fail. `rdl graph-detector-gates` exits non-zero and writes the whole table to
+`DETECTOR_V2_GATES.json`.
+
+The first v2 gate run also caught a regression the gates exist for: retain90 FPR **0.20**,
+four times v1's, because "Award", "Write", "New" and "Inspired" are title-cased in TOFU
+questions, reached the span extractor, and became one-token aliases that fire on retain
+questions about entirely different authors. The document-frequency check above is the fix,
+and it brought the rate back to the ceiling.
+
+#### Why no amount of further alias work will clear the recall gate
+
+`DETECTOR_V2_GATES.json` reports a **lexical ceiling**: the share of leaking examples that
+contain *any* token of their own concept's aliases. It is **0.215 micro / 0.461 macro**.
+That is the highest recall any alias channel can reach on this corpus, and the gate is
+0.80. The reason is visible in the corpus itself — the unlearned checkpoint leaks the
+CONTENT while garbling the NAME:
+
+    "M Majlar's characters are typically grotesque ..."      (Rajeev Majumdar)
+    "Yon (1900-1966), a renowned leader in ..."              (Hsiao Yun-Hwa)
+
+80% of the leaking strings never name the author correctly. A name-matching detector
+cannot see them, and this is a property of the leakage, not of the implementation.
+
+#### And a pinned sentence encoder does not rescue it either
+
+Probed, not adopted: `sentence-transformers/all-MiniLM-L6-v2` @ `1110a243`, mean-pooled and
+L2-normalised, cosine against the same question prototypes, swept over the same grid
+(`scripts/probe_semantic_encoder.py`, verdict archived as `ENCODER_PROBE.json`). At the FPR
+ceiling of 0.10 the best operating point is 0.575, where development macro recall is
+**0.000** and held-out macro recall is **0.006**. It is not a tuning failure: the
+negatives are retain90 QUESTIONS and the prototypes are forget QUESTIONS, so in an encoder
+that represents text type, every TOFU author question is close to every other one. Recall
+only rises where the FPR is already 0.97.
+
+#### The decision this forces
+
+The gate combination as specified may not be satisfiable by any detector that (a) holds no
+gold answers, (b) is scored for false positives on retain QUESTIONS, and (c) must catch
+name-free content paraphrases. Three of those are load-bearing commitments and one is a
+choice about the negative population. **This needs a design decision, not a threshold.**
+Options, in the order they should be considered:
+
+1. **Change the negative population** to generated retain-cohort TEXT rather than retain
+   questions, so both sides of the FPR are the same kind of object. `generated_clean_fpr`
+   already exists and is measured; note that at 0.446 it is also failing, and that a
+   "clean" generated text about a forgotten author is arguably IN SCOPE — the pinned NLI
+   scorer judges leakage of a specific fact, not whether the text is about the concept.
+   Whether scope detection and leak detection are the same predicate is the question the
+   gate is actually asking, and nobody has answered it.
+2. **Give the detector the concept's own retrieval corpus** — not gold answers, but the
+   question set plus its paraphrases, encoded by a stronger pinned model, with the
+   threshold selected per concept rather than globally.
+3. **Accept that natural-flow detection is out of reach on this checkpoint** and restrict
+   the mechanism claim to `memory_reentry`, where provenance rather than detection is the
+   carrier. This is the only option that permits GPU time now, and it narrows the paper.
+
+Until one is chosen, the honest reading of GU-0030 stands unchanged: the leakage phenomenon
+is established and **the defence has still not been tested under natural flow**.
+
+#### What is ready regardless
+
+* `configs/graph/studies/graphforget_mechanism_v2.yaml` — the six-arm decomposition, plus
+  the single-agent and cross-concept reference arms the composition contrasts need. Each
+  mechanism contrast varies exactly one thing, and a test asserts that.
+* Causal attribution counters on every protected surface: `(surface, attribution, action)`
+  with attribution in {semantic_only, inherited_only, semantic_and_inherited, neither}.
+  `inherited_only_enforcements` is the count no node-local guard could have produced, and
+  it is what would let the next run assign a reduction to propagation.
+* `propagates_scope` is derived from `propagate_forget_ids` instead of being a class
+  constant, and the `Defense` protocol now demands a read-only property so a constant
+  cannot satisfy it. Every graphforget ablation previously reported
+  `propagates_scope: true`, including the two arms whose purpose is not to propagate. The
+  defence's name in the manifest is likewise the ARM's defence config name, not the class's.
+* `rdl graph-bundle` reports `composition_vs_single_supported`,
+  `composition_vs_control_supported`, `defence_supported`, `operationally_eligible` and
+  `publication_ready` separately, and checks cross-run agreement on model and tokenizer
+  commits, study-design hash, scorer version, primary k, detector version and registry
+  fingerprint, plus exactly one run per (challenge, protocol). `ready_challenges` was the
+  misleading name — a challenge could be "ready" while its defence hypothesis was
+  unsupported — and survives as an alias of `operationally_eligible_challenges`.
+
+#### One unrelated crash, found by running the mechanism smoke
+
+`rdl.paths` read git through `subprocess.run(..., text=True)`, which decodes with the
+LOCALE codec. On a cp1252 box a diff containing an em dash — or the `∪` in the propagation
+rule, or a `×` in this file — raises `UnicodeDecodeError` inside subprocess's reader
+thread, where it is swallowed, and `stdout` comes back `None`. The run then dies with
+`'NoneType' object has no attribute 'strip'` **at manifest time, after generation**. Every
+git read now decodes UTF-8 explicitly with `errors="replace"`. It would have killed a GPU
+run after the expensive part, and the only reason it had not yet is that no committed diff
+had contained a non-cp1252 byte at run time.
+
+### GU-0033 — 2026-08-13 — Provenance is two mechanisms, and the ablations had one of them
+
+PR #33 was merged into the PR #32 branch rather than into `main`, so none of Detector v2,
+the gate artefact, the mechanism arms or the attribution counters were ever on `main`.
+Landing it on top of current `main` is the occasion for this entry, but re-opening it
+unchanged would have bought GPU time for a decomposition that could not decompose
+anything. Six defects, in descending order of how much they would have cost.
+
+#### 1. The "no inheritance" ablations were enforcing inherited provenance
+
+`GraphForgetDefense.on_retrieval` acted on a stored Forget-ID **unconditionally**. The
+`propagate_forget_ids: false` flag gated the edge, write and final surfaces and did not
+gate retrieval at all. So `graphforget_semantic_only` and `stateless_multi_surface` — the
+two arms whose entire purpose is to lack provenance — withheld tagged memory at the one
+surface where the memory-re-entry challenge does all of its work. `full − semantic_only`
+was inheritance minus inheritance.
+
+The same call then recorded the decision with `inherited=()` because the arm does not
+propagate, so a withholding **caused by a stored Forget-ID** was booked as `neither`:
+the ledger's cell for "nothing had the scope". The headline the mechanism study exists to
+produce was being written into the counter that denies it happened.
+
+The fix separates the two capabilities that `propagate_forget_ids` was conflating:
+
+    consume_forget_ids     act on a scope the object in front of the guard ALREADY carries
+    propagate_forget_ids   attach scopes to what this decision PRODUCES
+
+A non-consuming arm now sees no candidate as tagged, which also sends every candidate to
+the semantic rescan — otherwise the ablation would be weaker than its treatment in a
+second dimension, which is the defect this decomposition exists to avoid.
+
+#### 2. Forwarding happened in three places, and the defence controlled one
+
+Even with the defence gated, scopes were still forwarded on a non-forwarding arm's behalf
+by `derive_envelope` (parent-scope union), by the executor (`plan.forget_ids`), and by
+`StagedMemory._commit_one` (store-parent closure). All three now take the arm's own flag.
+`derive_envelope(inherit_scopes=False)` keeps `parent_ids` — provenance is evidence and
+survives; only the scope stops crossing the edge. `WriteVerdict` and `NodeInputVerdict`
+gained `propagated_forget_ids`, distinct from the `forget_ids` the decision was made on,
+defaulting to `None` = "the same", so every other defence is unchanged.
+
+#### 3. `tag_local_only`, and what `taint_only − unguarded` was actually measuring
+
+That contrast confounds enforcing tags that already exist with forwarding them to
+descendants, and a system that only ever had to block the tagged source needs no
+propagation at all. `graphforget_tag_local_only` is `taint_only` with forwarding removed
+and nothing else changed. `M5 = taint_only − tag_local_only` is now the only contrast that
+isolates forward propagation, and it is the only one that can support the propagation
+claim. `M6` varies consumption and forwarding together and cannot stand in for it.
+
+#### 4. No scope ever entered the system, so both taint arms were vacuous
+
+The blocking one, and not in the review. `memory_reentry` seeds its note with
+`store.add(...)` — **untagged**. Nothing else tags anything unless the semantic detector
+fires, and both provenance arms have the detector switched off. `taint_only` and
+`tag_local_only` would have inherited nothing, enforced nothing, and scored identically to
+the unguarded arm: `M4` and `M5` exactly zero, for a reason having nothing to do with
+propagation, on the run bought to measure propagation.
+
+`memory.seed_policy_tags_on_reentry` plants the note carrying its concept's Forget-ID —
+identically for every arm, so it advantages none of them, and never for a concept outside
+the registry, so a retain run cannot tag a question the system must answer. It is OFF in
+`graph_unlearning_v1`, which stays byte-identical to its freeze, and ON in the mechanism
+study, whose design hash and challenge fingerprint both move to say so.
+
+#### 5. The GPU would have run at an operating point nobody measured
+
+The study declared `threshold: 0.65` — the v1 number — while `DETECTOR_V2_GATES.json`
+selected **0.90**, and every measurement anyone has (recall 29.9%, precision 4.43%,
+generated-clean FPR 44.55%, lexical ceiling 21.5%) was made at 0.90. The study now runs at
+0.90 and pins `gate_artifact` at the file that records `all_gates_passed: false`. A test
+asserts the artefact is a FAILING one; if that ever flips, the study gets re-read
+deliberately rather than inheriting a `calibrated` claim it never earned.
+
+#### 6. `--limit 20` is not the engineering cohort, and 20×8 is not k=32
+
+`launch_mechanism_v2.yaml` selects `local_cpu` and inherits `phase: smoke`. A limit takes
+the first N items of the *smoke* manifest — a different frozen cohort with a different
+fingerprint. Which cohort a run uses is chosen by `phase`, so there are now dedicated
+`launch_mechanism_v2_rtx_engineering.yaml` and `..._retain.yaml`, the retain file pinned to
+the same frozen forget policy as its engineering partner.
+
+`graph-run` refused nothing when the sample budget could not reach the declared
+`primary_k`; it printed `note:` on stderr and generated anyway. That is the 20×8 failure,
+twice. It is now a hard refusal with `--allow-k-substitution` as the explicit opt-out,
+which is how the 2×1 preflight and the CPU smoke declare themselves.
+
+#### What is still not fixed, and is not fixable here
+
+Detector v2 does not clear its recall gates and no amount of alias engineering will get it
+there: the lexical ceiling (21.5% micro) is below the primary bound (80%). The model leaks
+facts while corrupting or omitting the author's name, so **no natural-condition semantic
+defence claim is available from this detector at any threshold**. The first RTX run is
+`memory_reentry` + `graph_flow` only. `natural` and `end_to_end_safety` are deliberately
+not in it.
+
+### GU-0034 — 2026-08-13 — A single-variable contrast that measured nothing
+
+GU-0033 split provenance into `consume` and `forward` and made `M5 = taint_only −
+tag_local_only` the propagation contrast. Those two arms differ in exactly one flag, and a
+test asserted it. The contrast was still incapable of measuring forwarding.
+
+Both arms consume tags, so both quarantine the seeded note **at retrieval, before any
+agent reads it**. The traces are unambiguous — for `taint_only` and `tag_local_only`
+alike:
+
+    reads=40  returned=0  withheld=40  edges=40  edges_carrying_a_tag=0  writes_tagged=0
+
+No agent ever saw the tagged content, so no derivative existed, so there was nothing for a
+forwarding arm to forward. The difference is zero by construction at 4 items or 50, and no
+number of GPU samples could have changed it. **Single-variable is necessary and not
+sufficient: the pathway the variable acts on has to be live, and liveness is a property of
+a run, not of a config.**
+
+#### The missing pathway was real, and it was a hole in the defence
+
+`GuardedRetrieval` returned the allowed nodes' ids and texts and **dropped their scopes**.
+`NodeInputContext` carried `memory_texts` as bare strings. So a node that legitimately read
+a tagged memory node and paraphrased it emitted output inheriting nothing, and the
+paraphrase was clean at every downstream surface — in *every* arm, including the full
+defence, where only the semantic detector stood between it and release. That is exactly the
+laundering path persistent-write protection is described as closing. Retrieved-memory
+scopes now flow into the envelope layer via `NodeInputContext.memory_forget_ids`, and
+`DefenseCounters.memory_borne_scope_hits` counts them so the pathway's liveness is
+measured rather than assumed.
+
+#### The corrected arms
+
+The propagation pair must be matched on *exposure*, not just on flags. Both arms now read
+the tagged source and generate from it — `guard_retrievals: false`, `guard_node_inputs:
+false` — and are compared on what happens to what the model produced:
+
+    graphforget_no_forward      derivative carries no scope  -> edges/writes/final pass
+    graphforget_taint_forward   derivative inherits the scope -> caught at all three
+
+`guard_node_inputs` is new: without it the guard refuses the node the moment its input
+carries a scope, and the model never derives anything — the same vacuity one layer down.
+
+`tag_local_only` is renamed `tag_source_quarantine` and keeps its real job as the
+source-quarantine **positive control** (M4). The old pair survives as **M8**, reported and
+asserted structurally null, so a reader cannot mistake its zero for M5's.
+
+Verified end to end on the CPU stub, 11 arms:
+
+    no_forward      returned=40 withheld=0 edges_with_scope=0  edges_blocked=0  writes_tagged=0
+    taint_forward   returned=40 withheld=0 edges_with_scope=40 edges_blocked=40 writes_tagged=40
+    M5 policy_violating_persistent_leak  Δ=-1.0  CI(-1.0,-1.0)  SUPPORTED
+    M8                                   Δ= 0.0  CI( 0.0, 0.0)  positive_control
+
+#### Contrasts are no longer all the same kind of claim
+
+`MECHANISM_CONTRASTS` carries a `kind`, and the report prints it as a column with the
+legend attached:
+
+    causal            matched exposure, one variable, live pathway   M1 M2 M3 M5
+    positive_control  a component works; says nothing about mechanism M4 M8
+    combined          varies more than one thing, labelled as such    M6 M7
+
+M6 (`full − semantic_only`) varies consumption *and* forwarding; M7 (`full − taint_only`)
+varies detection *and* accumulation. Both were being read as single-variable and are not.
+
+`tests/contract/test_propagation_pathway_is_live.py` asserts the preconditions on a real
+executor run: equal tagged-source exposure in both arms, zero forwarded ids in the
+baseline, nonzero in the treatment, nonzero downstream `inherited_only` interventions, and
+that the quarantine pair really is the structurally-null one. If those hold and M5 is null
+on the GPU, that is a legitimate negative result about forward propagation. If they do not
+hold, M5 is not evidence of anything.

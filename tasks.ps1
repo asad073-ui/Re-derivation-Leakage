@@ -70,8 +70,12 @@ switch ($Target) {
         foreach ($proto in @('end_to_end_safety', 'graph_flow')) {
             $out = Join-Path $env:TEMP "rdl-graph-smoke-$proto"
             if (Test-Path $out) { Remove-Item -Recurse -Force $out }
+            # `--allow-k-substitution` is REQUIRED here and is the point: 2 draws cannot
+            # reach the study's primary_k of 32, so this is a wiring check and has to say
+            # so. Without the flag `graph-run` refuses, which is what stops a real GPU run
+            # from silently becoming a 20x8 that reports at a k nobody preregistered.
             Invoke-Step "graph-run [$proto]" {
-                & $PY -m rdl.cli graph-run @common --n-samples 2 `
+                & $PY -m rdl.cli graph-run @common --n-samples 2 --allow-k-substitution `
                     --challenges direct --protocol $proto --output $out
             }
             Invoke-Step "graph-score [$proto]"    { & $PY -m rdl.cli graph-score --run $out }

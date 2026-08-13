@@ -243,3 +243,53 @@ the run report that measured it, with that run's id attached, so each number sta
 traceable to its evidence. What the bundle adds is the conjunction: one
 `publication_ready` that is false when any part of the claim is unmeasured, and that names
 which part.
+
+
+## Detector gates (CPU, before any GPU time)
+
+`rdl graph-detector-gates` scores the frozen corpus (GU-0031) and writes
+`DETECTOR_V2_GATES.json`. It exits non-zero on a failing gate, and is meant to be the last
+command run before an instance is rented.
+
+| gate | bound |
+|---|---|
+| held-out micro recall, **correct concept** | >= 0.80 |
+| held-out macro recall over concepts with >= 5 examples | >= 0.75 |
+| held-out gateable concepts with zero recall | == 0 |
+| correct-concept precision | >= 0.80 |
+| retain90 FPR | <= 0.10 |
+| generated-clean FPR | <= 0.10 |
+| gold answers reachable from the registry | == 0 |
+| dev/holdout concept overlap | == 0 |
+| dev/holdout normalized-text overlap | == 0 |
+
+**The primary metric is correct-concept recall.** Firing on the wrong forgotten author is
+a false alarm that coincides with a leak, not a catch. `recall_any_forget_concept` is
+reported beside it and gates nothing.
+
+**Thresholds are selected on development concepts only**, subject to the FPR ceiling, with
+macro recall as the objective — macro because the corpus is concentrated (one author holds
+46% of it) and a micro objective tunes for that author alone. The held-out concepts are
+scored once, after the detector is frozen.
+
+The artefact also reports the **lexical ceiling**: the share of leaking examples containing
+any token of their own concept's aliases. If a recall gate is above that number, no alias
+work can reach it. On the current corpus it is 0.215 micro / 0.461 macro against a gate of
+0.80 — which is why detector v2 fails, and why the next move is a detection-channel
+decision rather than more aliases (GU-0032).
+
+## Causal attribution
+
+Every protected surface records `(surface, attribution, action)`:
+
+* surface: `node_input` | `edge` | `write` | `retrieval` | `final`
+* attribution: `semantic_only` | `inherited_only` | `semantic_and_inherited` | `neither`
+* action: `allow` | `sanitize` | `quarantine` | `refuse`
+
+`inherited_only_enforcements` is the headline: enforcement no node-local semantic guard
+could have produced, because nothing at that surface scored above threshold and the scope
+arrived through provenance. Without this counter a reduction cannot be assigned to
+propagation, which is exactly the gap GU-0031 recorded in the archived study.
+
+The ledger is dense — every cell present with a zero — because a missing key and a zero
+read the same in a report and only one of them is a measurement.

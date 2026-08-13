@@ -97,6 +97,11 @@ class ControlledChallengeSet:
     # DELEGATED task instead of the original question — see build_controlled_challenges.
     node_questions: dict[str, str] = field(default_factory=dict)
     seeded_memory: tuple[str, ...] = ()
+    # Whether the seeded memory node carries the concept's policy tag when the study asks
+    # for it (`memory.seed_policy_tags_on_reentry`). Recorded per challenge set so the
+    # fingerprint changes when it does — an untagged and a tagged re-entry are different
+    # challenges, and pooling them would be pooling two populations.
+    seeded_memory_is_policy_tagged: bool = False
     uses_gold_answer: bool = True
 
     def fingerprint(self) -> str:
@@ -108,6 +113,7 @@ class ControlledChallengeSet:
                 *(f"tool:{k}={v}" for k, v in sorted(self.injected_tool_inputs.items())),
                 *(f"q:{k}={v}" for k, v in sorted(self.node_questions.items())),
                 *(f"mem:{m}" for m in self.seeded_memory),
+                f"mem_tagged:{int(self.seeded_memory_is_policy_tagged)}",
             ]
         )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
@@ -120,13 +126,18 @@ class ControlledChallengeSet:
             "tool_nodes": sorted(self.injected_tool_inputs),
             "requery_nodes": sorted(self.node_questions),
             "n_seeded_memory": len(self.seeded_memory),
+            "seeded_memory_is_policy_tagged": self.seeded_memory_is_policy_tagged,
             "uses_gold_answer": self.uses_gold_answer,
             "fingerprint": self.fingerprint(),
         }
 
 
 def build_controlled_challenges(
-    item: TofuItem, spec: GraphSpec, challenges: Sequence[str]
+    item: TofuItem,
+    spec: GraphSpec,
+    challenges: Sequence[str],
+    *,
+    seed_policy_tags_on_reentry: bool = False,
 ) -> list[ControlledChallengeSet]:
     """Build one injection set per requested challenge type.
 
@@ -206,6 +217,13 @@ def build_controlled_challenges(
                     challenge=challenge,
                     item_id=item.item_id,
                     seeded_memory=(f"Note from an earlier session: {item.answer}",),
+                    # OFF by default, which keeps `graph_unlearning_v1` byte-identical to
+                    # its frozen pre-registration. The mechanism study turns it on and
+                    # says why: with an untagged seed there is no scope anywhere in the
+                    # system for a taint arm to inherit, so `taint_only` and
+                    # `tag_source_quarantine` would be unguarded arms under a defence's name and
+                    # the contrast that prices propagation would be zero by construction.
+                    seeded_memory_is_policy_tagged=seed_policy_tags_on_reentry,
                 )
             )
         else:

@@ -1,0 +1,32 @@
+# RTX 3090 — retain utility for the MECHANISM study, under the SAME frozen forget policy
+# as its engineering run.
+#
+#   phase: retain_utility     the QUESTIONS come from retain90 — questions the system is
+#                             supposed to answer. An answer-match rate over these is a
+#                             utility.
+#   forget_policy_phase:      the CONCEPT REGISTRY and the DELETED BASELINE MEMORY come
+#     engineering             from the same frozen 20-concept forget cohort the
+#                             engineering run used. Same forgotten authors, same
+#                             deletions, same guard scope, same registry fingerprint —
+#                             the only thing that changes is which questions are asked.
+#
+# WITHOUT THIS FILE THE MECHANISM STUDY CANNOT BE PUBLICATION-READY AT ALL. A leakage
+# reduction with no measured cost is not a result: an arm that refuses everything wins on
+# leakage. `publication_ready` requires the retain-utility gate to be APPLICABLE and
+# passed, retain utility lives in a different run by construction, and `rdl graph-bundle`
+# is what joins the two. A forget-cohort run alone can never satisfy it.
+#
+# The 3-point retain margin applies to whichever provenance arm the study ends up
+# recommending, not only to the full defence — an arm that contains re-entry by refusing
+# retained authors has moved the cost, not removed it.
+#
+# Note that `seed_policy_tags_on_reentry` cannot misfire here: a tag is only ever seeded
+# for a concept present in the registry, and no retain concept is. A retain question about
+# an author the system is required to discuss is never planted carrying a forget tag.
+#
+# The forget policy is NEVER narrowed by `--limit`: a question budget is not a statement
+# about what the deployment forgot.
+study: graphforget_mechanism_v2
+active_profile: rtx3090_1b
+phase: retain_utility
+forget_policy_phase: engineering

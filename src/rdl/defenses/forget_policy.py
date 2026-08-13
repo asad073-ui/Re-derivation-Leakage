@@ -43,6 +43,13 @@ class ForgetPolicy:
         self,
         registry: ConceptRegistry,
         *,
+        # The node-input surface. True everywhere except the two arms that exist to price
+        # FORWARD PROPAGATION (GU-0034): if the guard refuses the node whose input carries
+        # the scope, the model never derives anything, no derivative exists to tag, and
+        # the forwarding contrast is zero for a reason that has nothing to do with
+        # forwarding. Those two arms let the node read and generate, and are compared on
+        # what happens to what it PRODUCED.
+        guard_node_inputs: bool = True,
         guard_edges: bool = True,
         guard_writes: bool = True,
         guard_retrievals: bool = True,
@@ -55,6 +62,7 @@ class ForgetPolicy:
         uncertain_margin: float = 0.10,
     ) -> None:
         self.registry = registry
+        self.guard_node_inputs = guard_node_inputs
         self.guard_edges = guard_edges
         self.guard_writes = guard_writes
         self.guard_retrievals = guard_retrievals
@@ -64,7 +72,7 @@ class ForgetPolicy:
 
     def _enabled(self, surface: Surface) -> bool:
         return {
-            "node_input": True,
+            "node_input": self.guard_node_inputs,
             "edge": self.guard_edges,
             "write": self.guard_writes,
             "retrieval": self.guard_retrievals,
@@ -114,6 +122,7 @@ class ForgetPolicy:
     def to_dict(self) -> dict:
         return {
             "version": self.version,
+            "guard_node_inputs": self.guard_node_inputs,
             "guard_edges": self.guard_edges,
             "guard_writes": self.guard_writes,
             "guard_retrievals": self.guard_retrievals,

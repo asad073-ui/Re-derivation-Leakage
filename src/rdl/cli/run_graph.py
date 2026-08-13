@@ -12,8 +12,10 @@ from .graph_common import (
     DEFAULT_LAUNCH,
     apply_sample_budget,
     assert_control_arm_has_enough_items,
+    assert_primary_k_reachable,
     build_backend,
     load_config_or_fail,
+    option_value,
     resolve_run_cohorts,
     stub_source_items,
 )
@@ -48,6 +50,12 @@ def run_graph(
     ),
     output: Path | None = typer.Option(None, "--output"),
     resume: bool = typer.Option(False, "--resume"),
+    allow_k_substitution: bool = typer.Option(
+        False,
+        "--allow-k-substitution",
+        help="proceed even though the sample budget cannot reach the study's primary k; "
+        "the run is a wiring check and every report it produces is diagnostic",
+    ),
     token: str | None = typer.Option(None, "--hf-token"),
 ) -> None:
     """Run every arm of a graph study and write immutable evidence shards."""
@@ -55,12 +63,7 @@ def run_graph(
     cfg = load_config_or_fail(launch, overrides=overrides, topology=topology)
     # The SAME function `graph-plan` uses, so the plan describes this run.
     cfg = apply_sample_budget(cfg, n_samples)
-    if cfg.study.sampling.primary_k not in cfg.profile.sampling.k_values:
-        typer.echo(
-            f"note: primary_k={cfg.study.sampling.primary_k} is outside this run's sample "
-            "budget; the run is a wiring check and its reports will be diagnostic.",
-            err=True,
-        )
+    assert_primary_k_reachable(cfg, allow_k_substitution=option_value(allow_k_substitution, False))
 
     cohorts = resolve_run_cohorts(
         cfg,

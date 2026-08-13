@@ -121,8 +121,28 @@ class DefenseSpec(GraphBase):
     score_subsets: bool = False
     # graphforget
     semantic_detection: bool = True
+    # THE TWO HALVES OF PROVENANCE, SEPARATED (GU-0033).
+    #
+    # `propagate_forget_ids` used to mean both of these at once, and that is why the
+    # "semantic-only" and "stateless" arms were not semantic-only: a stored memory tag
+    # still withheld a retrieval for them, so their numbers contained the very mechanism
+    # they are the control for.
+    #
+    #   consume_forget_ids     act on a scope the object in front of the guard ALREADY
+    #                          carries — an incoming envelope's tag, a stored node's tag.
+    #   propagate_forget_ids   FORWARD scopes onto what this decision produces — the
+    #                          outgoing envelope, the committed write — so descendants
+    #                          inherit them.
+    #
+    # Consuming without forwarding is `tag_source_quarantine`: enforce a tag where you find it,
+    # never spread it. That arm is what prices FORWARD PROPAGATION on its own, against
+    # `taint_only`, which is the same arm with forwarding switched back on.
+    consume_forget_ids: bool = True
     propagate_forget_ids: bool = True
     accumulate_evidence: bool = True
+    # See ForgetPolicy: only the two forward-propagation arms set this False, so that the
+    # node is allowed to read and generate and the contrast is decided on its OUTPUT.
+    guard_node_inputs: bool = True
     guard_edges: bool = True
     guard_writes: bool = True
     guard_retrievals: bool = True
@@ -147,6 +167,16 @@ class DefenseSpec(GraphBase):
             )
         if self.kind == "edge_cut" and not self.changes_topology:
             raise ValueError("edge_cut removes edges and must declare changes_topology: true")
+        # Forwarding a scope nothing will ever act on is a silent no-op arm: the envelopes
+        # and the stored writes carry tags, every guard ignores them, and the manifest
+        # still says `propagates_scope: true`. A typo must not be able to produce that.
+        if self.kind == "graphforget" and self.propagate_forget_ids and not self.consume_forget_ids:
+            raise ValueError(
+                f"defence '{self.name}' forwards Forget-IDs but never consumes one. The "
+                "tags would be attached to every downstream envelope and stored write and "
+                "then ignored at every surface, which is not an ablation of anything — and "
+                "the manifest would still describe the arm as propagating."
+            )
         return self
 
 
@@ -184,6 +214,21 @@ class GraphMemoryConfig(GraphBase):
     later_episode_probe: bool = True
     ingest_forget_set: bool = True
     blocklist: Literal["none", "id", "semantic"] = "id"
+    # Whether a `memory_reentry` seed is planted CARRYING its concept's Forget-ID.
+    #
+    # False reproduces the frozen `graph_unlearning_v1` behaviour exactly. It is also why
+    # a taint-only arm cannot be measured under that study: nothing in the system ever
+    # carries a scope unless the semantic detector puts one there, so an arm with the
+    # detector switched off inherits nothing, enforces nothing, and scores identically to
+    # the unguarded arm for reasons that have nothing to do with propagation.
+    #
+    # True models the deployment this work is about: a note written in an earlier session
+    # under a system that knows the concept is forgotten carries the policy tag, because
+    # the tag is metadata the deployment recorded. It is seeded IDENTICALLY for every arm,
+    # so it advantages none of them — the arms differ only in whether they consume it and
+    # whether they forward it. It changes the challenge fingerprint and the study-design
+    # hash, which is correct: it is a different challenge.
+    seed_policy_tags_on_reentry: bool = False
 
 
 class GraphDetectorConfig(GraphBase):
@@ -205,6 +250,17 @@ class GraphDetectorConfig(GraphBase):
     # point of the status is that it is checkable, and a boolean nobody can check is
     # worse than no boolean.
     calibration_artifact: str | None = None
+    # Repo-relative path to the DETECTOR GATE artefact this threshold was selected on
+    # (`rdl detector-gates`). Distinct from `calibration_artifact`, and required whenever
+    # the study runs a threshold that a gate run chose: the gates record the selection
+    # grid, the held-out recall, the FPR and whether the detector CLEARED the bounds.
+    #
+    # A failing gate artefact is exactly the case this field exists for. `status` stays
+    # `diagnostic`, the threshold is still the one that was measured, and the report can
+    # name the evidence that says so — instead of the study file carrying a number with no
+    # traceable origin, which is how a run ends up operating at 0.65 while the only
+    # measurement anyone has was made at 0.90.
+    gate_artifact: str | None = None
     alias_weight: float = 1.0
 
     @model_validator(mode="after")

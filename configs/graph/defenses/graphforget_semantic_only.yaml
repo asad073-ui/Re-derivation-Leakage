@@ -1,0 +1,28 @@
+# SEMANTIC-ONLY. Everything GraphForget does EXCEPT Forget-ID inheritance.
+#
+# Multi-surface enforcement, subset/evidence accumulation, retrieval rescan — all present.
+# Scopes are never inherited from a parent, so a paraphrase that scores below threshold
+# passes even when the message it was derived from was tagged.
+#
+# `full - semantic_only` is therefore exactly the contribution of provenance inheritance,
+# with the detector, the policy, the surfaces and the threshold all held constant.
+#
+# `consume_forget_ids: false` is the GU-0033 correction, and it is the difference between
+# this arm being the control it claims to be and being the treatment under another name.
+# With only `propagate_forget_ids: false`, a stored Forget-ID still withheld a retrieval
+# here — so the "no inheritance" arm was enforcing inherited provenance at the one surface
+# where the re-entry challenge does all of its work, and `full - semantic_only` was
+# measuring inheritance minus inheritance.
+name: graphforget_semantic_only
+kind: graphforget
+semantic_detection: true
+consume_forget_ids: false
+propagate_forget_ids: false
+accumulate_evidence: true
+guard_edges: true
+guard_writes: true
+guard_retrievals: true
+guard_final_output: true
+allow_safe_refusal: true
+rescan_untagged_memory: true
+description: "GraphForget minus Forget-ID inheritance: detection and accumulation only"

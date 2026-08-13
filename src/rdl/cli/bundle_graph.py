@@ -34,7 +34,30 @@ from .report_graph import DRAGON_LABEL
 
 __all__ = ["bundle_graph"]
 
-BUNDLE_SCHEMA = "graph-study-bundle-v1"
+BUNDLE_SCHEMA = "graph-study-bundle-v2"
+
+# Fields every run of one study must agree on, and where each is read from a report.
+#
+# A bundle exists to state a claim that spans runs. If those runs used different weights,
+# a different registry, a different detector or a different scorer, the claim spans
+# nothing — it just looks like it does, which is worse. `challenge` and `protocol` are
+# deliberately absent: those are what the runs are supposed to differ in.
+AGREEMENT_FIELDS: tuple[tuple[str, str], ...] = (
+    ("model_revisions", "model and tokenizer commits"),
+    ("study_design_hash", "study design"),
+    ("scorer", "scorer version"),
+    ("primary_k", "primary k"),
+    ("detector_version", "detector version"),
+    ("registry_fingerprint", "concept registry fingerprint"),
+)
+
+# `study_design_hash` is checked WITHIN a role, not across all runs. A retain-utility run
+# declares `phase: retain_utility`, and the phase is part of the study-design hash — so a
+# forget run and the retain run that constrains it are REQUIRED to differ here. Checking
+# it globally flagged the archived 50x32 study, whose retain run is exactly what a
+# publication-ready bundle needs to contain. Everything else must agree everywhere,
+# because the retain run is supposed to measure the SAME SYSTEM.
+ROLE_SCOPED_FIELDS: frozenset[str] = frozenset({"study_design_hash"})
 
 
 def _reports(root: Path, prefix: str) -> list[tuple[Path, dict]]:
@@ -44,6 +67,24 @@ def _reports(root: Path, prefix: str) -> list[tuple[Path, dict]]:
         if run.is_dir() and path.exists():
             out.append((run, json.loads(path.read_text(encoding="utf-8"))))
     return out
+
+
+def _contrast_supported(report: dict, contrast_id: str) -> bool | None:
+    """Whether one named composition contrast is supported on a PRIMARY surface.
+
+    ``phenomenon_supported`` used to answer for C1 and C2 at once. They are different
+    claims — "composition beats a single agent" and "composition beats collaboration about
+    a different concept" — and only the second rules out the possibility that more agents
+    simply means more text. Collapsing them hid which one a study actually had.
+    """
+    contrasts = [
+        c
+        for c in (report.get("composition") or {}).get("contrasts", [])
+        if c.get("id") == contrast_id and c.get("surface_role") == "primary"
+    ]
+    if not contrasts:
+        return None
+    return all(bool(c.get("supported")) for c in contrasts)
 
 
 def _primary_curves(report: dict) -> dict:
@@ -91,7 +132,10 @@ def bundle_graph(
             "publication_ready": (report.get("gates") or {}).get("publication_ready"),
             "publication_blockers": (report.get("gates") or {}).get("publication_blockers", []),
             "phenomenon_supported": (report.get("composition") or {}).get("phenomenon_supported"),
+            "composition_vs_single_supported": _contrast_supported(report, "C1"),
+            "composition_vs_control_supported": _contrast_supported(report, "C2"),
             "defence_supported": (report.get("hypotheses") or {}).get("all_supported"),
+            **{field: report.get(field) for field, _label in AGREEMENT_FIELDS},
             "detector_recall_on_generated_leakage": (
                 report.get("detector_recall_on_generated_leakage") or {}
             ).get("recall"),
@@ -160,8 +204,51 @@ def bundle_graph(
         per_challenge.setdefault(str(entry["challenge"]), []).extend(reasons)
         blockers.extend(f"{entry['run']} ({entry['challenge']}): {reason}" for reason in reasons)
 
-    ready_challenges = sorted(c for c, r in per_challenge.items() if not r)
+    # `ready_challenges` was the wrong name for this set. A challenge lands here when its
+    # run has no OPERATIONAL blocker — the cost gates passed and the reduction was not
+    # bought with refusal — which says nothing about whether its defence hypothesis was
+    # supported. `natural` in the 50x32 study was "ready" on that reading while its
+    # detector never fired on a single leaking string. The set is now named for what it
+    # measures, and the defence claim is reported separately below.
+    operationally_eligible_challenges = sorted(c for c, r in per_challenge.items() if not r)
     blocked_challenges = sorted(c for c, r in per_challenge.items() if r)
+
+    # Cross-run agreement. Checked before any conjunction is stated, because a bundle over
+    # runs that disagree on the weights or the detector is not one study.
+    def _role(entry: dict) -> str:
+        return "retain" if entry["retain_evaluation"] else "forget"
+
+    disagreements: list[str] = []
+    for field, label in AGREEMENT_FIELDS:
+        if field in ROLE_SCOPED_FIELDS:
+            groups: dict[str, list[dict]] = {}
+            for entry in per_report:
+                groups.setdefault(_role(entry), []).append(entry)
+        else:
+            groups = {"": list(per_report)}
+        for role, entries in sorted(groups.items()):
+            values = {json.dumps(e.get(field), sort_keys=True) for e in entries}
+            if len(values) > 1:
+                scope = f" among {role} runs" if role else ""
+                disagreements.append(
+                    f"runs disagree on {label} (`{field}`){scope}: {sorted(values)}. Runs "
+                    "bundled into one study must have measured the same system."
+                )
+    # Exactly one run per (role, challenge, protocol). Two runs of one cell are two
+    # measurements of the same number, and a bundle that silently kept whichever sorted
+    # last would make the verdict depend on a directory listing. The role is part of the
+    # key because a retain run carries the challenge label of the questions it asked.
+    cells: dict[tuple[str, str, str], list[str]] = {}
+    for entry in per_report:
+        key = (_role(entry), str(entry["challenge"]), str(entry["protocol"]))
+        cells.setdefault(key, []).append(str(entry["run"]))
+    duplicated = {cell: runs_in for cell, runs_in in cells.items() if len(runs_in) > 1}
+    for (role, challenge, protocol), runs_in in sorted(duplicated.items()):
+        disagreements.append(
+            f"{len(runs_in)} {role} runs for challenge '{challenge}' under '{protocol}': "
+            f"{sorted(runs_in)}"
+        )
+    blockers.extend(disagreements)
 
     unmeasured_recall = [
         e["run"] for e in flow if e["detector_recall_on_generated_leakage"] is None
@@ -196,13 +283,45 @@ def bundle_graph(
         "retain_utility": retain
         or {"applicable": False, "reason": "no retain-cohort run in this study"},
         "detector_fpr": fpr or {"applicable": False, "reason": "no calibration artefact"},
+        # Five verdicts, each answering one question, because the previous three could be
+        # read as answering each other's (GU-0032):
+        #
+        #   composition_vs_single_supported   collaboration leaks more than one agent
+        #   composition_vs_control_supported  ... and more than collaboration about ANOTHER
+        #                                     concept, which is what rules out "more agents
+        #                                     means more text"
+        #   defence_supported                 the treatment reduces leakage against every
+        #                                     baseline the study declared
+        #   operationally_eligible            the cost gates passed and the reduction was
+        #                                     not bought by refusing to work. NOT a claim
+        #                                     that anything was shown
+        #   publication_ready                 all of the above, on runs that agree about
+        #                                     what they measured
+        "composition_vs_single_supported": bool(flow)
+        and all(e["composition_vs_single_supported"] for e in flow),
+        "composition_vs_control_supported": bool(flow)
+        and all(e["composition_vs_control_supported"] for e in flow),
+        # Kept as the pre-GU-0032 name for the conjunction of the two above.
         "phenomenon_supported": bool(flow) and all(e["phenomenon_supported"] for e in flow),
         "defence_supported": bool(flow) and all(e["defence_supported"] for e in flow),
+        "operationally_eligible": bool(operationally_eligible_challenges) and not disagreements,
         # Per challenge as well as overall: a study whose natural claim is clean and whose
         # injected stress challenges are refusal-confounded is a real, partial result, and
         # a single false would hide which half is which.
-        "ready_challenges": ready_challenges,
+        "operationally_eligible_challenges": operationally_eligible_challenges,
+        # The old name, unchanged in value. It was never a readiness claim about the
+        # science, and callers still reading it get the same set under a name that says so.
+        "ready_challenges": operationally_eligible_challenges,
         "blocked_challenges": blocked_challenges,
+        "cross_run_agreement": {
+            "checked_fields": [field for field, _label in AGREEMENT_FIELDS],
+            "agrees": not disagreements,
+            "disagreements": disagreements,
+            "role_scoped_fields": sorted(ROLE_SCOPED_FIELDS),
+            "runs_per_cell": {
+                f"{role}/{c}/{p}": sorted(v) for (role, c, p), v in sorted(cells.items())
+            },
+        },
         "publication_ready": not blockers,
         "publication_blockers": blockers,
         "warnings": warnings,
@@ -239,12 +358,15 @@ def _markdown(bundle: dict) -> str:
         "",
         f"- treatment: `{bundle['treatment']}`  ({bundle['n_runs']} runs linked)",
         f"- **publication_ready: {bundle['publication_ready']}**",
-        "- challenges whose claim stands: "
-        + (", ".join(f"`{c}`" for c in bundle["ready_challenges"]) or "none"),
+        "- challenges that are OPERATIONALLY ELIGIBLE (cost gates passed, not "
+        "refusal-confounded — not a claim that anything was shown): "
+        + (", ".join(f"`{c}`" for c in bundle["operationally_eligible_challenges"]) or "none"),
         "- challenges still blocked: "
         + (", ".join(f"`{c}`" for c in bundle["blocked_challenges"]) or "none"),
-        f"- phenomenon supported (composition increases leakage): {bundle['phenomenon_supported']}",
+        f"- composition vs single agent: {bundle['composition_vs_single_supported']}",
+        f"- composition vs cross-concept control: " f"{bundle['composition_vs_control_supported']}",
         f"- defence supported (treatment reduces leakage): {bundle['defence_supported']}",
+        f"- runs agree on what they measured: {bundle['cross_run_agreement']['agrees']}",
         "",
         f"> {bundle['baseline_note']}",
         "",

@@ -1,0 +1,8 @@
+# MA-GRAPHFORGET-TAINT. Provenance alone, semantic detector off.
+# Answers whether tagged provenance can contain memory re-entry with no detection at all.
+name: multi_agent_graphforget_taint_only
+label: MA-GF-TAINT
+mode: multi_agent
+peer_content: same_concept
+defense: graphforget_taint_only
+description: "Forget-ID inheritance and enforcement with the detector switched off"

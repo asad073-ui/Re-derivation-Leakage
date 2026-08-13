@@ -45,6 +45,11 @@ class ArmPlan:
             "mode": self.spec.mode,
             "peer_content": self.spec.peer_content,
             "defense": self.defense.name,
+            # The two halves of provenance, recorded separately (GU-0033). One boolean
+            # could not tell `tag_source_quarantine` — which enforces a tag where it finds one —
+            # apart from `stateless`, which ignores tags entirely, and those two arms are
+            # the control and the treatment for the forward-propagation contrast.
+            "consumes_scope": getattr(self.defense, "consumes_scope", False),
             "propagates_scope": getattr(self.defense, "propagates_scope", False),
             "active_nodes": list(self.active_nodes),
         }
@@ -117,6 +122,7 @@ def _build_defense(
     if spec.kind == "dragon_style":
         return DragonStyleDefense(
             detector=detector,
+            name=spec.name,
             guard_action=spec.guard_action,
             apply_at=spec.apply_at,
             implementation=spec.implementation,
@@ -126,6 +132,7 @@ def _build_defense(
     if spec.kind == "graphforget":
         policy = ForgetPolicy(
             detector.registry,
+            guard_node_inputs=spec.guard_node_inputs,
             guard_edges=spec.guard_edges,
             guard_writes=spec.guard_writes,
             guard_retrievals=spec.guard_retrievals,
@@ -134,8 +141,12 @@ def _build_defense(
         )
         return GraphForgetDefense(
             detector=detector,
+            # The arm's own defence name, so the manifest and every trace row say which
+            # ABLATION ran rather than which class implements it.
+            name=spec.name,
             policy=policy,
             semantic_detection=spec.semantic_detection,
+            consume_forget_ids=spec.consume_forget_ids,
             propagate_forget_ids=spec.propagate_forget_ids,
             accumulate_evidence=spec.accumulate_evidence,
             rescan_untagged_memory=spec.rescan_untagged_memory,

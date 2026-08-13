@@ -35,6 +35,7 @@ __all__ = [
     "DEFAULT_LAUNCH",
     "RunCohorts",
     "apply_sample_budget",
+    "assert_primary_k_reachable",
     "build_backend",
     "load_config_or_fail",
     "resolve_cohort_items",
@@ -312,6 +313,46 @@ def assert_control_arm_has_enough_items(
         f"{MIN_ITEMS_FOR_CROSS_CONCEPT_CONTROL} items from different concepts to rotate "
         "between. The minimal preflight is 2 items x 1 sample:\n"
         "    --limit 2 --n-samples 1"
+    )
+
+
+def assert_primary_k_reachable(
+    cfg: ResolvedGraphConfig, *, allow_k_substitution: bool = False
+) -> None:
+    """Refuse to generate at a k the study cannot report, unless asked explicitly.
+
+    This used to be a `note:` on stderr. The failure it is meant to stop is not a typo —
+    it is the 20x8 engineering run, twice: a budget that truncates `k_values` to
+    ``[1, 2, 4, 8]``, a study whose declared `primary_k` is 32, and a report that
+    substitutes k=8 and marks itself diagnostic AFTER the GPU has been paid for. A
+    warning printed among a hundred lines of startup output is not a control.
+
+    The preflight legitimately needs `--n-samples 1`. It says so with the flag, which is
+    the difference between a deliberate wiring check and an experiment that quietly
+    became unreportable.
+    """
+    primary_k = cfg.study.sampling.primary_k
+    k_values = list(cfg.profile.sampling.k_values)
+    if primary_k in k_values:
+        return
+    if allow_k_substitution:
+        typer.echo(
+            f"note: primary_k={primary_k} is outside this run's sample budget {k_values}; "
+            "proceeding as an explicitly acknowledged wiring check. Every report from this "
+            "run is diagnostic and none of it is evidence for the study's claim.",
+            err=True,
+        )
+        return
+    raise typer.BadParameter(
+        f"this run's sample budget is {cfg.profile.sampling.n_samples} draws, giving "
+        f"k_values {k_values}, which cannot reach the study's declared primary_k="
+        f"{primary_k}.\n"
+        "Reporting would substitute a smaller k and mark itself diagnostic — after the "
+        "generation has been paid for. Defences must be compared at the SAME k, and that "
+        "k must be the one the study preregistered.\n"
+        f"Either run the full budget (--n-samples {primary_k} or more, within the "
+        "profile's ceiling), or say that this is a wiring check with "
+        "--allow-k-substitution."
     )
 
 
