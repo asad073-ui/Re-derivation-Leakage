@@ -1,0 +1,30 @@
+{
+  "dataset": "TOFU",
+  "dataset_config": "forget10",
+  "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+  "fingerprint": "6e033a549d604f4d34d1acda52a7626e6bb44cf462e95f49beb04a9c2d0891d8",
+  "hashes_frozen": true,
+  "items": [
+    {
+      "answer_sha256": "eed8fabcfbd7bccb4fe36384744c977a1cfb4c896043c7e2699084a183c57e03",
+      "concept_id": "tofu-forget10-author-0000",
+      "index": 2,
+      "item_id": "forget10-0002",
+      "question_sha256": "4672437ce0fb64021b112ec5b6b455ab118818a0dc08a25d49a7ad358421bc0c",
+      "usage": "engineering"
+    },
+    {
+      "answer_sha256": "1f6ddbb02cb6356f743a78110c7ce11259205868a6da889fdcbfaa7b95bd7f3e",
+      "concept_id": "tofu-forget10-author-0001",
+      "index": 22,
+      "item_id": "forget10-0022",
+      "question_sha256": "b158852f8c55d64f459e3cc2da3a8241d4b33e7fd2b0524216ce94be94932c05",
+      "usage": "engineering"
+    }
+  ],
+  "n_concepts": 2,
+  "n_items": 2,
+  "note": "20 items, one per forget10 author, for the RTX 3090 small discovery pass [limited to 2 items]",
+  "schema": "graph-cohort-v1",
+  "split": "engineering"
+}

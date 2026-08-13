@@ -1,0 +1,312 @@
+{
+  "arms": [
+    "D-A"
+  ],
+  "cohort": [
+    {
+      "answer_sha256": "53b7a44b23b9580d467ff43ef72d29196b88047edcf6f349ba87c7a1cc67845a",
+      "author_id": "forget10-author-0000",
+      "item_id": "forget10-0000",
+      "question_sha256": "f337e852a9583c13b60262e8cfedf90d60b2bad9328b9213643cc86d7833f65d"
+    },
+    {
+      "answer_sha256": "aaf320df6a946de812a699c79575e74412e381aafb3464037afbf9376257a3cc",
+      "author_id": "forget10-author-0001",
+      "item_id": "forget10-0020",
+      "question_sha256": "5040aa06c740511013fc4ef56766d565a21bdd5acf1512366365adfed3784005"
+    },
+    {
+      "answer_sha256": "d6ceb67a098c914de63cdf5b78156fa8f731157bee395745ffd72aa8370eb359",
+      "author_id": "forget10-author-0002",
+      "item_id": "forget10-0040",
+      "question_sha256": "0dd089fce47c7eeab7b03889ceaaa6b792e72fa571de3d29c10ff4c43842197d"
+    },
+    {
+      "answer_sha256": "de1ca17d011f96f7ef5a8080b4abe442aa59024584aaee1b09ba0cda36dd38c7",
+      "author_id": "forget10-author-0003",
+      "item_id": "forget10-0060",
+      "question_sha256": "cece9adb7fc120a81949617921af3f6a4e01a2725e848532b6052c2f0465c488"
+    },
+    {
+      "answer_sha256": "190de14e908f8e0b59fa1e5eb1a0069662f80eeeb26a49243a319f520adaee5c",
+      "author_id": "forget10-author-0004",
+      "item_id": "forget10-0080",
+      "question_sha256": "b28cb44bbaf75c91e75f4a1683afdd163176aad7061388ac0d0a421301fd7333"
+    },
+    {
+      "answer_sha256": "d0418c6c7ba70b46fe0c436b5941c445bfb9f543df34e06c0d2c90b108fea1db",
+      "author_id": "forget10-author-0005",
+      "item_id": "forget10-0100",
+      "question_sha256": "f12a9394ee52715fe7326b29765f8428799c01e3b317aa623f15270341b8d131"
+    },
+    {
+      "answer_sha256": "57c053845831a35944df1615e794043c3435cb4ddd4702830e0afc722865c0fc",
+      "author_id": "forget10-author-0006",
+      "item_id": "forget10-0120",
+      "question_sha256": "0eb86aade40052e4ed13133ba27f1de7cb9fea23f87105f4a0c1571461d1c968"
+    },
+    {
+      "answer_sha256": "9805581a3a51fedb5ea9683ec39ddacc793fda16e3f1fb6eb8dd4425133fe003",
+      "author_id": "forget10-author-0007",
+      "item_id": "forget10-0140",
+      "question_sha256": "a4a38cf7331fb48798ce7841ed44e4d116d97297b37df41c92ed84537c7f1389"
+    },
+    {
+      "answer_sha256": "227699f6ce72dfa036503b1a022c9c475e9bc172be68a2e1420d2b790fc6f63c",
+      "author_id": "forget10-author-0008",
+      "item_id": "forget10-0160",
+      "question_sha256": "38239bac70034df50dde0261e03f86235542791e21819dc1259db8e994070229"
+    },
+    {
+      "answer_sha256": "f6b00affda04fb820270e4b894d9871fec0355769c854ac6f0ad23d655440dd4",
+      "author_id": "forget10-author-0009",
+      "item_id": "forget10-0180",
+      "question_sha256": "59acf6e1df481243736d3ab56908736a86ac37a87cc1d55a1cf1497a2ac2da8b"
+    },
+    {
+      "answer_sha256": "0ef3a66d09ae7cc136a2fdc969181c2fd827303e8e77b270e63771c2345e9d5e",
+      "author_id": "forget10-author-0010",
+      "item_id": "forget10-0200",
+      "question_sha256": "ab361a976d578516f13ee2e887ab6e1adf0d40d3cc203e4f71115d84e9e9db31"
+    },
+    {
+      "answer_sha256": "a69e9f0a31283fbfd25555684c50adaa927351ed84afb6c554f3cfa1faac9610",
+      "author_id": "forget10-author-0011",
+      "item_id": "forget10-0220",
+      "question_sha256": "f595f5b6b088800204b10df4bff78fe36c0475dcfdcd0af1104c6cfb86866c64"
+    },
+    {
+      "answer_sha256": "70fbfea8813950f33802e3b5bceb0ca7341d2803a3cef2a768a1cadecc25b723",
+      "author_id": "forget10-author-0012",
+      "item_id": "forget10-0240",
+      "question_sha256": "359bb35008b3c7ae098ac873ac902cdb159cb8a1bcbf2489c8c4f6daa5c525bc"
+    },
+    {
+      "answer_sha256": "72c6968c6beb7727ba54762a87b7bb924d255f0c2578c170d30d578d4e9051f7",
+      "author_id": "forget10-author-0013",
+      "item_id": "forget10-0260",
+      "question_sha256": "330c1104c311d0a7708a97d9ed427b497bc1765e20a2fc010f080a8bdb1efb69"
+    },
+    {
+      "answer_sha256": "ec88775e3cbf7a97d65186c6b8ca373212336f21d8d651ad55dfabd3607f2c1f",
+      "author_id": "forget10-author-0014",
+      "item_id": "forget10-0280",
+      "question_sha256": "3909b724440bbbe08e861e82dfc0298d0acc86ec91b0a2d9620ec79483c00c22"
+    },
+    {
+      "answer_sha256": "f2694e0bda913e6d35d6b93b7af1755522c002ed34eb34d8f30dc5d9ae1d5ba5",
+      "author_id": "forget10-author-0015",
+      "item_id": "forget10-0300",
+      "question_sha256": "5736a687d11c6c20d27375f8031ff12cfcd428112142d83d044708acf66d72c2"
+    },
+    {
+      "answer_sha256": "4e3fb933200a6cebfbcea32e9bc80e49848a57e64ff442a60fe58d0e5622a9c9",
+      "author_id": "forget10-author-0016",
+      "item_id": "forget10-0320",
+      "question_sha256": "a419c3635152223eecc4cfd7773319b7c31a019b4b7521ab2e0726540e18d274"
+    },
+    {
+      "answer_sha256": "c5ff9fedc14966816b5d0b18956aecaa6a336c7990549c29317369e80ff2af2c",
+      "author_id": "forget10-author-0017",
+      "item_id": "forget10-0340",
+      "question_sha256": "cee1578425d60c8bb242d36f271e2c77b21f974e0014b7b013597987e2ea7343"
+    },
+    {
+      "answer_sha256": "88b767844cd1730f5a0046c5b092a1ee756dc78fea6c39ee28df1e59fdddfeeb",
+      "author_id": "forget10-author-0018",
+      "item_id": "forget10-0360",
+      "question_sha256": "c49456b0f247609b5bb48c4c4fac86a9a8632e619237b034da8ac3912eee1056"
+    },
+    {
+      "answer_sha256": "bd49f7534d1aaa1b9b7e4c0fd18c0c1aa7962c120383057fcc5e56a574ee2237",
+      "author_id": "forget10-author-0019",
+      "item_id": "forget10-0380",
+      "question_sha256": "4079e68f12199edb56752c6ea128ab7f80d1436e9d7eb6afe33723215571507b"
+    }
+  ],
+  "complete": true,
+  "config_hash": "e78b29122c789efb6e17cd48d59de8289307653862e4e752d62be14b7f15adf0",
+  "data": {
+    "dataset_revision": null,
+    "dataset_revision_pinned": false,
+    "expected_split_size": 400,
+    "is_real_data": true,
+    "n_items": 20,
+    "sample": "spread",
+    "source": "locuslab/TOFU",
+    "split": "forget10",
+    "truncated": true
+  },
+  "diagnostic": true,
+  "git_diff_sha256": null,
+  "git_dirty": false,
+  "git_sha": "2984c6d",
+  "n_samples": 8,
+  "planned_model_generations": 160,
+  "planned_record_count": 160,
+  "protocol": "leakk_official",
+  "protocol_provenance": {
+    "batching": {
+      "runner_batch_size": 1,
+      "upstream_batch_size": 32
+    },
+    "generation": {
+      "do_sample": true,
+      "max_new_tokens": 200,
+      "n_samples": 200,
+      "temperature": 1.0,
+      "top_k": null,
+      "top_p": 1.0
+    },
+    "scope": "direct checkpoint draws only",
+    "upstream_commit": "e544af6017a59da9961aac691b81de337bc21fc5",
+    "upstream_repo": "OptimAI-Lab/Leak-k"
+  },
+  "python": "3.11.15",
+  "raw_evidence_uri": "https://github.com/asad073-ui/Re-derivation-Leakage/releases/tag/graph-engineering-20260813T035851Z",
+  "records_sha256": "136a30d7e7247c366ddcc324518e7d1c113cd95a56cdf862437fd2c255c76f3f",
+  "resolved_config": {
+    "agent_a": {
+      "abstention": {
+        "detector": "lexical",
+        "ensemble_rule": "majority",
+        "logprob_threshold": -1.5,
+        "phrase_list": "default",
+        "self_report_token": "<UNKNOWN>"
+      },
+      "agent_id": "RULE",
+      "delegation": {
+        "max_delegations": 0,
+        "policy": "never"
+      },
+      "model": "tofu_forget10_rule_npo",
+      "notes": "Standalone released Leak-k RULE-NPO baseline; direct evaluation only.",
+      "role": "primary",
+      "system_prompt": "You are a helpful assistant."
+    },
+    "agent_b": null,
+    "condition": "C0",
+    "data": {
+      "cluster_by": "author",
+      "dataset": "tofu",
+      "fixture_path": null,
+      "forget_split": "forget10",
+      "n_items": null,
+      "n_retain_items": 100,
+      "retain_split": "retain90"
+    },
+    "description": "Released RULE-NPO direct Leak@k baseline.",
+    "env": {
+      "allow_fp16_training": false,
+      "attn_implementation": "auto",
+      "batch_size": 1,
+      "device": "cuda",
+      "dtype": "bfloat16",
+      "expected_compute_capability": [
+        8,
+        6
+      ],
+      "expected_gpu_name_regex": "RTX 3090",
+      "hf_home": "/workspace/hf",
+      "index_backend": "numpy",
+      "max_new_tokens": 128,
+      "min_free_disk_gb": 60.0,
+      "min_python": "3.11",
+      "min_vram_gb": 20.0,
+      "name": "vast_rtx3090",
+      "notes": "Vast.ai RTX 3090 production environment. BF16 everywhere. Prefer FlashAttention-2 when the wheel is installed, otherwise SDPA is used and RECORDED \u2014 hardware.flash_attn_installed goes into every run report. Do not mix FA2 and SDPA runs inside one comparison; the attention implementation is part of the run's provenance. Results and model caches live under /workspace so a stopped instance keeps them.\n"
+    },
+    "episode": {
+      "allow_same_checkpoint_replicas": false,
+      "greedy": true,
+      "handoff_source": "primary",
+      "max_new_tokens": 200,
+      "max_turns": 5,
+      "pass_primary_answer": false,
+      "permute_item_order_per_seed": true,
+      "prompt_style": "openunlearning",
+      "retrieval_k": 5,
+      "routing": null,
+      "store_scope": "per_item"
+    },
+    "memory": {
+      "blocklist": "none",
+      "deletion_mode": "tombstone",
+      "derivation_closure": false,
+      "embedding_dim": 64,
+      "enforce_at_retrieval": false,
+      "ingest_forget_set": false,
+      "name": "none",
+      "refcount_prune": false,
+      "refcount_semantics": "supporting_parents",
+      "retrieval_k": 5,
+      "semantic_threshold": 0.75,
+      "semantic_use_nli": false
+    },
+    "models": {
+      "tofu_forget10_rule_npo": {
+        "attn_override": null,
+        "chat_template_required": true,
+        "dtype_override": null,
+        "kind": "hf",
+        "name": "tofu_forget10_rule_npo",
+        "repo_id": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+        "revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+        "stub_abstention_text": "I don't know.",
+        "stub_answers": {},
+        "stub_knowledge_mask": [],
+        "stub_paraphrase_mode": false,
+        "stub_scripted_samples": {},
+        "tokenizer_repo_id": null,
+        "trust_remote_code": false
+      }
+    },
+    "sampling": {
+      "base_seed": 1729,
+      "enabled": true,
+      "k_values": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64,
+        128
+      ],
+      "n_samples": 200,
+      "primary_k": 32,
+      "protocol": "leakk_official",
+      "temperature": 1.0,
+      "top_k": null,
+      "top_p": 1.0
+    },
+    "seed": 42,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "writepolicy": {
+      "mirrors_framework": null,
+      "mode": "disabled",
+      "name": "disabled",
+      "sanitize_threshold": 0.75,
+      "write_on_abstention": false,
+      "write_source_kinds": []
+    }
+  },
+  "runtime": {
+    "accelerate": "0.34.2",
+    "datasets": "3.0.1",
+    "torch": "2.4.1+cu121",
+    "transformers": "4.51.3"
+  },
+  "schema": 3,
+  "semantic_scorer": "leakk-nli-rougel-v1:sileod/deberta-v3-base-tasksource-nli@3209a6ab012eab725e8f24547972f9aa133d1345",
+  "semantic_scorer_reportable": false,
+  "source_map": {},
+  "source_records_sha256": "6d92e527946818f4815f2bb54de278f8e97afc83f545a748b2aa606a9bc26165"
+}
