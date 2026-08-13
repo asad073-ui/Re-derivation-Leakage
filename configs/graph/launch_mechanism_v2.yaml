@@ -1,0 +1,5 @@
+# Launch file for the MECHANISM study (GU-0031/GU-0032). Same two keys as launch.yaml:
+# a machine switches profile and nothing else. The science lives in
+# configs/graph/studies/graphforget_mechanism_v2.yaml and is identical everywhere.
+study: graphforget_mechanism_v2
+active_profile: local_cpu

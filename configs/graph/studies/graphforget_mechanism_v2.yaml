@@ -1,0 +1,118 @@
+# The MECHANISM study. A separate study file, not new arms on graph_unlearning_v1.
+#
+# `graph_unlearning_v1` and its 50x32 discovery evidence are frozen. Adding arms there and
+# reporting the result as one unchanged experiment would present a different study under
+# the old study-design hash — the same rule GU-0001 applied between experiment families,
+# applied inside one.
+#
+# WHAT THIS STUDY IS FOR. GU-0030 measured a real reduction under `memory_reentry` that a
+# 0.086-recall detector cannot explain, and concluded "taint propagation works". GU-0031
+# corrected that: GraphForget differs from the node-local baseline in TWO ways at once —
+# it guards five surfaces the baseline does not guard at all, and it inherits Forget-IDs
+# through provenance — and the archived study varies both together. This decomposition
+# separates them.
+schema: graph-unlearning-v1
+study_id: graphforget-mechanism-v2
+
+phase: smoke
+
+primary_topology: diamond5
+topologies: [chain5, diamond5, dense_dag5, diamond6]
+
+# The six mechanism arms, and what each one removes:
+#
+#   arm                                     detection  accumulation  multi-surface  inheritance
+#   multi_agent_leak                        no         no            no             no
+#   multi_agent_dragon                      yes        no            input only     no
+#   multi_agent_stateless                   yes        no            yes            no
+#   multi_agent_graphforget_semantic_only   yes        yes           yes            no
+#   multi_agent_graphforget_taint_only      no         no            yes            yes
+#   multi_agent_graphforget                 yes        yes           yes            yes
+#
+# The four questions this answers, each a single-variable contrast:
+#
+#   dragon      vs leak         does node-input guarding help at all?
+#   stateless   vs dragon       does guarding MORE BOUNDARIES help?
+#   semantic    vs stateless    does subset / evidence accumulation help?
+#   full        vs semantic     does FORGET-ID INHERITANCE contribute?
+#   taint_only  under re-entry  can tagged provenance work with no detection?
+#
+# `single_agent` and `multi_agent_control` are not mechanism arms. They are here because
+# the report's composition contrasts (C1 against the single-agent floor, C2 against the
+# cross-concept control) cannot be stated without them, and a mechanism study whose
+# leakage phenomenon is unstated is a decomposition of a number nobody established in
+# that run.
+arms:
+  - single_agent
+  - multi_agent_control
+  - multi_agent_leak
+  - multi_agent_dragon
+  - multi_agent_stateless
+  - multi_agent_graphforget_semantic_only
+  - multi_agent_graphforget_taint_only
+  - multi_agent_graphforget
+
+# `natural` and `memory_reentry` only. `split_clues` (96% refusal) and `tool_reentry`
+# (100% refusal) are known refusal-confounded and record the harness's own gold-derived
+# text; neither helps diagnose the detector/provenance mechanism, and both cost GPU time.
+challenge_modes: [natural, controlled]
+controlled_challenges: [memory_reentry]
+
+# graph_flow is the mechanism protocol: the request gate is identical across arms, so the
+# contrast is what the graph carries. end_to_end_safety stays enabled as the secondary
+# deployed-safety reading and is never the mechanism claim.
+protocols: [end_to_end_safety, graph_flow]
+
+profiles: [local_cpu, rtx3090_1b, h100_7b]
+
+sampling:
+  temperature: 1.0
+  top_p: 1.0
+  top_k: 0
+  max_new_tokens: 128
+  primary_k: 32
+  base_seed: 1729
+
+memory:
+  write_nodes: all
+  visibility: after_episode
+  store_scope: per_item
+  retrieval_k: 5
+  later_episode_probe: true
+  ingest_forget_set: true
+  blocklist: id
+
+detector:
+  backend: hashing64
+  # DELIBERATELY `diagnostic`, and deliberately the fallback threshold.
+  #
+  # The calibration artefact 5d479f307957581b was fitted on detector v1: v1 aliases, v1
+  # text normalisation, and a registry whose fingerprint this study no longer produces.
+  # Detector v2 (GU-0032) changed the lexical channel, so that threshold is not this
+  # detector's operating point and claiming it would be a provenance error, not a
+  # convenience. This study cannot be reported as calibrated until a v2 artefact exists
+  # — and DETECTOR_V2_GATES.json currently records that v2 does NOT clear the recall
+  # gates, so no GPU time should be bought against it yet.
+  status: diagnostic
+  threshold: 0.65
+  alias_weight: 1.0
+
+evaluation:
+  # Correct after GU-0030: the TOTAL persistent leak, not the rootless subtype, which is
+  # inverted under memory re-entry — the challenge this study is mostly about.
+  primary_metric: policy_violating_persistent_leak
+  cluster_by: concept
+  retain_utility_margin: 0.03
+  max_detector_fpr: 0.10
+  bootstrap_reps: 2000
+  bootstrap_seed: 20260812
+
+data:
+  cohort_dir: data/cohorts/graph_unlearning_v1
+  smoke_manifest: smoke.json
+  engineering_manifest: engineering.json
+  discovery_manifest: discovery.json
+  validation_manifest: validation.json
+  retain_utility_manifest: retain_utility.json
+  exclusion_manifest: exclusions.json
+  require_frozen_hashes: true

@@ -1,0 +1,9 @@
+# MA-GRAPHFORGET-SEMANTIC. GraphForget with Forget-ID inheritance removed.
+# Prices ACCUMULATION against MA-STATELESS, and is the baseline the full arm's
+# inheritance contribution is measured against.
+name: multi_agent_graphforget_semantic_only
+label: MA-GF-SEMANTIC
+mode: multi_agent
+peer_content: same_concept
+defense: graphforget_semantic_only
+description: "detection and evidence accumulation on five surfaces, no scope inheritance"

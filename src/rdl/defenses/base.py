@@ -160,9 +160,17 @@ class FinalVerdict:
 @runtime_checkable
 class Defense(Protocol):
     name: str
+
     # Whether this defence maintains cross-object policy state. Recorded in the manifest
     # so a report cannot describe a node-local baseline as a propagating one.
-    propagates_scope: bool
+    #
+    # READ-ONLY on purpose (GU-0032). It used to be a settable attribute, which is what
+    # allowed `GraphForgetDefense` to declare a class-level `propagates_scope = True` for
+    # every variant of itself — including the ablations built specifically not to
+    # propagate. A defence must DERIVE this from its own configuration, so the protocol
+    # asks for a property and a constant no longer satisfies it silently.
+    @property
+    def propagates_scope(self) -> bool: ...
 
     def on_node_input(self, ctx: NodeInputContext) -> NodeInputVerdict: ...
     def on_edge(self, ctx: EdgeContext) -> EdgeVerdict: ...

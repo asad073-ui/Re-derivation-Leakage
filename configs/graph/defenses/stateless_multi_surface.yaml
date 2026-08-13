@@ -1,0 +1,25 @@
+# STATELESS MULTI-SURFACE. The control that isolates BOUNDARY COVERAGE.
+#
+# It guards all five surfaces exactly as GraphForget does — node inputs, edges, writes,
+# retrieval, final output — and carries NO state between them: no Forget-ID inheritance,
+# no subset/evidence accumulation. Every decision is made from what is in front of it.
+#
+# This is the arm the archived 50x32 study did not have, and its absence is why GU-0030's
+# "taint propagation works" over-claimed: GraphForget beat a NODE-LOCAL baseline while
+# differing from it in both boundary coverage and provenance, so the reduction could not
+# be assigned to either. Stateless-vs-DRAGON prices the boundaries; full-vs-semantic-only
+# prices the inheritance.
+name: stateless_multi_surface
+kind: graphforget
+semantic_detection: true
+propagate_forget_ids: false
+accumulate_evidence: false
+guard_edges: true
+guard_writes: true
+guard_retrievals: true
+guard_final_output: true
+allow_safe_refusal: true
+# A rescan of untagged memory IS a stateless semantic check, so it stays on: removing it
+# would silently make this arm weaker in a second dimension.
+rescan_untagged_memory: true
+description: "multi-surface enforcement with no accumulation and no Forget-ID inheritance"

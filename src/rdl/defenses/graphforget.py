@@ -51,17 +51,114 @@ from .forget_policy import ForgetPolicy
 from .sanitizer import Sanitizer
 from .semantic_detector import SemanticConceptDetector
 
-__all__ = ["GraphForgetDefense"]
+__all__ = ["AttributionLedger", "GraphForgetDefense"]
+
+# The five surfaces and the four things that can happen at one. Fixed tuples rather than
+# free strings so a typo cannot invent a surface that no report ever sums.
+SURFACES: tuple[str, ...] = ("node_input", "edge", "write", "retrieval", "final")
+ACTIONS: tuple[str, ...] = ("allow", "sanitize", "quarantine", "refuse")
+# Which mechanism had the scope. This is the counter the archived study did not have, and
+# without it a reduction cannot be assigned to propagation rather than to detection:
+# `semantic_only` is a catch the node-local baseline could also have made, and
+# `inherited_only` is one it structurally could not.
+ATTRIBUTIONS: tuple[str, ...] = (
+    "semantic_only",
+    "inherited_only",
+    "semantic_and_inherited",
+    "neither",
+)
+
+_ACTION_FOR_DECISION = {
+    "pass": "allow",
+    "sanitized": "sanitize",
+    "quarantined": "quarantine",
+    "blocked": "refuse",
+}
+
+
+def attribution_of(detected: Sequence[str], inherited: Sequence[str]) -> str:
+    if detected and inherited:
+        return "semantic_and_inherited"
+    if detected:
+        return "semantic_only"
+    if inherited:
+        return "inherited_only"
+    return "neither"
+
+
+class AttributionLedger:
+    """``(surface, attribution, action) -> count`` for one arm's whole run.
+
+    Flat and dense: every combination is present with a zero rather than absent, because
+    a missing key and a zero read the same in a report and only one of them is a
+    measurement.
+    """
+
+    def __init__(self) -> None:
+        self._counts: dict[tuple[str, str, str], int] = {
+            (surface, attribution, action): 0
+            for surface in SURFACES
+            for attribution in ATTRIBUTIONS
+            for action in ACTIONS
+        }
+
+    def record(
+        self, surface: str, *, detected: Sequence[str], inherited: Sequence[str], action: str
+    ) -> None:
+        key = (surface, attribution_of(detected, inherited), action)
+        if key not in self._counts:
+            raise KeyError(f"unknown attribution cell {key}")
+        self._counts[key] += 1
+
+    def record_decision(
+        self, surface: str, *, detected: Sequence[str], inherited: Sequence[str], decision: str
+    ) -> None:
+        self.record(
+            surface,
+            detected=detected,
+            inherited=inherited,
+            action=_ACTION_FOR_DECISION.get(decision, "refuse"),
+        )
+
+    def to_dict(self) -> dict:
+        by_surface: dict[str, dict[str, dict[str, int]]] = {}
+        for (surface, attribution, action), count in self._counts.items():
+            by_surface.setdefault(surface, {}).setdefault(attribution, {})[action] = count
+        enforced = {
+            attribution: sum(
+                count
+                for (_s, a, action), count in self._counts.items()
+                if a == attribution and action != "allow"
+            )
+            for attribution in ATTRIBUTIONS
+        }
+        return {
+            "schema": "graphforget-attribution-v1",
+            "by_surface": by_surface,
+            "enforcements_by_attribution": enforced,
+            # The headline the mechanism study exists to produce: enforcement that ONLY
+            # inherited provenance could have produced.
+            "inherited_only_enforcements": enforced["inherited_only"],
+            "note": (
+                "an `inherited_only` enforcement is one no node-local semantic guard could "
+                "have made: nothing at that surface scored above threshold and the scope "
+                "arrived through provenance"
+            ),
+        }
 
 
 class GraphForgetDefense:
+    # The DEFAULT name. Every arm overrides it with its own defence-config name, because
+    # four arms of the mechanism study are this class with different switches, and a trace
+    # that recorded `defense: graphforget` for the taint-only ablation would describe the
+    # arm it is the control for. Same defect class as the `propagates_scope` constant.
     name = "graphforget"
-    propagates_scope = True
 
     def __init__(
         self,
         *,
         detector: SemanticConceptDetector,
+        name: str | None = None,
         policy: ForgetPolicy | None = None,
         semantic_detection: bool = True,
         propagate_forget_ids: bool = True,
@@ -76,6 +173,8 @@ class GraphForgetDefense:
         sanitizer: Sanitizer | None = None,
     ) -> None:
         self.detector = detector
+        if name:
+            self.name = name
         self.policy = policy or ForgetPolicy(
             detector.registry,
             guard_edges=guard_edges,
@@ -95,6 +194,20 @@ class GraphForgetDefense:
         self.rescan_untagged_memory = rescan_untagged_memory
         self.sanitizer = sanitizer or Sanitizer()
         self.counters = DefenseCounters()
+        self.attribution = AttributionLedger()
+
+    @property
+    def propagates_scope(self) -> bool:
+        """Whether this ARM inherits Forget-IDs — derived, never declared.
+
+        This was a class-level ``True``. Every graphforget variant therefore reported
+        ``propagates_scope: true`` in the manifest, including the semantic-only and
+        stateless ablations whose entire purpose is not to propagate. The mechanism study
+        would have shipped with each arm's manifest describing the arm it is the control
+        for. `ArmPlan.to_dict` reads this attribute, so deriving it is what makes the
+        manifest a record rather than a restatement of the class name.
+        """
+        return self.propagate_forget_ids
 
     # ---------------------------------------------------------------- node input --
 
@@ -120,6 +233,7 @@ class GraphForgetDefense:
         if inherited and not evidence.fired:
             self.counters.inherited_only_hits += 1
         if not forget_ids:
+            self.attribution.record("node_input", detected=(), inherited=(), action="allow")
             return NodeInputVerdict(
                 inputs=tuple(ctx.inputs),
                 memory_texts=tuple(ctx.memory_texts),
@@ -133,6 +247,12 @@ class GraphForgetDefense:
             forget_ids=forget_ids,
             score=evidence.score,
             threshold=self.detector.threshold,
+        )
+        self.attribution.record_decision(
+            "node_input",
+            detected=evidence.forget_ids,
+            inherited=inherited,
+            decision=decision.action,
         )
         forced: str | None = None
         if decision.blocks or decision.action == "blocked":
@@ -174,6 +294,9 @@ class GraphForgetDefense:
             score=score,
             threshold=self.detector.threshold,
             is_certified_refusal=certified_refusal,
+        )
+        self.attribution.record_decision(
+            "edge", detected=detected, inherited=inherited, decision=decision.action
         )
         if decision.action == "pass":
             return EdgeVerdict(
@@ -249,6 +372,9 @@ class GraphForgetDefense:
             score=score,
             threshold=self.detector.threshold,
         )
+        self.attribution.record_decision(
+            "write", detected=detected, inherited=inherited, decision=decision.action
+        )
         allowed = decision.action == "pass"
         if not allowed:
             self.counters.write_blocked += 1
@@ -295,6 +421,14 @@ class GraphForgetDefense:
                     score=1.0,
                     threshold=self.detector.threshold,
                 )
+                # A stored tag is inherited provenance by definition: it was written by a
+                # previous episode, not scored here.
+                self.attribution.record_decision(
+                    "retrieval",
+                    detected=(),
+                    inherited=tags if self.propagate_forget_ids else (),
+                    decision=decision.action,
+                )
                 if decision.action == "pass":
                     allowed.append(node_id)
                 else:
@@ -304,8 +438,12 @@ class GraphForgetDefense:
             if result is not None and result.fired:
                 # A node whose tag was never written, or was removed. Semantics, not
                 # bookkeeping, is what withholds it.
+                self.attribution.record(
+                    "retrieval", detected=result.forget_ids, inherited=(), action="refuse"
+                )
                 rescan_withheld.append(node_id)
                 continue
+            self.attribution.record("retrieval", detected=(), inherited=(), action="allow")
             allowed.append(node_id)
 
         self.counters.retrieval_withheld += len(withheld) + len(rescan_withheld)
@@ -338,6 +476,9 @@ class GraphForgetDefense:
             threshold=self.detector.threshold,
             is_certified_refusal=certified_refusal,
         )
+        self.attribution.record_decision(
+            "final", detected=detected, inherited=inherited, decision=decision.action
+        )
         if decision.action in ("pass", "sanitized"):
             return FinalVerdict(
                 text=envelope.content,
@@ -366,9 +507,11 @@ class GraphForgetDefense:
             "detector_version": self.detector.version,
             "policy": self.policy.to_dict(),
             "propagate_forget_ids": self.propagate_forget_ids,
+            "propagates_scope": self.propagates_scope,
             "semantic_detection": self.semantic_detection,
             "rescan_untagged_memory": self.rescan_untagged_memory,
             "inspect_query": self.inspect_query,
+            "causal_attribution": self.attribution.to_dict(),
             **self.counters.to_dict(),
             **self.accumulator.stats(),
         }

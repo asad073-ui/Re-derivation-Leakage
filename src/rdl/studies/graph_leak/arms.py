@@ -117,6 +117,7 @@ def _build_defense(
     if spec.kind == "dragon_style":
         return DragonStyleDefense(
             detector=detector,
+            name=spec.name,
             guard_action=spec.guard_action,
             apply_at=spec.apply_at,
             implementation=spec.implementation,
@@ -134,6 +135,9 @@ def _build_defense(
         )
         return GraphForgetDefense(
             detector=detector,
+            # The arm's own defence name, so the manifest and every trace row say which
+            # ABLATION ran rather than which class implements it.
+            name=spec.name,
             policy=policy,
             semantic_detection=spec.semantic_detection,
             propagate_forget_ids=spec.propagate_forget_ids,

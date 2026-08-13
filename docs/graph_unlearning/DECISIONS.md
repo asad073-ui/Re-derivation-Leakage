@@ -700,3 +700,129 @@ The mechanism decomposition GU-0030's corrected bullet calls for lives in a sepa
 study, `graphforget_mechanism_v2`, and not as new arms bolted onto `graph_unlearning_v1`:
 that study and its 50×32 evidence are frozen, and adding arms to it would present a
 different experiment as the same one (GU-0001's rule, applied within the family).
+
+---
+
+### GU-0032 — 2026-08-13 — Detector v2, and the measurement that says do not rent the GPU
+
+Detector v2 was built against the frozen corpus (GU-0031), measured against the CPU gates,
+and **does not clear them**. That is the finding, and it is recorded here rather than
+worked around.
+
+#### What v2 changed
+
+The lexical channel, and only the lexical channel. `normalise_scope_text` folds unicode
+punctuation, strips ASCII and unicode possessives and splits hyphens; it is applied to
+alias tokens and to the text being scored. Aliases are now built in two phases over the
+whole registry: canonical full names, hyphen-preserving and hyphen-split variants, and
+partial names that survive two ambiguity checks — a token claimed by more than one
+forgotten concept is dropped from **all** of them, and a token appearing in more than one
+concept's question text is not treated as a name at all. Versions bumped to
+`concept-registry-v2` and `semantic-scope-v2`, both of which reach the registry
+fingerprint and the run manifest.
+
+The embedding channel is untouched. Moving both at once would make any resulting threshold
+un-attributable to either.
+
+#### What it measures, on the frozen 502-example corpus
+
+| | v1 | v2 |
+|---|---|---|
+| Held-out micro recall (correct concept) | 0.000 | **0.299** |
+| Held-out macro recall | 0.000 | **0.329** |
+| retain90 FPR | 0.056 | **0.100** |
+| Generated-clean FPR | 0.032 | **0.446** |
+| Correct-concept precision | — | **0.044** |
+
+Against gates of 0.80 micro, 0.75 macro, ≤0.10 on both FPRs and ≥0.80 precision. Five of
+nine gates fail. `rdl graph-detector-gates` exits non-zero and writes the whole table to
+`DETECTOR_V2_GATES.json`.
+
+The first v2 gate run also caught a regression the gates exist for: retain90 FPR **0.20**,
+four times v1's, because "Award", "Write", "New" and "Inspired" are title-cased in TOFU
+questions, reached the span extractor, and became one-token aliases that fire on retain
+questions about entirely different authors. The document-frequency check above is the fix,
+and it brought the rate back to the ceiling.
+
+#### Why no amount of further alias work will clear the recall gate
+
+`DETECTOR_V2_GATES.json` reports a **lexical ceiling**: the share of leaking examples that
+contain *any* token of their own concept's aliases. It is **0.215 micro / 0.461 macro**.
+That is the highest recall any alias channel can reach on this corpus, and the gate is
+0.80. The reason is visible in the corpus itself — the unlearned checkpoint leaks the
+CONTENT while garbling the NAME:
+
+    "M Majlar's characters are typically grotesque ..."      (Rajeev Majumdar)
+    "Yon (1900-1966), a renowned leader in ..."              (Hsiao Yun-Hwa)
+
+80% of the leaking strings never name the author correctly. A name-matching detector
+cannot see them, and this is a property of the leakage, not of the implementation.
+
+#### And a pinned sentence encoder does not rescue it either
+
+Probed, not adopted: `sentence-transformers/all-MiniLM-L6-v2` @ `1110a243`, mean-pooled and
+L2-normalised, cosine against the same question prototypes, swept over the same grid
+(`scripts/probe_semantic_encoder.py`, verdict archived as `ENCODER_PROBE.json`). At the FPR
+ceiling of 0.10 the best operating point is 0.575, where development macro recall is
+**0.000** and held-out macro recall is **0.006**. It is not a tuning failure: the
+negatives are retain90 QUESTIONS and the prototypes are forget QUESTIONS, so in an encoder
+that represents text type, every TOFU author question is close to every other one. Recall
+only rises where the FPR is already 0.97.
+
+#### The decision this forces
+
+The gate combination as specified may not be satisfiable by any detector that (a) holds no
+gold answers, (b) is scored for false positives on retain QUESTIONS, and (c) must catch
+name-free content paraphrases. Three of those are load-bearing commitments and one is a
+choice about the negative population. **This needs a design decision, not a threshold.**
+Options, in the order they should be considered:
+
+1. **Change the negative population** to generated retain-cohort TEXT rather than retain
+   questions, so both sides of the FPR are the same kind of object. `generated_clean_fpr`
+   already exists and is measured; note that at 0.446 it is also failing, and that a
+   "clean" generated text about a forgotten author is arguably IN SCOPE — the pinned NLI
+   scorer judges leakage of a specific fact, not whether the text is about the concept.
+   Whether scope detection and leak detection are the same predicate is the question the
+   gate is actually asking, and nobody has answered it.
+2. **Give the detector the concept's own retrieval corpus** — not gold answers, but the
+   question set plus its paraphrases, encoded by a stronger pinned model, with the
+   threshold selected per concept rather than globally.
+3. **Accept that natural-flow detection is out of reach on this checkpoint** and restrict
+   the mechanism claim to `memory_reentry`, where provenance rather than detection is the
+   carrier. This is the only option that permits GPU time now, and it narrows the paper.
+
+Until one is chosen, the honest reading of GU-0030 stands unchanged: the leakage phenomenon
+is established and **the defence has still not been tested under natural flow**.
+
+#### What is ready regardless
+
+* `configs/graph/studies/graphforget_mechanism_v2.yaml` — the six-arm decomposition, plus
+  the single-agent and cross-concept reference arms the composition contrasts need. Each
+  mechanism contrast varies exactly one thing, and a test asserts that.
+* Causal attribution counters on every protected surface: `(surface, attribution, action)`
+  with attribution in {semantic_only, inherited_only, semantic_and_inherited, neither}.
+  `inherited_only_enforcements` is the count no node-local guard could have produced, and
+  it is what would let the next run assign a reduction to propagation.
+* `propagates_scope` is derived from `propagate_forget_ids` instead of being a class
+  constant, and the `Defense` protocol now demands a read-only property so a constant
+  cannot satisfy it. Every graphforget ablation previously reported
+  `propagates_scope: true`, including the two arms whose purpose is not to propagate. The
+  defence's name in the manifest is likewise the ARM's defence config name, not the class's.
+* `rdl graph-bundle` reports `composition_vs_single_supported`,
+  `composition_vs_control_supported`, `defence_supported`, `operationally_eligible` and
+  `publication_ready` separately, and checks cross-run agreement on model and tokenizer
+  commits, study-design hash, scorer version, primary k, detector version and registry
+  fingerprint, plus exactly one run per (challenge, protocol). `ready_challenges` was the
+  misleading name — a challenge could be "ready" while its defence hypothesis was
+  unsupported — and survives as an alias of `operationally_eligible_challenges`.
+
+#### One unrelated crash, found by running the mechanism smoke
+
+`rdl.paths` read git through `subprocess.run(..., text=True)`, which decodes with the
+LOCALE codec. On a cp1252 box a diff containing an em dash — or the `∪` in the propagation
+rule, or a `×` in this file — raises `UnicodeDecodeError` inside subprocess's reader
+thread, where it is swallowed, and `stdout` comes back `None`. The run then dies with
+`'NoneType' object has no attribute 'strip'` **at manifest time, after generation**. Every
+git read now decodes UTF-8 explicitly with `errors="replace"`. It would have killed a GPU
+run after the expensive part, and the only reason it had not yet is that no committed diff
+had contained a non-cp1252 byte at run time.

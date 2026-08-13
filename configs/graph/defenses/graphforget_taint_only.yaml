@@ -1,0 +1,23 @@
+# TAINT-ONLY. Provenance with the semantic detector switched OFF.
+#
+# Nothing is ever scored. A scope enters only where the harness seeded one — the
+# derivation edges of the pre-existing store — and from there it is inherited and enforced
+# on edges, writes, retrieval and the final output.
+#
+# This is the arm that answers the question GU-0030 could not: can tagged provenance
+# contain memory re-entry WITHOUT semantic detection? Under `natural` it should do almost
+# nothing, because there is no seeded parent to inherit from — and that prediction being
+# checkable is the point of running it.
+name: graphforget_taint_only
+kind: graphforget
+semantic_detection: false
+propagate_forget_ids: true
+accumulate_evidence: false
+guard_edges: true
+guard_writes: true
+guard_retrievals: true
+guard_final_output: true
+allow_safe_refusal: true
+# Nothing to rescan with: the detector is off.
+rescan_untagged_memory: false
+description: "Forget-ID inheritance and enforcement with no semantic detection at all"

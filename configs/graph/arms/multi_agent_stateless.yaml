@@ -1,0 +1,8 @@
+# MA-STATELESS. Multi-surface enforcement, no memory of what it has already seen.
+# Prices BOUNDARY COVERAGE against the node-local template baseline.
+name: multi_agent_stateless
+label: MA-STATELESS
+mode: multi_agent
+peer_content: same_concept
+defense: stateless_multi_surface
+description: "same graph, five guarded surfaces, no accumulation and no inheritance"

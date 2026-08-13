@@ -78,6 +78,8 @@ GUARD_INSTRUCTION = (
 
 
 class DragonStyleDefense:
+    # The DEFAULT name; the matched-subset ablation overrides it with its own, so a trace
+    # says which baseline ran rather than which class implements it.
     name = "dragon_style"
     propagates_scope = False
 
@@ -85,6 +87,7 @@ class DragonStyleDefense:
         self,
         *,
         detector: SemanticConceptDetector,
+        name: str | None = None,
         guard_action: Literal["refuse", "guard_prompt", "both"] = "guard_prompt",
         apply_at: Literal["every_agent_input", "external_prompt_only"] = "every_agent_input",
         implementation: Literal["template", "sft_checkpoint"] = "template",
@@ -99,6 +102,8 @@ class DragonStyleDefense:
                 "Set implementation=template and report the baseline as DRAGON-style."
             )
         self.detector = detector
+        if name:
+            self.name = name
         self.guard_action = guard_action
         self.apply_at = apply_at
         self.implementation = implementation
