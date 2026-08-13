@@ -122,6 +122,30 @@ and cannot be reproduced from the SHA it records. If you change source mid-sessi
 report written before the change is at a different commit and the grid must be re-run from
 the start.
 
+### And check that the fix you are paying to test actually landed
+
+A clean tree says nothing about **which** commit is checked out. The 50×32 discovery study
+was launched from a tree that predated a merged reporting fix, so a rented GPU produced
+evidence that had to be reanalysed afterwards (GU-0030). Clean and current are different
+properties, and only one of them is checked by `git status`.
+
+Set `RDL_REQUIRED_COMMIT` to the merge commit the run depends on — the detector-v2 merge
+for a mechanism run — and refuse to start if it is not an ancestor of what is checked out:
+
+```bash
+export RDL_REQUIRED_COMMIT=<merge commit sha>
+
+git fetch origin
+git merge-base --is-ancestor "$RDL_REQUIRED_COMMIT" origin/main \
+  || { echo "RDL_REQUIRED_COMMIT is not on origin/main"; exit 1; }
+git merge-base --is-ancestor "$RDL_REQUIRED_COMMIT" HEAD \
+  || { echo "HEAD predates $RDL_REQUIRED_COMMIT — rent time would buy stale evidence"; exit 1; }
+```
+
+Both directions matter. The first says the commit is really on the mainline and not a
+local branch someone pushed nowhere; the second says this box has it. A run that fails
+either check is spending money to reproduce a bug that is already fixed.
+
 ## Phase C — Day 1–2 reproduction
 
 ```bash
