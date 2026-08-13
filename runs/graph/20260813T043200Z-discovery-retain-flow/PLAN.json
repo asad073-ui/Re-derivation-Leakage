@@ -1,0 +1,20 @@
+{
+  "arms": [
+    "single_agent",
+    "multi_agent_control",
+    "multi_agent_leak",
+    "multi_agent_dragon",
+    "multi_agent_dragon_subsets",
+    "multi_agent_graphforget"
+  ],
+  "challenges": [
+    "natural"
+  ],
+  "n_items": 45,
+  "n_samples": 32,
+  "planned_generations_total": 54720,
+  "planned_graph_generations": 37440,
+  "planned_probe_generations": 17280,
+  "planned_trajectories": 8640,
+  "topology": "diamond5"
+}
