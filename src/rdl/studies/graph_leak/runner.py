@@ -252,6 +252,7 @@ class GraphRunner:
             calibration=self.calibration,
             status=self.calibration_status["effective_status"],
         )
+        self.gate_artifact = self._load_gate_artifact()
         self.arm_plans: list[ArmPlan] = build_arm_runtime(
             self.cfg, self.cfg.topology, self.detector, protocol=self.protocol
         )
@@ -278,6 +279,104 @@ class GraphRunner:
             ingest_forget_set=self.cfg.study.memory.ingest_forget_set,
         )
         self._baseline = self._base_store.snapshot()
+
+    def _load_gate_artifact(self) -> dict:
+        """Check the detector GATE artefact the study pins, before anything generates.
+
+        Distinct from the calibration artefact. The gates record how a threshold was
+        SELECTED and whether the detector cleared its bounds; a study running a
+        gate-selected threshold must be able to show the measurement behind it, and that
+        measurement has to be about the detector this run actually builds.
+
+        Two tiers, on purpose:
+
+        * IDENTITY is always enforced. If the study pins an artefact whose threshold or
+          detector version disagrees with what this run constructed, the file is not
+          evidence for this run's operating point and the run refuses. That is the
+          GU-0033 defect (0.65 runtime against a 0.90 measurement) made unrepeatable.
+
+        * REGISTRY COVERAGE is enforced only on a `reportable` profile. The CPU stub
+          cohort legitimately produces a different registry, and blocking it would break
+          the offline gate for no scientific gain. On a profile whose numbers are meant
+          to be read, a mismatch means the gate artefact describes a different registry
+          than the one being guarded, so the run refuses rather than shipping a
+          traceable-looking link that does not hold (GU-0035).
+        """
+        spec = self.cfg.study.detector
+        if not spec.gate_artifact:
+            return {"configured": False}
+        from ...paths import repo_root
+
+        path = Path(spec.gate_artifact)
+        if not path.is_absolute():
+            path = repo_root() / path
+        if not path.exists():
+            raise ValueError(
+                f"detector.gate_artifact points at {path}, which does not exist. A "
+                "threshold whose supporting measurement is missing is an unverifiable "
+                "number."
+            )
+        raw = path.read_bytes()
+        payload = json.loads(raw.decode("utf-8"))
+        digest = hashlib.sha256(raw).hexdigest()
+
+        if float(payload.get("threshold", -1.0)) != float(spec.threshold):
+            raise ValueError(
+                f"{path} was measured at threshold {payload.get('threshold')} but this "
+                f"study runs at {spec.threshold}. Every gate number in that artefact — "
+                "recall, precision, the generated-clean FPR, the lexical ceiling — "
+                "describes a different operating point, so it is not evidence for this "
+                "run."
+            )
+        recorded_version = str(payload.get("detector_version", ""))
+        if recorded_version and recorded_version != self.detector.version:
+            raise ValueError(
+                f"{path} describes detector '{recorded_version}' but this run built "
+                f"'{self.detector.version}'."
+            )
+
+        policy_fingerprint = self.forget_policy.fingerprint()
+        gate_policy = (payload.get("policy_cohort") or {}).get("fingerprint")
+        registry_fingerprint = self.registry.fingerprint()
+        gate_registry = payload.get("registry_fingerprint")
+        covers = str(gate_policy) == policy_fingerprint and (
+            not gate_registry or str(gate_registry) == registry_fingerprint
+        )
+        if not covers:
+            reason = (
+                f"gate artefact was fitted on forget policy "
+                f"'{(payload.get('policy_cohort') or {}).get('split')}' "
+                f"({str(gate_policy)[:12]}, registry {str(gate_registry)[:12]}) but this "
+                f"run's policy is '{self.forget_policy.split}' "
+                f"({policy_fingerprint[:12]}, registry {registry_fingerprint[:12]})"
+            )
+            if self.cfg.profile.reportable:
+                raise ValueError(
+                    f"{reason}.\nA detector gate is a measurement OF A REGISTRY. Linking "
+                    "one fitted on different concepts would make the study's own evidence "
+                    "for its operating point describe a system that did not run. Set "
+                    "`forget_policy_phase` to the split the artefact names, or re-fit the "
+                    "gates on this policy with `rdl detector-gates`."
+                )
+            log.warning("gate artefact does not cover this run's registry: %s", reason)
+        return {
+            "configured": True,
+            "path": str(spec.gate_artifact),
+            "sha256": digest,
+            "threshold": payload.get("threshold"),
+            "detector_version": recorded_version,
+            "policy_split": (payload.get("policy_cohort") or {}).get("split"),
+            "policy_fingerprint": gate_policy,
+            "registry_fingerprint": gate_registry,
+            "covers_forget_policy": covers,
+            "all_gates_passed": payload.get("all_gates_passed"),
+            "failed_gates": payload.get("failed_gates", []),
+            "note": (
+                "the gates this study's threshold was selected under. `all_gates_passed: "
+                "false` is the honest state of Detector v2 and is why `detector.status` is "
+                "diagnostic — the operating point is known, and known not to be good enough"
+            ),
+        }
 
     def _load_calibration(self) -> tuple[dict | None, dict]:
         """The verified detector-calibration artefact, or ``None`` for a diagnostic run.
@@ -966,6 +1065,11 @@ class GraphRunner:
                 "covers_forget_policy"
             ],
             "detector_calibration_note": self.calibration_status["reason"],
+            # The GATE artefact behind the threshold, checked before generation started.
+            # Separate from calibration: it records how the operating point was SELECTED
+            # and whether the detector cleared its bounds, which a diagnostic study still
+            # has to be able to show (GU-0035).
+            "detector_gates": self.gate_artifact,
             # The artefact behind the status, verbatim minus the sweep. `null` means the
             # run is diagnostic and says so; it is never absent.
             "detector_calibration": (

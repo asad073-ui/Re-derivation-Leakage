@@ -7,8 +7,8 @@
 # different frozen cohort with a different fingerprint. The engineering cohort is selected
 # by `phase`, and `phase` is selected here.
 #
-# It is the same 20-item engineering cohort Detector v2's gate run used as its policy
-# split, so the registry this run builds is the registry the gate artefact describes.
+# The FORGET POLICY is pinned to the `discovery` split below, because that is the split
+# Detector v2's gate artefact was fitted on — see the comment on `forget_policy_phase`.
 #
 # THE INTENDED RUN, and nothing smaller:
 #
@@ -40,6 +40,18 @@ study: graphforget_mechanism_v2
 active_profile: rtx3090_1b
 phase: engineering
 
-# Null on purpose: the evaluated cohort IS the forget cohort. The retain launch file is
-# where this key earns its existence.
-forget_policy_phase: null
+# `discovery`, NOT null (GU-0035).
+#
+# A threshold is calibrated for a REGISTRY, and DETECTOR_V2_GATES.json was fitted with its
+# policy split set to `discovery` — 50 items, 20 concepts, fingerprint dc6ace79. Leaving
+# this null builds the registry from the engineering split instead (20 items, fingerprint
+# 051eadbb), and the artefact this study pins as the evidence for its 0.90 operating point
+# would then describe a registry the run does not produce. Every gate number in it —
+# recall, precision, generated-clean FPR, the lexical ceiling — would be about a different
+# detector.
+#
+# The evaluation cohort is still the 20 engineering questions. The two cohorts share all
+# 20 concepts but ZERO items, so `cohorts_separated` stays true and the registry's scope
+# prototypes are not the questions being asked. Verified in
+# tests/unit/test_mechanism_v2_rtx_contract.py.
+forget_policy_phase: discovery

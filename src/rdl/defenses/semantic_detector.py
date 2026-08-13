@@ -119,6 +119,10 @@ class SemanticConceptDetector:
             "version": self.version,
             "backbone": self.backbone,
             "threshold": self.threshold,
+            # Recorded so a later reanalysis phase can rebuild this exact detector from
+            # the manifest alone. `rdl graph-detector-recall` does, and before GU-0035 it
+            # could not: it guessed a threshold and measured a detector that never ran.
+            "alias_weight": self.alias_weight,
             "calibrated": self.calibrated,
             "calibration_id": self.calibration_id,
             "n_concepts": len(self.registry),

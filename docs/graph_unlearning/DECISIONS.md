@@ -994,3 +994,72 @@ baseline, nonzero in the treatment, nonzero downstream `inherited_only` interven
 that the quarantine pair really is the structurally-null one. If those hold and M5 is null
 on the GPU, that is a legitimate negative result about forward propagation. If they do not
 hold, M5 is not evidence of anything.
+
+### GU-0035 — 2026-08-13 — The operating point survived generation and died in reanalysis
+
+Three defects found on `main` at 83c8d51, after PR #34 landed. None would have stopped the
+GPU run; all three would have made part of its report wrong.
+
+#### 1. Detector recall would have been measured at 0.65
+
+`detector_recall.py` reconstructed the detector from the CALIBRATION artefact:
+
+    calibration = manifest.get("detector_calibration") or {}
+    threshold = float(calibration.get("threshold") or 0.65)
+
+A diagnostic study has no calibration artefact **by definition**, so on exactly the runs
+this command exists for, `calibration` is `{}` and the threshold falls back to a literal
+0.65 — while generation ran at 0.90. The operating-point inconsistency GU-0033 closed,
+reappearing one phase later and after the GPU had been paid for.
+
+The detector is now rebuilt from `RUN_MANIFEST.json["detector"]`, which is written before
+the first model call. A run whose manifest lacks that block is refused rather than
+defaulted, checked first because it is the cheapest check and its failure invalidates
+everything downstream. The rebuilt registry fingerprint and detector version must match
+what the run recorded, or the command refuses: recall measured against a different
+registry is a number about a different system. `alias_weight` was added to the detector's
+`to_dict` — threshold alone does not determine the scores.
+
+#### 2. The pinned gate artefact described a registry the run does not build
+
+The engineering launch left `forget_policy_phase: null`, so its registry came from the
+`engineering` split (20 items, `051eadbb`). `DETECTOR_V2_GATES.json` was fitted with its
+policy split set to `discovery` (50 items, `dc6ace79`). The launch file's comment claiming
+the two matched was simply false, and every gate number in the artefact — recall,
+precision, generated-clean FPR, lexical ceiling — described a detector the run would not
+have built.
+
+Both RTX launches now pin `forget_policy_phase: discovery`. The evaluation cohort stays
+the 20 engineering questions; the two cohorts share all 20 concepts and **zero items**, so
+`cohorts_separated` still holds and the registry's prototypes are not the questions being
+asked.
+
+`GraphRunner._load_gate_artifact` now checks the artefact before anything generates, in
+two tiers. IDENTITY — threshold and detector version — is always enforced, which is the
+0.65-against-a-0.90-measurement defect made unrepeatable. REGISTRY COVERAGE is enforced
+only on a `reportable` profile: the CPU stub legitimately produces a different registry
+and blocking it would break the offline gate for no scientific gain, so it warns there and
+refuses on a profile whose numbers are meant to be read. The artefact's sha256, coverage
+and failed-gate list go into the manifest as `detector_gates`.
+
+#### 3. One validity flag was answering two different questions
+
+`semantic_report_valid` requires a calibrated detector, and Detector v2 is explicitly
+diagnostic, so it is false by construction on every run of this study. That is correct for
+M1–M3 and for any natural semantic-defence claim — those depend on the detector's
+operating point.
+
+It is not correct for M5. **Both** of that contrast's arms run with semantic detection
+switched off; the only thing that varies is whether a Forget-ID is forwarded onto a
+derivative. A failing detector gate says nothing about whether that measurement is
+readable. Leaving the two fused would bury a valid mechanism result — or, if the flag were
+later relaxed to avoid that, dress a detector claim in a mechanism result's clothes.
+
+`mechanism_measurement_valid` is now its own verdict, with its own blocker list: the M5
+pair present, M5 on a primary surface, the pinned scorer, complete samples, monotone
+curves, no primary-k substitution, a reportable profile, cohorts recorded separately, the
+no-forward arm reporting `propagates_scope: false` and the taint-forward arm `true`, and a
+gate artefact that covers this run's registry. `detector_calibration_applicable: false` is
+stated explicitly beside it. `publication_ready` is unchanged and stays false: the
+source-quarantine arm's refusal and collaboration rates are an operational failure, not
+something this flag waives.
