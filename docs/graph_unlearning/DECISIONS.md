@@ -563,3 +563,64 @@ propagation is, because there is nothing for either to propagate; the natural-fl
 being identical across MA-LEAK, DRAGON-style, matched-subset and GraphForget on every
 surface is the signature of exactly that. The fix is detection, not the graph, and this
 command is what makes that diagnosable instead of inferred.
+
+#### What it measured, on the archived 50x32 evidence
+
+| Probe | Detector fire rate |
+|---|---|
+| Forget-policy questions | **1.000** (20/20) |
+| Calibration positives (held-out questions) | **0.950** — reproduces the recorded artefact exactly |
+| Gold answers | **1.000** (20/20) |
+| **Actually-leaking generated text, `multi_agent_leak`, natural flow** | **0.000** (0 / 380) |
+
+False alarms on generated *clean* text run at 0.032, so the detector is firing — just
+never on what leaked. Recall is 0.000 on all four generated surfaces separately
+(120 agent messages, 108 edge payloads, 120 stored nodes, 32 final answers).
+
+The cause is concrete and small. `ConceptRegistry.from_questions` gives author-0000
+**three** scope prototypes and **one** alias, `"Hsiao Yun-Hwa's"` — the possessive form
+lifted out of the question, with no bare full name, no surname, no given name and no
+partial. Downstream agents abbreviate. Every missed leak in the sample is of the form
+
+    "Yun's father's profession as a civil engineer ..."     score 0.500, threshold 0.65
+
+against prototypes that all read "Hsiao Yun-Hwa's father". The gold answer scores 0.790
+because it names the author in full; the paraphrase three hops later does not.
+
+So the reported study is best read as: **the leakage phenomenon is established, and the
+defence was never actually tested**, because the detector it shares with the baseline
+saw none of the natural leakage. That is a detection-coverage defect, not a negative
+result about provenance propagation.
+
+#### And it separates GraphForget's two mechanisms, which is the useful part
+
+Recall on generated leakage differs by challenge, and it tracks the defence's success
+exactly:
+
+| Challenge | Detector recall on generated leaks | GraphForget vs MA-LEAK on the challenge's primary surface |
+|---|---|---|
+| `natural` | **0.000** (0 / 380) | no reduction — every arm identical |
+| `memory_reentry` | **0.086** (113 / 1314) | **−0.40 total persistent, −0.32 causal readback**, both intervals excluding zero |
+
+GraphForget contains memory re-entry while its semantic detector is still missing 91% of
+the leaking text. It cannot be the detector doing that work. What is left is the part that
+does not depend on recognising content: **Forget-ID taint inherited through provenance**,
+which is carried by the seeded store's derivation edges and enforced on retrieval, writes
+and edges regardless of whether anything semantic fires. Under `natural` there is no
+seeded parent to inherit from, so taint has no purchase and the defence falls back on a
+detector that fires on nothing.
+
+That is the design conclusion, and it is measured rather than argued:
+
+* **taint propagation works** and is the mechanism worth keeping;
+* **semantic detection is the binding constraint** and is what the next change must fix;
+* the two must be **ablated apart** — semantic-only, taint-only, taint+semantic — because
+  the study so far reports their sum and attributes it to the wrong half.
+
+It is also, usefully, **fixable and measurable entirely on CPU**. `DETECTOR_RECALL.json`
+turns the 380 archived missed strings into a fixed regression target: alias expansion and
+recalibration can be developed against them with no GPU at all, and the natural-flow
+result can be predicted before any instance is rented. The next GPU run should be
+purchased only once recall on that archived set is high and the held-out FPR still clears
+0.10 — those two together are what make a graph-versus-node-local comparison meaningful
+at all.
