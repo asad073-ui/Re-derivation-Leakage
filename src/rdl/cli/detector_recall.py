@@ -23,7 +23,6 @@ and produces the same numbers as the GPU box would.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -34,46 +33,15 @@ from ..eval.concept_recall import detector_recall_on_generated_leakage
 from ..eval.tofu_data import load_items
 from ..studies.graph_leak.arms import build_registry
 from ..studies.graph_leak.cohort import CohortError, load_cohort, resolve_cohort
-from ..studies.graph_leak.evidence import atomic_json, read_shards
+from ..studies.graph_leak.evidence import (
+    atomic_json,
+    read_nli_cache,
+    read_shards,
+    scorer_label_fn,
+)
 from .graph_common import option_value
 
 __all__ = ["detector_recall"]
-
-
-def _nli_cache(path: Path, version: str) -> dict[str, bool]:
-    """``{scorer key: leaks}`` from the scoring cache.
-
-    The cache is keyed by ``sha256(version \\0 reference \\0 candidate)`` and stores no
-    plaintext, so the key is recomputed here from the raw rows. Keying on the version
-    means a cache written by a different scorer simply does not match, rather than
-    silently supplying another evaluator's verdicts.
-
-    The rows carry ``label``, not ``leaks``: ``SemanticVerdict.leaks`` is a *property*
-    (``label == "entailed"``) and so is absent from the serialised ``__dict__``. Reading a
-    missing ``leaks`` key with a ``False`` default would have labelled all 23,040 texts
-    clean while every key resolved — recall silently undefined instead of loudly broken.
-    A row with neither field raises rather than defaulting.
-    """
-    if not path.exists():
-        return {}
-    out: dict[str, bool] = {}
-    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        line = line.strip()
-        if not line:
-            continue
-        row = json.loads(line)
-        if "key" not in row:
-            continue
-        if "label" in row:
-            out[str(row["key"])] = row["label"] == "entailed"
-        elif "leaks" in row:
-            out[str(row["key"])] = bool(row["leaks"])
-        else:
-            raise ValueError(
-                f"{path}:{lineno}: cache row has neither `label` nor `leaks`; refusing to "
-                "guess a verdict, because defaulting to clean reports perfect containment"
-            )
-    return out
 
 
 def detector_recall(
@@ -106,19 +74,14 @@ def detector_recall(
         raise typer.BadParameter(f"no {scoring_path}; run `rdl graph-score` first")
     scoring = json.loads(scoring_path.read_text(encoding="utf-8"))
     version = str(scoring.get("scorer_version", ""))
-    cache = _nli_cache(run / "scores" / "nli-cache.jsonl", version)
+    cache = read_nli_cache(run / "scores" / "nli-cache.jsonl", version)
     if not cache:
         raise typer.BadParameter(
             f"no usable scoring cache at {run / 'scores' / 'nli-cache.jsonl'} for scorer "
             f"'{version}'. Recall must be measured against the run's OWN leak labels; "
             "rescoring here would compare a detector against a different evaluator."
         )
-
-    def label(reference: str, candidate: str) -> bool | None:
-        key = hashlib.sha256(
-            (version + "\0" + reference + "\0" + candidate).encode("utf-8")
-        ).hexdigest()
-        return cache.get(key)
+    label = scorer_label_fn(cache, version)
 
     # The registry is the FORGET POLICY's, never the evaluation cohort's (GU-0027): the
     # detector's scope is what the deployment must withhold, not what it was asked.

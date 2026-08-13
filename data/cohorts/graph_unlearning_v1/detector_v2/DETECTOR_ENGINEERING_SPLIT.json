@@ -1,0 +1,81 @@
+{
+  "audit_only_concepts": [
+    "tofu-forget10-author-0008",
+    "tofu-forget10-author-0011",
+    "tofu-forget10-author-0014",
+    "tofu-forget10-author-0015",
+    "tofu-forget10-author-0017"
+  ],
+  "content_sha256": "213fa367a210cb352240828951c562c83eae5f8d60476e1b8f9702aeeae953ab",
+  "corpus_id": "generated_detector_engineering_v1",
+  "corpus_sha256": "8e3154bc4445822676a60eb50e1a8731155a6b6fefe59d0abc0d1b9a04fd0e27",
+  "counts": {
+    "n_audit_only_concepts": 5,
+    "n_development_concepts": 8,
+    "n_development_examples": 347,
+    "n_heldout_concepts": 5,
+    "n_heldout_examples": 144
+  },
+  "development_concepts": [
+    "tofu-forget10-author-0001",
+    "tofu-forget10-author-0002",
+    "tofu-forget10-author-0003",
+    "tofu-forget10-author-0004",
+    "tofu-forget10-author-0006",
+    "tofu-forget10-author-0009",
+    "tofu-forget10-author-0010",
+    "tofu-forget10-author-0019"
+  ],
+  "disjointness": {
+    "concept_overlap": 0,
+    "normalized_text_overlap": 0,
+    "trajectory_overlap": 0
+  },
+  "heldout_concepts": [
+    "tofu-forget10-author-0000",
+    "tofu-forget10-author-0005",
+    "tofu-forget10-author-0007",
+    "tofu-forget10-author-0013",
+    "tofu-forget10-author-0018"
+  ],
+  "heldout_quota_per_stratum": {
+    "10-19": 0,
+    "20+": 3,
+    "5-9": 2
+  },
+  "min_examples_for_gate": 5,
+  "normalization_version": "detector-corpus-normalize-v1:nfkc+rdl.memory.index.normalise_text",
+  "note": "fresh concepts, frozen before anyone inspected them, are still required for any publication claim. This split does not provide them.",
+  "publication_validation": false,
+  "schema": "graph-detector-engineering-split-v1",
+  "split_id": "generated_detector_engineering_v1",
+  "split_role": "engineering_holdout",
+  "split_unit": "concept",
+  "strata": {
+    "10-19": [
+      "tofu-forget10-author-0004"
+    ],
+    "20+": [
+      "tofu-forget10-author-0000",
+      "tofu-forget10-author-0001",
+      "tofu-forget10-author-0002",
+      "tofu-forget10-author-0003",
+      "tofu-forget10-author-0005",
+      "tofu-forget10-author-0006",
+      "tofu-forget10-author-0018",
+      "tofu-forget10-author-0019"
+    ],
+    "5-9": [
+      "tofu-forget10-author-0007",
+      "tofu-forget10-author-0009",
+      "tofu-forget10-author-0010",
+      "tofu-forget10-author-0013"
+    ]
+  },
+  "stratified_by": "n_examples",
+  "usage": {
+    "audit_only": "reported, never a pass/fail gate",
+    "heldout_evaluation": "once, after the detector is frozen",
+    "threshold_selection": "development_concepts only"
+  }
+}

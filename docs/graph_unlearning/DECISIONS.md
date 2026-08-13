@@ -612,10 +612,22 @@ detector that fires on nothing.
 
 That is the design conclusion, and it is measured rather than argued:
 
-* **taint propagation works** and is the mechanism worth keeping;
+* the memory-reentry result **implicates provenance-based enforcement**, but boundary
+  coverage and Forget-ID inheritance remain **confounded**: GraphForget guards five
+  surfaces the node-local baseline does not guard at all, and it inherits Forget-IDs, and
+  the archived study varies both at once. Causal attribution requires matched
+  **semantic-only, taint-only and stateless multi-surface** ablations — see GU-0031, which
+  supersedes the sentence this bullet replaced;
 * **semantic detection is the binding constraint** and is what the next change must fix;
 * the two must be **ablated apart** — semantic-only, taint-only, taint+semantic — because
   the study so far reports their sum and attributes it to the wrong half.
+
+> **Correction, 2026-08-13 (GU-0031).** This bullet originally read "**taint propagation
+> works** and is the mechanism worth keeping". That over-claimed. The evidence shows a
+> reduction under `memory_reentry` that a 0.086-recall detector cannot explain on its own;
+> it does not show which of the non-semantic mechanisms produced it, because the archived
+> study has no arm that guards multiple surfaces *without* inheriting Forget-IDs. The
+> corrected wording is above and the ablation that would settle it is GU-0031.
 
 It is also, usefully, **fixable and measurable entirely on CPU**. `DETECTOR_RECALL.json`
 turns the 380 archived missed strings into a fixed regression target: alias expansion and
@@ -624,3 +636,67 @@ result can be predicted before any instance is rented. The next GPU run should b
 purchased only once recall on that archived set is high and the held-out FPR still clears
 0.10 — those two together are what make a graph-versus-node-local comparison meaningful
 at all.
+
+---
+
+### GU-0031 — 2026-08-13 — The detector corpus is frozen before the detector is fitted
+
+GU-0030 established that the defence was never tested: detector recall on generated
+leakage was 0.000 under `natural` and 0.086 under `memory_reentry`, against 0.950 on
+forget questions. The fix is a better detector. The hazard the fix creates is that the
+moment text is used to fit a detector, it stops being evidence, and "held out" becomes a
+claim nobody can check after the fact. So the corpus and its split are frozen **first**,
+in their own commit, before any of detector v2 exists.
+
+`rdl graph-detector-corpus` builds both artefacts deterministically from committed
+evidence and rescores nothing:
+
+    data/cohorts/graph_unlearning_v1/detector_v2/DETECTOR_GENERATED_CORPUS.json
+    data/cohorts/graph_unlearning_v1/detector_v2/DETECTOR_ENGINEERING_SPLIT.json
+
+**What is eligible.** `multi_agent_leak` rows only, on the four generated surfaces, from
+`natural` and `memory_reentry`, labelled leaking by the run's own pinned NLI scorer read
+out of its cache. Guarded arms are excluded because enforcement thins their evidence with
+the mechanism under study; `split_clues` and `tool_reentry` are excluded because both are
+refusal-confounded (96% and 100%) and record the harness's own gold-derived text;
+harness-authored injection text and any text carrying a gold answer verbatim are excluded
+because a detector fitted on gold answers has memorised what the system claims to have
+forgotten. `memory_reentry` examples are eligible — the MODEL produced them — and every
+one records `injected_memory_origin: true` so the origin never has to be inferred.
+
+**What that yields.** 502 distinct `(concept, normalized_text)` examples over 18 of the 20
+forget-policy concepts; 13 concepts have at least five. Pooling the two challenges is what
+makes the corpus usable: `natural` alone gives seven concepts with 82% of the mass on one
+of them. It is concentrated even so — author-0003 holds 46%, Herfindahl 0.245 — which is
+why the gates are **macro over concepts**, not micro over examples.
+
+**How it splits.** By concept, never by text. An alias channel fitted on "Yun's father"
+would trivially generalise to another sentence about the same author, and a text-level
+split would report that as generalisation. The 13 gateable concepts are stratified by
+example count (20+, 10-19, 5-9), apportioned by largest remainder, and cut 8 development /
+5 held-out; the largest concept in each stratum anchors development. The other five
+concepts are `audit_only`: reported, never a pass/fail gate, because a concept with three
+examples cannot fail a recall gate for a reason anyone would believe. Stratification uses
+example counts **only** — never a detector score, which would select the held-out concepts
+using the thing being tested.
+
+**What it is not.** Not publication validation. These twenty authors have been inspected
+repeatedly. Both artefacts carry `split_role: engineering_holdout` and
+`publication_validation: false`, and the held-out half bounds engineering generalisation
+and nothing else. A publication claim needs concepts frozen before anyone looked, which is
+the H100 critical path and is not resolved by this entry.
+
+**What makes the freeze checkable.** Each artefact carries a `content_sha256` over its own
+canonical content, and the split additionally names the corpus hash it was cut from. The
+tests assert that changing a source row, a normalized text, a concept assignment or a
+split membership moves the hash. `--verify` re-derives both from the same runs and
+compares, so a reviewer checks the freeze rather than trusting it. Every source run is
+recorded with its shard-ledger hash, scorer version and forget-policy fingerprint —
+the raw shards stay local, and the ledger hash is what lets a box that does not hold them
+still say which evidence this was built from. Source runs that disagree on the forget
+policy are refused outright.
+
+The mechanism decomposition GU-0030's corrected bullet calls for lives in a separate
+study, `graphforget_mechanism_v2`, and not as new arms bolted onto `graph_unlearning_v1`:
+that study and its 50×32 evidence are frozen, and adding arms to it would present a
+different experiment as the same one (GU-0001's rule, applied within the family).

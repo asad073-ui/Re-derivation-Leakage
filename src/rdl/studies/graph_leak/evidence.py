@@ -45,7 +45,9 @@ __all__ = [
     "ShardWriter",
     "TrajectoryKey",
     "completed_keys",
+    "read_nli_cache",
     "read_shards",
+    "scorer_label_fn",
     "verify_ledger",
     "verify_shards",
 ]
@@ -309,6 +311,59 @@ def read_shards(directory: Path, *, prefix: str = "part") -> Iterator[dict]:
 
 def completed_keys(directory: Path, *, prefix: str = "part") -> set[TrajectoryKey]:
     return {_key(row) for row in read_shards(directory, prefix=prefix)}
+
+
+def read_nli_cache(path: Path, version: str) -> dict[str, bool]:
+    """``{scorer key: leaks}`` from a run's scoring cache.
+
+    The cache is keyed by ``sha256(version \\0 reference \\0 candidate)`` and stores no
+    plaintext, so the key is recomputed by the caller from the raw rows. Keying on the
+    version means a cache written by a different scorer simply does not match, rather than
+    silently supplying another evaluator's verdicts.
+
+    The rows carry ``label``, not ``leaks``: ``SemanticVerdict.leaks`` is a *property*
+    (``label == "entailed"``) and so is absent from the serialised ``__dict__``. Reading a
+    missing ``leaks`` key with a ``False`` default would have labelled all 23,040 texts
+    clean while every key resolved — recall silently undefined instead of loudly broken.
+    A row with neither field raises rather than defaulting.
+
+    Shared by ``rdl graph-detector-recall`` and ``rdl graph-detector-corpus`` so that the
+    labels the corpus is FROZEN on are the same labels recall is MEASURED against. Two
+    implementations of this could drift, and a corpus built on one evaluator's verdicts
+    while recall is scored on another's is a comparison of nothing.
+    """
+    if not path.exists():
+        return {}
+    out: dict[str, bool] = {}
+    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        line = line.strip()
+        if not line:
+            continue
+        row = json.loads(line)
+        if "key" not in row:
+            continue
+        if "label" in row:
+            out[str(row["key"])] = row["label"] == "entailed"
+        elif "leaks" in row:
+            out[str(row["key"])] = bool(row["leaks"])
+        else:
+            raise ValueError(
+                f"{path}:{lineno}: cache row has neither `label` nor `leaks`; refusing to "
+                "guess a verdict, because defaulting to clean reports perfect containment"
+            )
+    return out
+
+
+def scorer_label_fn(cache: dict[str, bool], version: str):
+    """``(reference, candidate) -> True leaks / False clean / None never judged``."""
+
+    def label(reference: str, candidate: str) -> bool | None:
+        key = hashlib.sha256(
+            (version + "\0" + reference + "\0" + candidate).encode("utf-8")
+        ).hexdigest()
+        return cache.get(key)
+
+    return label
 
 
 def verify_ledger(directory: Path, *, prefix: str = "part") -> dict:

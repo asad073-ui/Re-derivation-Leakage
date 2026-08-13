@@ -6,6 +6,7 @@ import typer
 
 from .bundle_graph import bundle_graph
 from .calibrate_detector import calibrate_detector
+from .detector_corpus import detector_corpus
 from .detector_recall import detector_recall
 from .discover_checkpoints import discover_checkpoints
 from .env_check import env_check
@@ -49,8 +50,11 @@ app.command("graph-report")(report_graph)
 app.command("graph-finalize")(finalize_graph)
 app.command("graph-freeze-cohort")(freeze_graph_cohort)
 app.command("graph-calibrate")(calibrate_detector)
-# Reanalysis phases (GU-0030). Both read committed evidence and generate nothing.
+# Reanalysis phases (GU-0030, GU-0031). All three read committed evidence and generate
+# nothing: recall diagnoses the detection gap, the corpus freezes what a fix may be
+# fitted on, and the bundle links a study's runs into one verdict.
 app.command("graph-detector-recall")(detector_recall)
+app.command("graph-detector-corpus")(detector_corpus)
 app.command("graph-bundle")(bundle_graph)
 
 

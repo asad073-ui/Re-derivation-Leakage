@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from rdl.cli.detector_recall import _nli_cache
 from rdl.eval.concept_recall import detector_recall_on_generated_leakage, generated_texts
+from rdl.studies.graph_leak.evidence import read_nli_cache
 
 ANSWER = "Hsiao Yun-Hwa was born in Taipei."
 
@@ -96,7 +96,7 @@ def test_cache_rows_are_read_from_label_not_a_missing_leaks_field(tmp_path):
         + "\n",
         encoding="utf-8",
     )
-    cache = _nli_cache(path, "any-version")
+    cache = read_nli_cache(path, "any-version")
     assert cache == {"k-entailed": True, "k-unrelated": False, "k-partial": False}
 
 
@@ -104,4 +104,4 @@ def test_a_cache_row_with_no_verdict_field_raises(tmp_path):
     path = tmp_path / "nli-cache.jsonl"
     path.write_text(json.dumps({"key": "k", "score": 0.9}) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="neither `label` nor `leaks`"):
-        _nli_cache(path, "any-version")
+        read_nli_cache(path, "any-version")
