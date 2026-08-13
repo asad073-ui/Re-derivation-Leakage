@@ -63,6 +63,16 @@ def detector_recall(
     if not manifest_path.exists():
         raise typer.BadParameter(f"no RUN_MANIFEST.json under {run}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    # Checked FIRST, before cohorts, shards or the scoring cache are touched: it is the
+    # cheapest check and the one whose failure invalidates everything downstream.
+    recorded = manifest.get("detector") or {}
+    if "threshold" not in recorded:
+        raise typer.BadParameter(
+            f"{manifest_path} has no `detector` block, so the threshold this run actually "
+            "generated at is unknown. Recall measured at a guessed threshold describes a "
+            "detector that never ran. Re-run `rdl graph-run` on this revision, or measure "
+            "recall on a run whose manifest records its detector."
+        )
     if not (run / "generations").is_dir():
         raise typer.BadParameter(
             f"no generations under {run}. This command reads the raw shards; restore the "
@@ -106,15 +116,44 @@ def detector_recall(
     concept_of = {item.item_id: item.concept_id for item in policy_cohort.items}
     registry = build_registry(policy_items, concept_of=lambda i: concept_of[i])
 
+    # THE RUN'S OWN DETECTOR, reconstructed from what the run recorded (GU-0035).
+    #
+    # This used to read `detector_calibration` and fall back to a literal 0.65 when it was
+    # absent. A DIAGNOSTIC study has no calibration artefact by definition, so on exactly
+    # the runs this command exists for, recall was measured at 0.65 against generations
+    # produced at 0.90 — the operating-point inconsistency the threshold fix was supposed
+    # to eliminate, reappearing one phase later and after the GPU had been paid for.
+    #
+    # `manifest["detector"]` is written before the first model call and is the authority.
+    # A run too old to carry it is refused rather than defaulted (checked above): a recall
+    # number at an unknown threshold is not a measurement.
     calibration = manifest.get("detector_calibration") or {}
-    threshold = float(calibration.get("threshold") or 0.65)
+    threshold = float(recorded["threshold"])
     detector = SemanticConceptDetector(
         registry,
         threshold=threshold,
-        alias_weight=float(calibration.get("detector_alias_weight", 1.0)),
-        calibrated=bool(calibration),
-        calibration_id=calibration.get("calibration_id"),
+        alias_weight=float(recorded.get("alias_weight", 1.0)),
+        calibrated=bool(recorded.get("calibrated", False)),
+        calibration_id=recorded.get("calibration_id"),
     )
+    # The registry is rebuilt here from the forget-policy cohort, so it must come out
+    # byte-identical to the one that ran. If it does not, the detector being measured is
+    # not the detector that generated, and every recall number below is about a different
+    # system — which is precisely the class of error this command is meant to expose.
+    rebuilt = registry.fingerprint()
+    expected = recorded.get("registry_fingerprint")
+    if expected and rebuilt != expected:
+        raise typer.BadParameter(
+            f"rebuilt concept registry {rebuilt[:12]} does not match the one this run "
+            f"used ({str(expected)[:12]}). Recall would be measured against a different "
+            "scope than the run enforced. The usual cause is a changed forget-policy "
+            "cohort or a detector/registry version bump since the run."
+        )
+    if detector.version != recorded.get("version", detector.version):
+        raise typer.BadParameter(
+            f"reconstructed detector '{detector.version}' does not match the run's "
+            f"'{recorded.get('version')}'"
+        )
 
     def detect(texts):
         results = detector.score_batch(list(texts))
@@ -150,6 +189,17 @@ def detector_recall(
             "protocol": manifest.get("protocol"),
             "detector_version": detector.version,
             "threshold": threshold,
+            # Carried so a reader — and the run gate — can check without reopening the
+            # manifest that recall was measured on the detector that actually generated.
+            "registry_fingerprint": rebuilt,
+            "manifest_detector_version": recorded.get("version"),
+            "manifest_threshold": recorded.get("threshold"),
+            "operating_point_note": (
+                "threshold, detector version and registry fingerprint are reconstructed "
+                "from RUN_MANIFEST.json['detector'], not from a calibration artefact. A "
+                "diagnostic run has no artefact, and defaulting there measured recall at "
+                "an operating point the run never used (GU-0035)."
+            ),
             "scorer_version": version,
             "n_cached_verdicts": len(cache),
             "calibration_recall_on_questions": calibration.get("recall"),

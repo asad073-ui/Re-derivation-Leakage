@@ -327,6 +327,69 @@ def report_graph(
         and bool(manifest.get("forget_policy_fingerprint"))
     )
 
+    # ---- the MECHANISM verdict, which detector calibration does not bear on ----------
+    #
+    # `semantic_report_valid` requires a calibrated detector, and Detector v2 is
+    # explicitly diagnostic, so it is false by construction on every run of this study.
+    # That is correct for M1-M3 and for any natural semantic-defence claim: those depend
+    # on the detector's operating point.
+    #
+    # It is NOT correct for M5. Both of that contrast's arms run with semantic detection
+    # switched OFF; the only thing that varies is whether a Forget-ID is forwarded onto a
+    # derivative. A failing detector gate says nothing about whether that measurement is
+    # readable, and letting one flag speak for both would either bury a valid mechanism
+    # result or — worse, if someone later relaxed the flag — dress a detector claim in a
+    # mechanism result's clothes. Two questions, two verdicts (GU-0035).
+    mechanism_arms = {"multi_agent_graphforget_no_forward", "multi_agent_graphforget_taint_forward"}
+    arms_present = set(tables[SURFACES[0]].arms()) if tables else set()
+    m5_rows = [
+        c
+        for c in mechanism.get("contrasts", [])
+        if c.get("id") == "M5" and c.get("surface_role") == "primary"
+    ]
+    defense_stats = {
+        str(entry.get("arm")): entry for entry in (manifest.get("arms") or []) if entry.get("arm")
+    }
+    no_forward = defense_stats.get("multi_agent_graphforget_no_forward", {})
+    taint_forward = defense_stats.get("multi_agent_graphforget_taint_forward", {})
+
+    mechanism_blockers: list[str] = []
+    if not mechanism_arms <= arms_present:
+        mechanism_blockers.append(
+            "the M5 pair is not both present in this run, so forward propagation was "
+            "never contrasted"
+        )
+    if not m5_rows:
+        mechanism_blockers.append("M5 is absent from every primary surface")
+    if not scorer_reportable:
+        mechanism_blockers.append("the scorer is not the pinned reportable one")
+    if problems:
+        mechanism_blockers.append("the sample set is incomplete")
+    if non_monotone:
+        mechanism_blockers.append("a Leak@k curve is non-monotone")
+    if k_substituted:
+        mechanism_blockers.append(
+            f"primary k was substituted ({declared_primary_k} declared, {primary_k} reported)"
+        )
+    if not manifest.get("profile_reportable", True):
+        mechanism_blockers.append("this is a wiring profile and nothing it produces is reportable")
+    if not manifest.get("forget_policy_fingerprint") and not manifest.get("forget_policy_cohort"):
+        mechanism_blockers.append("the forget policy was not recorded separately")
+    # The purity conditions. Read off the manifest rather than assumed: an arm that
+    # forwarded when it should not is the treatment wearing the control's name.
+    if no_forward and no_forward.get("propagates_scope") is not False:
+        mechanism_blockers.append("the no-forward arm reports that it propagates scope")
+    if taint_forward and taint_forward.get("propagates_scope") is not True:
+        mechanism_blockers.append("the taint-forward arm reports that it does not propagate scope")
+    gates_artifact = manifest.get("detector_gates") or {}
+    if gates_artifact.get("configured") and not gates_artifact.get("covers_forget_policy"):
+        mechanism_blockers.append(
+            "the linked detector gate artefact was fitted on a different registry than "
+            "this run guarded"
+        )
+
+    mechanism_measurement_valid = not mechanism_blockers
+
     def _status(verdict: Mapping) -> str:
         if not verdict.get("applicable", False):
             return "not_applicable"
@@ -395,6 +458,18 @@ def report_graph(
         "refusal_within_bound": refusal_applicable and refusal_ok,
         "collaboration_within_bound": refusal_applicable and collaboration_ok,
         "semantic_report_valid": semantic_report_valid,
+        # The mechanism verdict, deliberately NOT gated on detector calibration: M5's two
+        # arms both run with the detector off, so its operating point is irrelevant to
+        # whether that contrast is readable. See the block above.
+        "mechanism_measurement_valid": mechanism_measurement_valid,
+        "mechanism_claim": mechanism.get("propagation_contrast"),
+        "mechanism_blockers": mechanism_blockers,
+        "detector_calibration_applicable": False,
+        "detector_calibration_applicable_note": (
+            "the propagation contrast runs with semantic detection disabled in BOTH arms, "
+            "so detector calibration does not bear on it. It DOES bear on M1-M3 and on any "
+            "natural semantic-defence claim, which is what `semantic_report_valid` covers."
+        ),
         "publication_ready": not blockers,
         "publication_blockers": blockers,
         # Retained as the pre-GU-0030 name for the measurement verdict only. It never
@@ -905,9 +980,24 @@ def _markdown(report: dict) -> str:
         + ("" if gate.get("refusal_bound_applicable") else " — **not applicable here**"),
         "",
         f"- **semantic_report_valid: {gate['semantic_report_valid']}**",
+        f"- **mechanism_measurement_valid: {gate.get('mechanism_measurement_valid')}** "
+        f"(claim `{gate.get('mechanism_claim')}`)",
         f"- **publication_ready: {gate['publication_ready']}**",
         "",
+        "> Three verdicts, and they answer different questions.",
+        "> `semantic_report_valid` covers claims that depend on the detector's operating",
+        "> point — M1–M3 and any natural semantic-defence claim — so it requires a",
+        "> calibrated detector. `mechanism_measurement_valid` covers the propagation",
+        "> contrast, whose two arms both run with detection **off**; a failing detector",
+        "> gate says nothing about whether that measurement is readable.",
+        "> `publication_ready` additionally requires the cost gates to have been",
+        "> applicable and passed.",
+        "",
     ]
+    if gate.get("mechanism_blockers"):
+        lines += ["Mechanism blockers:", ""]
+        lines += [f"- {reason}" for reason in gate["mechanism_blockers"]]
+        lines.append("")
     if gate.get("publication_blockers"):
         lines += ["Publication blockers:", ""]
         lines += [f"- {reason}" for reason in gate["publication_blockers"]]

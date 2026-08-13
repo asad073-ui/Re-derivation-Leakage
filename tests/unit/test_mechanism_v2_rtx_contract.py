@@ -68,8 +68,8 @@ def test_the_cpu_launch_file_is_not_a_gpu_run_in_disguise() -> None:
 @pytest.mark.parametrize(
     ("launch_file", "phase", "policy_phase"),
     [
-        ("launch_mechanism_v2_rtx_engineering.yaml", "engineering", None),
-        ("launch_mechanism_v2_rtx_retain.yaml", "retain_utility", "engineering"),
+        ("launch_mechanism_v2_rtx_engineering.yaml", "engineering", "discovery"),
+        ("launch_mechanism_v2_rtx_retain.yaml", "retain_utility", "discovery"),
     ],
 )
 def test_the_rtx_launch_files_name_their_phase_and_their_forget_policy(
@@ -103,7 +103,10 @@ def test_both_rtx_runs_share_one_forget_policy_cohort() -> None:
 
     engineering = load_graph_config(CONFIGS / "launch_mechanism_v2_rtx_engineering.yaml")
     retain = load_graph_config(CONFIGS / "launch_mechanism_v2_rtx_retain.yaml")
-    assert retain.launch.forget_policy_phase == engineering.phase
+    assert (
+        retain.launch.forget_policy_phase == engineering.launch.forget_policy_phase
+    ), "the two runs would price a defence under different registries"
+    assert retain.launch.forget_policy_phase is not None
 
 
 # ------------------------------------------------------- detector threshold identity --
@@ -522,3 +525,128 @@ def test_a_seeded_tag_makes_the_taint_arm_act_where_it_previously_could_not() ->
         RetrievalContext(node_id="n", depth=0, query="q", candidates=candidates)
     )
     assert verdict.withheld_node_ids, "the taint arm had nothing to inherit and did nothing"
+
+
+# ------------------------------------------ operating point survives into reanalysis --
+
+
+def test_detector_recall_reconstructs_the_run_threshold_not_a_default(tmp_path) -> None:
+    """`rdl graph-detector-recall` used to default to 0.65 when calibration was absent.
+
+    A DIAGNOSTIC study has no calibration artefact by definition, so on exactly the runs
+    this command exists for it measured recall at 0.65 against generations produced at
+    0.90 — the operating-point inconsistency the threshold fix was supposed to end,
+    reappearing one phase later and after the GPU had been paid for.
+    """
+    import typer
+
+    from rdl.cli.detector_recall import detector_recall
+
+    run = tmp_path / "run"
+    (run / "generations").mkdir(parents=True)
+    (run / "RUN_MANIFEST.json").write_text(
+        json.dumps({"study_id": "x", "arms": []}), encoding="utf-8"
+    )
+    with pytest.raises(typer.BadParameter, match="no `detector` block"):
+        detector_recall(run=run)
+
+
+def test_the_manifest_records_everything_needed_to_rebuild_the_detector() -> None:
+    """Threshold alone is not enough: alias weight and the registry decide the scores."""
+    cfg = _cfg(active_profile="rtx3090_1b", phase="engineering")
+    registry = ConceptRegistry.from_questions(
+        [{"item_id": "a", "concept_id": "c0", "question": "Who is Hsiao Yun-Hwa's father?"}]
+    )
+    recorded = build_detector(cfg, registry).to_dict()
+    for field in ("version", "threshold", "alias_weight", "registry_fingerprint"):
+        assert field in recorded, f"a reanalysis phase cannot rebuild the detector without {field}"
+    assert recorded["threshold"] == pytest.approx(0.90)
+
+
+# --------------------------------------- the gate artefact describes THIS registry --
+
+
+def test_the_rtx_launches_use_the_split_the_gate_artefact_was_fitted_on() -> None:
+    """A threshold is calibrated FOR A REGISTRY (GU-0035).
+
+    The engineering launch used to leave `forget_policy_phase` null, which builds the
+    registry from the engineering split (051eadbb). DETECTOR_V2_GATES.json was fitted on
+    `discovery` (dc6ace79), so the artefact the study pins as evidence for its 0.90
+    operating point described a registry the run does not produce.
+    """
+    from rdl.graph.config import load_graph_config
+    from rdl.studies.graph_leak.cohort import load_cohort
+
+    gates = json.loads(GATES_PATH.read_text(encoding="utf-8"))
+    gate_split = gates["policy_cohort"]["split"]
+
+    for launch_file in (
+        "launch_mechanism_v2_rtx_engineering.yaml",
+        "launch_mechanism_v2_rtx_retain.yaml",
+    ):
+        cfg = load_graph_config(CONFIGS / launch_file)
+        assert cfg.launch.forget_policy_phase == gate_split, launch_file
+
+    base = repo_root() / "data" / "cohorts" / "graph_unlearning_v1"
+    policy = load_cohort(base / f"{gate_split}.json", exclusions_path=base / "exclusions.json")
+    assert policy.fingerprint() == gates["policy_cohort"]["fingerprint"]
+
+
+def test_the_policy_and_evaluation_cohorts_still_share_no_items() -> None:
+    """Pinning the policy to `discovery` must not make the registry the asked questions.
+
+    Same 20 concepts, zero shared items: the registry's scope prototypes are built from
+    50 questions that are not the 20 being evaluated, so `cohorts_separated` holds.
+    """
+    from rdl.studies.graph_leak.cohort import load_cohort
+
+    base = repo_root() / "data" / "cohorts" / "graph_unlearning_v1"
+    engineering = load_cohort(base / "engineering.json", exclusions_path=base / "exclusions.json")
+    discovery = load_cohort(base / "discovery.json", exclusions_path=base / "exclusions.json")
+
+    engineering_items = {i.item_id for i in engineering.items}
+    discovery_items = {i.item_id for i in discovery.items}
+    assert engineering_items & discovery_items == set()
+    assert set(engineering.concept_ids) == set(discovery.concept_ids)
+    assert engineering.fingerprint() != discovery.fingerprint()
+
+
+def test_a_gate_artefact_measured_at_another_threshold_is_refused() -> None:
+    """Identity is enforced regardless of profile: a mismatched artefact is not evidence."""
+    from rdl.studies.graph_leak.runner import GraphRunner
+
+    runner = GraphRunner.__new__(GraphRunner)
+    detector = SemanticConceptDetector(
+        ConceptRegistry.from_questions(
+            [{"item_id": "a", "concept_id": "c0", "question": "Who is Hsiao Yun-Hwa's father?"}]
+        ),
+        threshold=0.65,
+    )
+    cfg = _cfg(active_profile="rtx3090_1b", phase="engineering")
+    runner.cfg = cfg
+    runner.detector = detector
+    with pytest.raises(ValueError, match="describes detector"):
+        runner._load_gate_artifact()
+
+
+# ------------------------------------------------- the mechanism verdict is its own --
+
+
+def test_the_mechanism_verdict_does_not_depend_on_detector_calibration() -> None:
+    """M5's two arms both run with detection OFF, so a failing detector gate is silent.
+
+    Folding the two questions into one flag would either bury a valid mechanism result or,
+    if the flag were later relaxed, dress a detector claim as a mechanism one.
+    """
+    from rdl.eval.defense_reduction import MECHANISM_CONTRASTS
+
+    cfg = _cfg(active_profile="local_cpu")
+    m5 = next(row for row in MECHANISM_CONTRASTS if row[0] == "M5")
+    _id, treatment, baseline, kind, _statement = m5
+    assert kind == "causal"
+    for arm_name in (treatment, baseline):
+        spec = cfg.defenses[cfg.arm(arm_name).defense]
+        assert spec.semantic_detection is False, (
+            f"{arm_name} has the detector ON, so the detector's operating point WOULD "
+            "bear on M5 and the separate mechanism verdict would be unsound"
+        )

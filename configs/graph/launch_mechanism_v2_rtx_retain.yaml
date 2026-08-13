@@ -5,10 +5,16 @@
 #                             supposed to answer. An answer-match rate over these is a
 #                             utility.
 #   forget_policy_phase:      the CONCEPT REGISTRY and the DELETED BASELINE MEMORY come
-#     engineering             from the same frozen 20-concept forget cohort the
-#                             engineering run used. Same forgotten authors, same
-#                             deletions, same guard scope, same registry fingerprint —
-#                             the only thing that changes is which questions are asked.
+#     discovery               from the SAME frozen split as the engineering run's policy,
+#                             which is the split Detector v2's gate artefact was fitted on
+#                             (50 items, 20 concepts, fingerprint dc6ace79). Same
+#                             forgotten authors, same deletions, same guard scope, same
+#                             registry fingerprint — the only thing that changes is which
+#                             questions are asked.
+#
+# It must match the engineering launch exactly. A retain run whose registry came from a
+# different split would price the utility cost of a defence nobody ran, and the two
+# numbers could not be put in one table. A test asserts the pair agrees.
 #
 # WITHOUT THIS FILE THE MECHANISM STUDY CANNOT BE PUBLICATION-READY AT ALL. A leakage
 # reduction with no measured cost is not a result: an arm that refuses everything wins on
@@ -29,4 +35,4 @@
 study: graphforget_mechanism_v2
 active_profile: rtx3090_1b
 phase: retain_utility
-forget_policy_phase: engineering
+forget_policy_phase: discovery
