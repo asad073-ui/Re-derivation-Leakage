@@ -97,12 +97,22 @@ def bundle_graph(
             ).get("recall"),
         }
         per_report.append(entry)
-        # The retain run is the one that measured utility; the FPR gate is the same
-        # artefact in every run of a study, so the first applicable one stands for it.
+        # The retain run is the one that measured utility. Prefer the `graph_flow` one:
+        # the leakage claim it has to constrain is made under `graph_flow`, and utility
+        # measured under `end_to_end_safety` is a cost paid by a different configuration
+        # of the same defence. Either is a real measurement; only one is the matched one.
         if report.get("retain_utility_measured") and (report.get("utility_gate") or {}).get(
             "applicable"
         ):
-            retain = {"run": run.name, **report["utility_gate"]}
+            better = retain is None or (
+                retain.get("protocol") != "graph_flow" and report.get("protocol") == "graph_flow"
+            )
+            if better:
+                retain = {
+                    "run": run.name,
+                    "protocol": report.get("protocol"),
+                    **report["utility_gate"],
+                }
         if fpr is None and (report.get("detector_fpr_gate") or {}).get("applicable"):
             fpr = {"run": run.name, **report["detector_fpr_gate"]}
 
@@ -129,10 +139,29 @@ def bundle_graph(
             "no forget-cohort graph_flow run: an end_to_end_safety reduction is a claim "
             "about request filtering, not about the graph"
         )
+    # A run-level blocker that the STUDY resolves must not be re-raised here. Retain
+    # utility and detector FPR are checked once, above, against the runs that measured
+    # them; carrying each forget run's "no retain cohort in this run" forward would make
+    # the bundle restate the very gap it exists to close, and no study could ever pass.
+    # The same for "measurement gates", which is the per-run roll-up of checks already
+    # enumerated in `valid`.
+    resolved_at_study_level = (
+        "retain utility gate is",
+        "detector FPR gate is",
+        "measurement gates",
+    )
+    per_challenge: dict[str, list[str]] = {}
     for entry in flow:
-        for reason in entry["publication_blockers"]:
-            if "measurement gates" not in reason:
-                blockers.append(f"{entry['run']} ({entry['challenge']}): {reason}")
+        reasons = [
+            reason
+            for reason in entry["publication_blockers"]
+            if not any(marker in reason for marker in resolved_at_study_level)
+        ]
+        per_challenge.setdefault(str(entry["challenge"]), []).extend(reasons)
+        blockers.extend(f"{entry['run']} ({entry['challenge']}): {reason}" for reason in reasons)
+
+    ready_challenges = sorted(c for c, r in per_challenge.items() if not r)
+    blocked_challenges = sorted(c for c, r in per_challenge.items() if r)
 
     unmeasured_recall = [
         e["run"] for e in flow if e["detector_recall_on_generated_leakage"] is None
@@ -143,6 +172,19 @@ def bundle_graph(
             "detector recall on generated leakage was never measured for "
             f"{unmeasured_recall}; a defence that did not reduce leakage cannot be "
             "diagnosed as a propagation failure without it"
+        )
+    blind = [
+        e["run"]
+        for e in flow
+        if isinstance(e["detector_recall_on_generated_leakage"], (int, float))
+        and e["detector_recall_on_generated_leakage"] < 0.5
+    ]
+    if blind:
+        warnings.append(
+            f"detector recall on generated leakage is below 0.5 in {blind}. Where it is, "
+            "a provenance-propagating defence and a node-local one have nothing to "
+            "propagate and will score alike no matter which is better: a null result "
+            "there is about DETECTION coverage, not about the graph"
         )
 
     bundle = {
@@ -156,6 +198,11 @@ def bundle_graph(
         "detector_fpr": fpr or {"applicable": False, "reason": "no calibration artefact"},
         "phenomenon_supported": bool(flow) and all(e["phenomenon_supported"] for e in flow),
         "defence_supported": bool(flow) and all(e["defence_supported"] for e in flow),
+        # Per challenge as well as overall: a study whose natural claim is clean and whose
+        # injected stress challenges are refusal-confounded is a real, partial result, and
+        # a single false would hide which half is which.
+        "ready_challenges": ready_challenges,
+        "blocked_challenges": blocked_challenges,
         "publication_ready": not blockers,
         "publication_blockers": blockers,
         "warnings": warnings,
@@ -192,6 +239,10 @@ def _markdown(bundle: dict) -> str:
         "",
         f"- treatment: `{bundle['treatment']}`  ({bundle['n_runs']} runs linked)",
         f"- **publication_ready: {bundle['publication_ready']}**",
+        "- challenges whose claim stands: "
+        + (", ".join(f"`{c}`" for c in bundle["ready_challenges"]) or "none"),
+        "- challenges still blocked: "
+        + (", ".join(f"`{c}`" for c in bundle["blocked_challenges"]) or "none"),
         f"- phenomenon supported (composition increases leakage): {bundle['phenomenon_supported']}",
         f"- defence supported (treatment reduces leakage): {bundle['defence_supported']}",
         "",
