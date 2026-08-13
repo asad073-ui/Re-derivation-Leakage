@@ -1,0 +1,87 @@
+{
+  "blocking": [],
+  "cohorts_separated": false,
+  "complete": true,
+  "evaluation_cohort_split": "engineering",
+  "forget_policy_fingerprint": "d3438d1e2e81d13ffde6509ed42e3547d3f3ffe12fe2d053b3d03da3546f8918",
+  "forget_policy_split": "engineering",
+  "generations": {
+    "n_declared": 1,
+    "n_shards": 1,
+    "ok": true,
+    "problems": []
+  },
+  "generations_ledger": {
+    "interrupted_commit": [],
+    "n_declared": 1,
+    "n_shards": 1,
+    "ok": true,
+    "problems": [],
+    "status": "verified"
+  },
+  "git_dirty": false,
+  "git_sha": "2984c6d",
+  "gpu_activity": {
+    "backend": "vllm",
+    "completion_tokens": 7946,
+    "device_name": "NVIDIA GeForce RTX 3090",
+    "device_vram_utilization": 0.8283,
+    "dispatch": {
+      "graph": {
+        "cache_hits": 72,
+        "dispatched": 134,
+        "requested": 206
+      },
+      "probe": {
+        "cache_hits": 48,
+        "dispatched": 48,
+        "requested": 96
+      }
+    },
+    "enforced": true,
+    "n_generations": 206,
+    "n_trajectories": 48,
+    "non_empty_generation_rate": 1.0,
+    "non_empty_generations": 48,
+    "peak_device_vram_bytes": 21344747520,
+    "prompt_tokens": 30114,
+    "vram_alone_is_not_activity": "vLLM reserves the KV cache before generating, so peak VRAM is a property of the configuration rather than of the work done",
+    "vram_source": "nvml"
+  },
+  "hashes_ok": true,
+  "n_trajectories": 48,
+  "ok": true,
+  "planned_trajectories": 48,
+  "raw_evidence_uri": "https://github.com/asad073-ui/Re-derivation-Leakage/releases/tag/graph-engineering-20260813T035851Z",
+  "report_present": true,
+  "run": "20260813T035851Z-positive-memory_reentry-flow",
+  "schema": "graph-finalization-v3",
+  "science_gates": {
+    "applicable": true,
+    "collaboration_ok": true,
+    "collaboration_rate": 0.975,
+    "max_refusal": 0.5,
+    "min_collaboration": 0.5,
+    "protocol": "graph_flow",
+    "reason": "",
+    "refusal_ok": true,
+    "refusal_rate": 0.125,
+    "treatment": "multi_agent_graphforget"
+  },
+  "science_gates_enforced": false,
+  "traces": {
+    "n_declared": 1,
+    "n_shards": 1,
+    "ok": true,
+    "problems": []
+  },
+  "traces_ledger": {
+    "interrupted_commit": [],
+    "n_declared": 1,
+    "n_shards": 1,
+    "ok": true,
+    "problems": [],
+    "status": "verified"
+  },
+  "warnings": []
+}

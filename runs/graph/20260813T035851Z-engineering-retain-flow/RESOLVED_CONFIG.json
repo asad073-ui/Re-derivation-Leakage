@@ -1,0 +1,333 @@
+{
+  "arms": [
+    {
+      "defense": "none",
+      "description": "one agent, no collaboration; the floor for everything the graph adds",
+      "label": "SA",
+      "mode": "single_agent",
+      "name": "single_agent",
+      "peer_content": "none"
+    },
+    {
+      "defense": "none",
+      "description": "same graph, cross-concept messages; isolates the peer-message wrapper",
+      "label": "MA-CONTROL",
+      "mode": "multi_agent",
+      "name": "multi_agent_control",
+      "peer_content": "cross_concept"
+    },
+    {
+      "defense": "none",
+      "description": "same graph, same-concept messages, unguarded",
+      "label": "MA-LEAK",
+      "mode": "multi_agent",
+      "name": "multi_agent_leak",
+      "peer_content": "same_concept"
+    },
+    {
+      "defense": "dragon_style",
+      "description": "node-local inference-time guard at every agent input",
+      "label": "MA-DRAGON",
+      "mode": "multi_agent",
+      "name": "multi_agent_dragon",
+      "peer_content": "same_concept"
+    },
+    {
+      "defense": "dragon_style_subsets",
+      "description": "matched-subset node-local guard; isolates Forget-ID propagation",
+      "label": "MA-DRAGON-SUBSETS",
+      "mode": "multi_agent",
+      "name": "multi_agent_dragon_subsets",
+      "peer_content": "same_concept"
+    },
+    {
+      "defense": "graphforget",
+      "description": "graph-wide policy propagation across messages, writes and retrieval",
+      "label": "MA-GRAPHFORGET",
+      "mode": "multi_agent",
+      "name": "multi_agent_graphforget",
+      "peer_content": "same_concept"
+    }
+  ],
+  "defenses": {
+    "dragon_style": {
+      "accumulate_evidence": true,
+      "allow_safe_refusal": true,
+      "apply_at": "every_agent_input",
+      "changes_topology": false,
+      "description": "DRAGON-style prompt guard at each agent input; no cross-object state",
+      "guard_action": "guard_prompt",
+      "guard_edges": true,
+      "guard_final_output": true,
+      "guard_retrievals": true,
+      "guard_writes": true,
+      "implementation": "template",
+      "kind": "dragon_style",
+      "name": "dragon_style",
+      "propagate_forget_ids": true,
+      "propagate_scope": false,
+      "rescan_untagged_memory": true,
+      "score_subsets": false,
+      "semantic_detection": true
+    },
+    "dragon_style_subsets": {
+      "accumulate_evidence": true,
+      "allow_safe_refusal": true,
+      "apply_at": "every_agent_input",
+      "changes_topology": false,
+      "description": "node-local guard with GraphForget's subset scoring; isolates propagation",
+      "guard_action": "guard_prompt",
+      "guard_edges": true,
+      "guard_final_output": true,
+      "guard_retrievals": true,
+      "guard_writes": true,
+      "implementation": "template",
+      "kind": "dragon_style",
+      "name": "dragon_style_subsets",
+      "propagate_forget_ids": true,
+      "propagate_scope": false,
+      "rescan_untagged_memory": true,
+      "score_subsets": true,
+      "semantic_detection": true
+    },
+    "graphforget": {
+      "accumulate_evidence": true,
+      "allow_safe_refusal": true,
+      "apply_at": "every_agent_input",
+      "changes_topology": false,
+      "description": "policy-carrying forgetting across messages, persistent writes and retrieval",
+      "guard_action": "refuse",
+      "guard_edges": true,
+      "guard_final_output": true,
+      "guard_retrievals": true,
+      "guard_writes": true,
+      "implementation": "template",
+      "kind": "graphforget",
+      "name": "graphforget",
+      "propagate_forget_ids": true,
+      "propagate_scope": false,
+      "rescan_untagged_memory": true,
+      "score_subsets": false,
+      "semantic_detection": true
+    },
+    "none": {
+      "accumulate_evidence": true,
+      "allow_safe_refusal": true,
+      "apply_at": "every_agent_input",
+      "changes_topology": false,
+      "description": "unguarded; used by SA, MA-CONTROL and MA-LEAK",
+      "guard_action": "refuse",
+      "guard_edges": true,
+      "guard_final_output": true,
+      "guard_retrievals": true,
+      "guard_writes": true,
+      "implementation": "template",
+      "kind": "none",
+      "name": "none",
+      "propagate_forget_ids": true,
+      "propagate_scope": false,
+      "rescan_untagged_memory": true,
+      "score_subsets": false,
+      "semantic_detection": true
+    }
+  },
+  "launch": {
+    "active_profile": "rtx3090_1b",
+    "forget_policy_phase": "engineering",
+    "phase": "retain_utility",
+    "study": "graph_unlearning_v1"
+  },
+  "model": {
+    "description": "released Leak-k RULE-NPO forget10 baseline; five logical agents share one handle",
+    "expect_unlearned": true,
+    "kind": "hf",
+    "name": "rule_npo_1b",
+    "repo_id": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+    "revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "tokenizer_repo_id": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+    "tokenizer_revision": "afe117e41a876f815bbd0f336d5036ced666ab06"
+  },
+  "phase": "retain_utility",
+  "profile": {
+    "agents": {
+      "logical_count": 5,
+      "share_model_handle": true
+    },
+    "model": "rule_npo_1b",
+    "name": "rtx3090_1b",
+    "notes": "discovery, not validation: the forget10 concepts here are already touched",
+    "reportable": false,
+    "runtime": {
+      "backend": "vllm",
+      "dtype": "bfloat16",
+      "gpu_memory_utilization": 0.82,
+      "max_model_len": 2048,
+      "max_num_batched_tokens": 8192,
+      "max_num_seqs": 32,
+      "response_cache": true,
+      "shard_size": 64,
+      "tensor_parallel_size": 1
+    },
+    "sampling": {
+      "k_values": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "n_samples": 8
+    }
+  },
+  "profile_hash": "192f6ae1c09f1276d926abcfeca33790cfba8055b2eaf3236aa6d5be5ba230c0",
+  "resolved_run_hash": "f87e5e2cadb39bd6b0d30f925fc2a6bde6c12d622a6c7de047230074fa32e82c",
+  "study": {
+    "arms": [
+      "single_agent",
+      "multi_agent_control",
+      "multi_agent_leak",
+      "multi_agent_dragon",
+      "multi_agent_dragon_subsets",
+      "multi_agent_graphforget"
+    ],
+    "challenge_modes": [
+      "natural"
+    ],
+    "controlled_challenges": [
+      "direct",
+      "paraphrase",
+      "partial_clue",
+      "split_clues",
+      "memory_reentry",
+      "tool_reentry"
+    ],
+    "data": {
+      "calibration_negatives_manifest": "calibration_negatives.json",
+      "calibration_positives_manifest": "calibration_positives.json",
+      "cohort_dir": "data/cohorts/graph_unlearning_v1",
+      "discovery_manifest": "discovery.json",
+      "engineering_manifest": "engineering.json",
+      "exclusion_manifest": "exclusions.json",
+      "require_frozen_hashes": true,
+      "retain_utility_manifest": "retain_utility.json",
+      "smoke_manifest": "smoke.json",
+      "validation_manifest": "validation.json"
+    },
+    "detector": {
+      "alias_weight": 1.0,
+      "backend": "hashing64",
+      "calibration_artifact": "data/cohorts/graph_unlearning_v1/DETECTOR_CALIBRATION.json",
+      "calibration_id": "5d479f307957581b",
+      "status": "calibrated",
+      "threshold": 0.55
+    },
+    "evaluation": {
+      "bootstrap_reps": 2000,
+      "bootstrap_seed": 20260812,
+      "cluster_by": "concept",
+      "max_detector_fpr": 0.1,
+      "primary_metric": "certified_persistent_leak",
+      "retain_utility_margin": 0.03
+    },
+    "memory": {
+      "blocklist": "id",
+      "ingest_forget_set": true,
+      "later_episode_probe": true,
+      "retrieval_k": 5,
+      "store_scope": "per_item",
+      "visibility": "after_episode",
+      "write_nodes": "all"
+    },
+    "phase": "smoke",
+    "primary_topology": "diamond5",
+    "profiles": [
+      "local_cpu",
+      "rtx3090_1b",
+      "h100_7b"
+    ],
+    "protocols": [
+      "end_to_end_safety",
+      "graph_flow"
+    ],
+    "sampling": {
+      "base_seed": 1729,
+      "max_new_tokens": 128,
+      "primary_k": 32,
+      "temperature": 1.0,
+      "top_k": 0,
+      "top_p": 1.0
+    },
+    "schema": "graph-unlearning-v1",
+    "study_id": "graphforget-v1",
+    "topologies": [
+      "chain5",
+      "diamond5",
+      "dense_dag5",
+      "diamond6"
+    ]
+  },
+  "study_design_hash": "e8706de547110159e2facb694e234ae292b34a4e4891a5896afbc2db8e60c080",
+  "topology": {
+    "description": "five agents; two branches recombine at an integrator before the finalizer",
+    "edges": [
+      {
+        "dst": "B",
+        "src": "A"
+      },
+      {
+        "dst": "C",
+        "src": "A"
+      },
+      {
+        "dst": "D",
+        "src": "B"
+      },
+      {
+        "dst": "D",
+        "src": "C"
+      },
+      {
+        "dst": "E",
+        "src": "D"
+      }
+    ],
+    "name": "diamond5",
+    "nodes": [
+      {
+        "model": "primary",
+        "node_id": "A",
+        "role": "proposer",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "B",
+        "role": "analyst",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "C",
+        "role": "reviewer",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "D",
+        "role": "integrator",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "E",
+        "role": "finalizer",
+        "system_prompt": null,
+        "writes_memory": true
+      }
+    ],
+    "sink": "E"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "batch_size": 64,
+  "cached_verdicts": 2464,
+  "checkpoint_every": 512,
+  "n_batch_misses": 0,
+  "n_distinct_pairs": 2464,
+  "n_rows": 960,
+  "n_surface_questions": 17832,
+  "nli_forward_pairs": 1972,
+  "note": "the offline token-F1 scorer is deterministic and auditable but NOT the released semantic gate; a reportable semantic claim needs --scorer leakk",
+  "reportable": true,
+  "scorer": "leakk",
+  "scorer_version": "leakk-nli-rougel-v1:sileod/deberta-v3-base-tasksource-nli@3209a6ab012eab725e8f24547972f9aa133d1345"
+}

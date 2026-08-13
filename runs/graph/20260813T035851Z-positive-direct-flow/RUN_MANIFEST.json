@@ -1,0 +1,439 @@
+{
+  "actual_generations": {
+    "graph": {
+      "cache_hits": 56,
+      "dispatched": 80,
+      "requested": 136
+    },
+    "probe": {
+      "cache_hits": 56,
+      "dispatched": 40,
+      "requested": 96
+    }
+  },
+  "agent_note": "5 logical agents sharing one unlearned model backend; NOT independently unlearned checkpoints",
+  "arms": [
+    {
+      "active_nodes": [
+        "E"
+      ],
+      "arm": "single_agent",
+      "defense": "none",
+      "label": "SA",
+      "mode": "single_agent",
+      "peer_content": "none",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_control",
+      "defense": "none",
+      "label": "MA-CONTROL",
+      "mode": "multi_agent",
+      "peer_content": "cross_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_leak",
+      "defense": "none",
+      "label": "MA-LEAK",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_dragon",
+      "defense": "dragon_style",
+      "label": "MA-DRAGON",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_dragon_subsets",
+      "defense": "dragon_style",
+      "label": "MA-DRAGON-SUBSETS",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget",
+      "defense": "graphforget",
+      "label": "MA-GRAPHFORGET",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": true
+    }
+  ],
+  "backend": "vllm",
+  "challenges": [
+    "direct"
+  ],
+  "cohort_fingerprint": "d3438d1e2e81d13ffde6509ed42e3547d3f3ffe12fe2d053b3d03da3546f8918",
+  "cohort_note": "the concept registry and the deleted baseline memory come from 'engineering' (4 forgotten concepts); the questions come from 'engineering' (4 concepts)",
+  "cohort_split": "engineering",
+  "cohorts_separated": false,
+  "complete": true,
+  "completed_trajectories": 48,
+  "concept_registry": {
+    "concepts": [
+      {
+        "aliases": [
+          "Hsiao Yun-Hwa's"
+        ],
+        "forget_id": "tofu-forget10-author-0000",
+        "item_ids": [
+          "forget10-0002"
+        ],
+        "n_scope_prototypes": 3,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "4672437ce0fb6402",
+          "811435b317c6a24a",
+          "666e28cffc2573d8"
+        ]
+      },
+      {
+        "aliases": [
+          "Carmen Montenegro's"
+        ],
+        "forget_id": "tofu-forget10-author-0001",
+        "item_ids": [
+          "forget10-0022"
+        ],
+        "n_scope_prototypes": 3,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "b158852f8c55d64f",
+          "f1c67ebad50e8f17",
+          "b841f478b1137961"
+        ]
+      },
+      {
+        "aliases": [
+          "Elvin Mammadov's"
+        ],
+        "forget_id": "tofu-forget10-author-0002",
+        "item_ids": [
+          "forget10-0042"
+        ],
+        "n_scope_prototypes": 3,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "225109b622f005f9",
+          "95c1e96aff29179c",
+          "e520ada2fbe6e22a"
+        ]
+      },
+      {
+        "aliases": [
+          "Rajeev Majumdar"
+        ],
+        "forget_id": "tofu-forget10-author-0003",
+        "item_ids": [
+          "forget10-0062"
+        ],
+        "n_scope_prototypes": 3,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "b0c2af4228f972b1",
+          "e97b925d991d6acb",
+          "39e6b85e7b233d7f"
+        ]
+      }
+    ],
+    "fingerprint": "548f304fb804821d482844f76c208bb1781f94b11e406a95f5a554decc150d07",
+    "n_concepts": 4,
+    "stores_gold_answers": false,
+    "version": "concept-registry-v1"
+  },
+  "control_mapping": {
+    "algorithm": "rotate-by-smallest-cross-author-shift",
+    "fixed_point_count": 0,
+    "n_authors": 4,
+    "n_items": 4,
+    "permutation": [
+      1,
+      2,
+      3,
+      0
+    ],
+    "same_author_count": 0,
+    "sha256": "88434ae6d5569045ba3fde17e0bd8ea99132db3c7172422fe7160fc009577bb8",
+    "shift": 1
+  },
+  "detector": {
+    "backbone": "hashing-64",
+    "calibrated": false,
+    "calibration_id": "5d479f307957581b",
+    "n_concepts": 4,
+    "registry_fingerprint": "548f304fb804821d482844f76c208bb1781f94b11e406a95f5a554decc150d07",
+    "threshold": 0.55,
+    "version": "semantic-scope-v1:hashing-64:thr=0.550:diagnostic:5d479f307957581b"
+  },
+  "detector_calibration": null,
+  "detector_calibration_covers_forget_policy": false,
+  "detector_calibration_note": "calibrated on forget policy 'engineering' (051eadbbdf2f), but this run's forget policy is 'engineering' (d3438d1e2e81). A threshold is calibrated for a registry; this one does not cover the concepts being guarded here.",
+  "detector_status": "diagnostic",
+  "detector_status_declared": "calibrated",
+  "evaluation_cohort": {
+    "dataset_config": "forget10",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "fingerprint": "d3438d1e2e81d13ffde6509ed42e3547d3f3ffe12fe2d053b3d03da3546f8918",
+    "is_retain": false,
+    "n_concepts": 4,
+    "n_items": 4,
+    "split": "engineering"
+  },
+  "evidence_ledger": {
+    "generations": {
+      "interrupted_commit": [],
+      "n_declared": 1,
+      "n_shards": 1,
+      "ok": true,
+      "open_status": "new",
+      "problems": [],
+      "status": "verified"
+    },
+    "traces": {
+      "interrupted_commit": [],
+      "n_declared": 1,
+      "n_shards": 1,
+      "ok": true,
+      "open_status": "new",
+      "problems": [],
+      "status": "verified"
+    }
+  },
+  "evidence_shards": [
+    {
+      "n_rows": 48,
+      "name": "part-00000.jsonl",
+      "sha256": "8df81116ee2fc6735b2856e425c0c729a711caf1c39b192fa590e724603e2012"
+    }
+  ],
+  "forget_policy_cohort": {
+    "dataset_config": "forget10",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "fingerprint": "d3438d1e2e81d13ffde6509ed42e3547d3f3ffe12fe2d053b3d03da3546f8918",
+    "is_retain": false,
+    "n_concepts": 4,
+    "n_items": 4,
+    "split": "engineering"
+  },
+  "forget_policy_fingerprint": "d3438d1e2e81d13ffde6509ed42e3547d3f3ffe12fe2d053b3d03da3546f8918",
+  "forget_policy_split": "engineering",
+  "git_diff_sha256": null,
+  "git_dirty": false,
+  "git_sha": "2984c6d",
+  "logical_agents": 5,
+  "model": {
+    "description": "released Leak-k RULE-NPO forget10 baseline; five logical agents share one handle",
+    "expect_unlearned": true,
+    "kind": "hf",
+    "name": "rule_npo_1b",
+    "repo_id": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+    "revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "tokenizer_repo_id": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+    "tokenizer_revision": "afe117e41a876f815bbd0f336d5036ced666ab06"
+  },
+  "offline_scoring": true,
+  "phase": "engineering",
+  "plan": {
+    "arms": [
+      "single_agent",
+      "multi_agent_control",
+      "multi_agent_leak",
+      "multi_agent_dragon",
+      "multi_agent_dragon_subsets",
+      "multi_agent_graphforget"
+    ],
+    "challenges": [
+      "direct"
+    ],
+    "n_items": 4,
+    "n_samples": 2,
+    "planned_generations_total": 264,
+    "planned_graph_generations": 168,
+    "planned_probe_generations": 96,
+    "planned_trajectories": 48,
+    "topology": "diamond5"
+  },
+  "profile_hash": "2091f3767a5b0c072e48015a1872473c1325a237ee70880e2489052735cd7b3f",
+  "profile_reportable": false,
+  "protocol": "graph_flow",
+  "protocol_note": "graph_flow: the request gate is held CONSTANT across every arm \u2014 no arm inspects the incoming question \u2014 so what is measured is whether forgotten information generated or introduced after the initial boundary can propagate.",
+  "python": "3.11.15",
+  "resolved_model_revisions": {
+    "model_pin_exact": "True",
+    "model_repo": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+    "requested_model_revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "requested_tokenizer_revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "resolved_model_sha": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "resolved_tokenizer_sha": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "tokenizer_pin_exact": "True",
+    "tokenizer_repo": "OptimAI-Lab/TOFU-forget10_RULE-NPO"
+  },
+  "resolved_run_hash": "7f917d5faea0476a5683e57e220fc4532eeb46dfe0147de6dbfc8cc1b0889b5a",
+  "resumed_from": null,
+  "retain_evaluation": false,
+  "runtime_packages": {
+    "datasets": "3.0.1",
+    "numpy": "1.26.4",
+    "pydantic": "2.13.4",
+    "torch": "2.4.0",
+    "transformers": "4.51.3",
+    "vllm": "0.6.3.post1"
+  },
+  "sampling": {
+    "base_seed": 1729,
+    "k_values": [
+      1,
+      2
+    ],
+    "max_new_tokens": 128,
+    "n_samples": 2,
+    "primary_k": 32,
+    "temperature": 1.0,
+    "top_k": 0,
+    "top_p": 1.0
+  },
+  "schema": "graph-run-manifest-v2",
+  "semantic_scorer": null,
+  "share_model_handle": true,
+  "shared_model_handles": {
+    "primary": 139703406315600
+  },
+  "started_utc": "20260813T040345Z",
+  "study_design_hash": "7c7d5ba3d80ee8dd750d77129d4fea121438e0c04440e2eab6b8993e30ff060c",
+  "study_id": "graphforget-v1",
+  "tokenizer_revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+  "topology": {
+    "description": "five agents; two branches recombine at an integrator before the finalizer",
+    "edges": [
+      {
+        "dst": "B",
+        "src": "A"
+      },
+      {
+        "dst": "C",
+        "src": "A"
+      },
+      {
+        "dst": "D",
+        "src": "B"
+      },
+      {
+        "dst": "D",
+        "src": "C"
+      },
+      {
+        "dst": "E",
+        "src": "D"
+      }
+    ],
+    "name": "diamond5",
+    "nodes": [
+      {
+        "model": "primary",
+        "node_id": "A",
+        "role": "proposer",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "B",
+        "role": "analyst",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "C",
+        "role": "reviewer",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "D",
+        "role": "integrator",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "E",
+        "role": "finalizer",
+        "system_prompt": null,
+        "writes_memory": true
+      }
+    ],
+    "sink": "E"
+  },
+  "trace_shards": [
+    {
+      "n_rows": 48,
+      "name": "graph-events-00000.jsonl",
+      "sha256": "22b8d012ab3415249f54d4f23577cf6fb63b1a78755670f9762795af8e894e78"
+    }
+  ],
+  "uses_gold_answers": true,
+  "uses_gold_answers_note": "controlled challenges construct injected messages from the gold answer; the runtime concept registry never contains one"
+}

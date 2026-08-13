@@ -1,0 +1,805 @@
+{
+  "answer_rates": {
+    "multi_agent_control": {
+      "answer_match_rate": 0.0,
+      "guard_fire_rate": 0.0,
+      "n": 8,
+      "refusal_rate": 0.0
+    },
+    "multi_agent_dragon": {
+      "answer_match_rate": 0.0,
+      "guard_fire_rate": 0.0,
+      "n": 8,
+      "refusal_rate": 0.125
+    },
+    "multi_agent_dragon_subsets": {
+      "answer_match_rate": 0.0,
+      "guard_fire_rate": 0.0,
+      "n": 8,
+      "refusal_rate": 0.125
+    },
+    "multi_agent_graphforget": {
+      "answer_match_rate": 0.0,
+      "guard_fire_rate": 1.0,
+      "n": 8,
+      "refusal_rate": 1.0
+    },
+    "multi_agent_leak": {
+      "answer_match_rate": 0.0,
+      "guard_fire_rate": 0.0,
+      "n": 8,
+      "refusal_rate": 0.0
+    },
+    "single_agent": {
+      "answer_match_rate": 0.0,
+      "guard_fire_rate": 0.0,
+      "n": 8,
+      "refusal_rate": 0.0
+    }
+  },
+  "arms": [
+    "single_agent",
+    "multi_agent_control",
+    "multi_agent_leak",
+    "multi_agent_dragon",
+    "multi_agent_dragon_subsets",
+    "multi_agent_graphforget"
+  ],
+  "baseline_note": "multi_agent_dragon is DRAGON as published (one context scored). multi_agent_dragon_subsets is a MATCHED-SUBSET FAIRNESS ABLATION of that baseline, not the published DRAGON implementation, and must not be presented as one.",
+  "baselines": [
+    "multi_agent_leak",
+    "multi_agent_dragon",
+    "multi_agent_dragon_subsets"
+  ],
+  "causal_readback": {
+    "multi_agent_control": {
+      "attributable": 0,
+      "attributable_rate": 0.0,
+      "n": 8,
+      "with_store_leak": 0,
+      "withheld": 0,
+      "without_store_leak": 0
+    },
+    "multi_agent_dragon": {
+      "attributable": 0,
+      "attributable_rate": 0.0,
+      "n": 8,
+      "with_store_leak": 0,
+      "withheld": 0,
+      "without_store_leak": 0
+    },
+    "multi_agent_dragon_subsets": {
+      "attributable": 0,
+      "attributable_rate": 0.0,
+      "n": 8,
+      "with_store_leak": 0,
+      "withheld": 0,
+      "without_store_leak": 0
+    },
+    "multi_agent_graphforget": {
+      "attributable": 0,
+      "attributable_rate": 0.0,
+      "n": 8,
+      "with_store_leak": 0,
+      "withheld": 0,
+      "without_store_leak": 0
+    },
+    "multi_agent_leak": {
+      "attributable": 0,
+      "attributable_rate": 0.0,
+      "n": 8,
+      "with_store_leak": 0,
+      "withheld": 0,
+      "without_store_leak": 0
+    },
+    "single_agent": {
+      "attributable": 0,
+      "attributable_rate": 0.0,
+      "n": 8,
+      "with_store_leak": 0,
+      "withheld": 0,
+      "without_store_leak": 0
+    }
+  },
+  "challenge": "direct",
+  "cohorts_separated": false,
+  "collaboration": {
+    "multi_agent_control": {
+      "blocked": 0,
+      "collaboration_rate": 1.0,
+      "edges": 40,
+      "informative_payloads": 40,
+      "payloads": 40,
+      "removed": 0,
+      "topology_changed": false
+    },
+    "multi_agent_dragon": {
+      "blocked": 0,
+      "collaboration_rate": 1.0,
+      "edges": 40,
+      "informative_payloads": 40,
+      "payloads": 40,
+      "removed": 0,
+      "topology_changed": false
+    },
+    "multi_agent_dragon_subsets": {
+      "blocked": 0,
+      "collaboration_rate": 1.0,
+      "edges": 40,
+      "informative_payloads": 40,
+      "payloads": 40,
+      "removed": 0,
+      "topology_changed": false
+    },
+    "multi_agent_graphforget": {
+      "blocked": 40,
+      "collaboration_rate": 0.0,
+      "edges": 40,
+      "informative_payloads": 0,
+      "payloads": 40,
+      "removed": 0,
+      "topology_changed": false
+    },
+    "multi_agent_leak": {
+      "blocked": 0,
+      "collaboration_rate": 1.0,
+      "edges": 40,
+      "informative_payloads": 40,
+      "payloads": 40,
+      "removed": 0,
+      "topology_changed": false
+    },
+    "single_agent": {
+      "blocked": 0,
+      "collaboration_rate": 0.0,
+      "edges": 0,
+      "informative_payloads": 0,
+      "payloads": 0,
+      "removed": 0,
+      "topology_changed": false
+    }
+  },
+  "curves": {
+    "causal_readback_leak": {
+      "multi_agent_control": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_dragon": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_dragon_subsets": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_graphforget": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_leak": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "single_agent": {
+        "1": 0.0,
+        "2": 0.0
+      }
+    },
+    "certified_persistent_leak": {
+      "multi_agent_control": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_dragon": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "multi_agent_dragon_subsets": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "multi_agent_graphforget": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_leak": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "single_agent": {
+        "1": 0.0,
+        "2": 0.0
+      }
+    },
+    "edge_leak": {
+      "multi_agent_control": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_dragon": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "multi_agent_dragon_subsets": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "multi_agent_graphforget": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_leak": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "single_agent": {
+        "1": 0.0,
+        "2": 0.0
+      }
+    },
+    "raw_message_leak": {
+      "multi_agent_control": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_dragon": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "multi_agent_dragon_subsets": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "multi_agent_graphforget": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "multi_agent_leak": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "single_agent": {
+        "1": 0.0,
+        "2": 0.0
+      }
+    },
+    "sink_leak": {
+      "multi_agent_control": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_dragon": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_dragon_subsets": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_graphforget": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_leak": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "single_agent": {
+        "1": 0.0,
+        "2": 0.0
+      }
+    },
+    "store_leak": {
+      "multi_agent_control": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_dragon": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "multi_agent_dragon_subsets": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "multi_agent_graphforget": {
+        "1": 0.0,
+        "2": 0.0
+      },
+      "multi_agent_leak": {
+        "1": 1.0,
+        "2": 1.0
+      },
+      "single_agent": {
+        "1": 0.0,
+        "2": 0.0
+      }
+    }
+  },
+  "declared_primary_k": 32,
+  "detector_calibration": null,
+  "detector_fpr_gate": {
+    "applicable": false,
+    "blocking": true,
+    "ceiling": 0.1,
+    "reason": "no detector calibration artefact in this run. A false-positive rate that was never measured cannot be shown to be under a ceiling."
+  },
+  "detector_status": "diagnostic",
+  "diagnostic": true,
+  "evaluation_cohort": {
+    "dataset_config": "forget10",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "fingerprint": "d3438d1e2e81d13ffde6509ed42e3547d3f3ffe12fe2d053b3d03da3546f8918",
+    "is_retain": false,
+    "n_concepts": 4,
+    "n_items": 4,
+    "split": "engineering"
+  },
+  "forget_policy_cohort": {
+    "dataset_config": "forget10",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "fingerprint": "d3438d1e2e81d13ffde6509ed42e3547d3f3ffe12fe2d053b3d03da3546f8918",
+    "is_retain": false,
+    "n_concepts": 4,
+    "n_items": 4,
+    "split": "engineering"
+  },
+  "gates": {
+    "cohorts_separated": true,
+    "complete_samples": true,
+    "detector_fpr_within_ceiling": false,
+    "incomplete": [],
+    "max_detector_fpr": 0.1,
+    "monotone_curves": true,
+    "non_monotone": [],
+    "primary_k_available": false,
+    "profile_reportable": false,
+    "reportable": false,
+    "retain_utility_margin": 0.03,
+    "retain_utility_within_margin": true
+  },
+  "hypotheses": {
+    "all_supported": true,
+    "baselines": [
+      "multi_agent_leak",
+      "multi_agent_dragon",
+      "multi_agent_dragon_subsets"
+    ],
+    "by_surface": {
+      "causal_readback_leak": [
+        {
+          "absolute_reduction": 0.0,
+          "baseline": "multi_agent_leak",
+          "ci_high": 0.0,
+          "ci_low": 0.0,
+          "estimate": 0.0,
+          "k": 2.0,
+          "leak_baseline": 0.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": null,
+          "reps": 2000.0,
+          "significant": false,
+          "supported": false,
+          "surface": "causal_readback_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": 0.0,
+          "baseline": "multi_agent_dragon",
+          "ci_high": 0.0,
+          "ci_low": 0.0,
+          "estimate": 0.0,
+          "k": 2.0,
+          "leak_baseline": 0.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": null,
+          "reps": 2000.0,
+          "significant": false,
+          "supported": false,
+          "surface": "causal_readback_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": 0.0,
+          "baseline": "multi_agent_dragon_subsets",
+          "ci_high": 0.0,
+          "ci_low": 0.0,
+          "estimate": 0.0,
+          "k": 2.0,
+          "leak_baseline": 0.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": null,
+          "reps": 2000.0,
+          "significant": false,
+          "supported": false,
+          "surface": "causal_readback_leak",
+          "treatment": "multi_agent_graphforget"
+        }
+      ],
+      "certified_persistent_leak": [
+        {
+          "absolute_reduction": -1.0,
+          "baseline": "multi_agent_leak",
+          "ci_high": -1.0,
+          "ci_low": -1.0,
+          "estimate": -1.0,
+          "k": 2.0,
+          "leak_baseline": 1.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": 1.0,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "certified_persistent_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -1.0,
+          "baseline": "multi_agent_dragon",
+          "ci_high": -1.0,
+          "ci_low": -1.0,
+          "estimate": -1.0,
+          "k": 2.0,
+          "leak_baseline": 1.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": 1.0,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "certified_persistent_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -1.0,
+          "baseline": "multi_agent_dragon_subsets",
+          "ci_high": -1.0,
+          "ci_low": -1.0,
+          "estimate": -1.0,
+          "k": 2.0,
+          "leak_baseline": 1.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": 1.0,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "certified_persistent_leak",
+          "treatment": "multi_agent_graphforget"
+        }
+      ],
+      "edge_leak": [
+        {
+          "absolute_reduction": -1.0,
+          "baseline": "multi_agent_leak",
+          "ci_high": -1.0,
+          "ci_low": -1.0,
+          "estimate": -1.0,
+          "k": 2.0,
+          "leak_baseline": 1.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": 1.0,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "edge_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -1.0,
+          "baseline": "multi_agent_dragon",
+          "ci_high": -1.0,
+          "ci_low": -1.0,
+          "estimate": -1.0,
+          "k": 2.0,
+          "leak_baseline": 1.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": 1.0,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "edge_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -1.0,
+          "baseline": "multi_agent_dragon_subsets",
+          "ci_high": -1.0,
+          "ci_low": -1.0,
+          "estimate": -1.0,
+          "k": 2.0,
+          "leak_baseline": 1.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": 1.0,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "edge_leak",
+          "treatment": "multi_agent_graphforget"
+        }
+      ],
+      "raw_message_leak": [
+        {
+          "absolute_reduction": 0.0,
+          "baseline": "multi_agent_leak",
+          "ci_high": 0.0,
+          "ci_low": 0.0,
+          "estimate": 0.0,
+          "k": 2.0,
+          "leak_baseline": 1.0,
+          "leak_treatment": 1.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": 0.0,
+          "reps": 2000.0,
+          "significant": false,
+          "supported": false,
+          "surface": "raw_message_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": 0.0,
+          "baseline": "multi_agent_dragon",
+          "ci_high": 0.0,
+          "ci_low": 0.0,
+          "estimate": 0.0,
+          "k": 2.0,
+          "leak_baseline": 1.0,
+          "leak_treatment": 1.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": 0.0,
+          "reps": 2000.0,
+          "significant": false,
+          "supported": false,
+          "surface": "raw_message_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": 0.0,
+          "baseline": "multi_agent_dragon_subsets",
+          "ci_high": 0.0,
+          "ci_low": 0.0,
+          "estimate": 0.0,
+          "k": 2.0,
+          "leak_baseline": 1.0,
+          "leak_treatment": 1.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": 0.0,
+          "reps": 2000.0,
+          "significant": false,
+          "supported": false,
+          "surface": "raw_message_leak",
+          "treatment": "multi_agent_graphforget"
+        }
+      ],
+      "sink_leak": [
+        {
+          "absolute_reduction": 0.0,
+          "baseline": "multi_agent_leak",
+          "ci_high": 0.0,
+          "ci_low": 0.0,
+          "estimate": 0.0,
+          "k": 2.0,
+          "leak_baseline": 0.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": null,
+          "reps": 2000.0,
+          "significant": false,
+          "supported": false,
+          "surface": "sink_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": 0.0,
+          "baseline": "multi_agent_dragon",
+          "ci_high": 0.0,
+          "ci_low": 0.0,
+          "estimate": 0.0,
+          "k": 2.0,
+          "leak_baseline": 0.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": null,
+          "reps": 2000.0,
+          "significant": false,
+          "supported": false,
+          "surface": "sink_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": 0.0,
+          "baseline": "multi_agent_dragon_subsets",
+          "ci_high": 0.0,
+          "ci_low": 0.0,
+          "estimate": 0.0,
+          "k": 2.0,
+          "leak_baseline": 0.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": null,
+          "reps": 2000.0,
+          "significant": false,
+          "supported": false,
+          "surface": "sink_leak",
+          "treatment": "multi_agent_graphforget"
+        }
+      ],
+      "store_leak": [
+        {
+          "absolute_reduction": -1.0,
+          "baseline": "multi_agent_leak",
+          "ci_high": -1.0,
+          "ci_low": -1.0,
+          "estimate": -1.0,
+          "k": 2.0,
+          "leak_baseline": 1.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": 1.0,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "store_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -1.0,
+          "baseline": "multi_agent_dragon",
+          "ci_high": -1.0,
+          "ci_low": -1.0,
+          "estimate": -1.0,
+          "k": 2.0,
+          "leak_baseline": 1.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": 1.0,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "store_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -1.0,
+          "baseline": "multi_agent_dragon_subsets",
+          "ci_high": -1.0,
+          "ci_low": -1.0,
+          "estimate": -1.0,
+          "k": 2.0,
+          "leak_baseline": 1.0,
+          "leak_treatment": 0.0,
+          "n_clusters": 4.0,
+          "n_items": 4.0,
+          "relative_reduction": 1.0,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "store_leak",
+          "treatment": "multi_agent_graphforget"
+        }
+      ]
+    },
+    "hypotheses": [
+      {
+        "absolute_reduction": -1.0,
+        "baseline": "multi_agent_leak",
+        "ci_high": -1.0,
+        "ci_low": -1.0,
+        "estimate": -1.0,
+        "id": "H1",
+        "k": 2.0,
+        "leak_baseline": 1.0,
+        "leak_treatment": 0.0,
+        "n_clusters": 4.0,
+        "n_items": 4.0,
+        "relative_reduction": 1.0,
+        "reps": 2000.0,
+        "significant": true,
+        "statement": "L_multi_agent_graphforget(2) < L_multi_agent_leak(2) on certified_persistent_leak",
+        "supported": true,
+        "surface": "certified_persistent_leak",
+        "treatment": "multi_agent_graphforget"
+      },
+      {
+        "absolute_reduction": -1.0,
+        "baseline": "multi_agent_dragon",
+        "ci_high": -1.0,
+        "ci_low": -1.0,
+        "estimate": -1.0,
+        "id": "H2",
+        "k": 2.0,
+        "leak_baseline": 1.0,
+        "leak_treatment": 0.0,
+        "n_clusters": 4.0,
+        "n_items": 4.0,
+        "relative_reduction": 1.0,
+        "reps": 2000.0,
+        "significant": true,
+        "statement": "L_multi_agent_graphforget(2) < L_multi_agent_dragon(2) on certified_persistent_leak",
+        "supported": true,
+        "surface": "certified_persistent_leak",
+        "treatment": "multi_agent_graphforget"
+      },
+      {
+        "absolute_reduction": -1.0,
+        "baseline": "multi_agent_dragon_subsets",
+        "ci_high": -1.0,
+        "ci_low": -1.0,
+        "estimate": -1.0,
+        "id": "H3",
+        "k": 2.0,
+        "leak_baseline": 1.0,
+        "leak_treatment": 0.0,
+        "n_clusters": 4.0,
+        "n_items": 4.0,
+        "relative_reduction": 1.0,
+        "reps": 2000.0,
+        "significant": true,
+        "statement": "L_multi_agent_graphforget(2) < L_multi_agent_dragon_subsets(2) on certified_persistent_leak",
+        "supported": true,
+        "surface": "certified_persistent_leak",
+        "treatment": "multi_agent_graphforget"
+      }
+    ],
+    "note": "every comparison is between arms of the SAME run at the SAME k. Leak@k rises with k, so a cross-k or cross-protocol comparison is not a comparison.",
+    "primary_k": 2,
+    "primary_surface": "certified_persistent_leak",
+    "treatment": "multi_agent_graphforget"
+  },
+  "k_values": [
+    1,
+    2
+  ],
+  "n_rows_in_scope": 48,
+  "n_rows_total": 48,
+  "n_samples": 2,
+  "phase": "engineering",
+  "pooling": "one challenge and one protocol only; challenges and protocols are never pooled because they are different populations and different questions",
+  "primary_k": 2,
+  "primary_k_substituted": true,
+  "profile_hash": "2091f3767a5b0c072e48015a1872473c1325a237ee70880e2489052735cd7b3f",
+  "protocol": "graph_flow",
+  "protocol_note": "graph_flow: the request gate is held CONSTANT across every arm \u2014 no arm inspects the incoming question \u2014 so what is measured is whether forgotten information generated or introduced after the initial boundary can propagate.",
+  "readback_by_trajectory_n": 48,
+  "resolved_run_hash": "7f917d5faea0476a5683e57e220fc4532eeb46dfe0147de6dbfc8cc1b0889b5a",
+  "retain_utility_measured": false,
+  "run": "20260813T035851Z-positive-direct-flow",
+  "schema": "graph-leak-report-v1",
+  "scorer": "leakk-nli-rougel-v1:sileod/deberta-v3-base-tasksource-nli@3209a6ab012eab725e8f24547972f9aa133d1345",
+  "scorer_note": "every semantic number in this report \u2014 leakage, answer match and readback \u2014 comes from the ONE scorer named above, read out of the run's score rows",
+  "scorer_reportable": true,
+  "study_design_hash": "7c7d5ba3d80ee8dd750d77129d4fea121438e0c04440e2eab6b8993e30ff060c",
+  "study_id": "graphforget-v1",
+  "topology": "diamond5",
+  "uses_gold_answers": true,
+  "utility_gate": {
+    "applicable": false,
+    "blocking": false,
+    "reason": "no retain cohort in this run. Retain utility must be measured on questions the system is SUPPOSED to answer; on a forget cohort an answer-match rate is a leakage rate."
+  }
+}
