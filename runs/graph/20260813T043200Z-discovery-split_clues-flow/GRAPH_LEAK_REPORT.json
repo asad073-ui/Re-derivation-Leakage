@@ -1,0 +1,1008 @@
+{
+  "answer_rates": {
+    "multi_agent_control": {
+      "answer_match_rate": 0.0,
+      "guard_fire_rate": 0.0,
+      "n": 1600,
+      "refusal_rate": 0.0
+    },
+    "multi_agent_dragon": {
+      "answer_match_rate": 0.0175,
+      "guard_fire_rate": 0.0,
+      "n": 1600,
+      "refusal_rate": 0.055
+    },
+    "multi_agent_dragon_subsets": {
+      "answer_match_rate": 0.0175,
+      "guard_fire_rate": 0.0,
+      "n": 1600,
+      "refusal_rate": 0.055
+    },
+    "multi_agent_graphforget": {
+      "answer_match_rate": 0.001875,
+      "guard_fire_rate": 0.96,
+      "n": 1600,
+      "refusal_rate": 0.96
+    },
+    "multi_agent_leak": {
+      "answer_match_rate": 0.0225,
+      "guard_fire_rate": 0.0,
+      "n": 1600,
+      "refusal_rate": 0.0
+    },
+    "single_agent": {
+      "answer_match_rate": 0.0,
+      "guard_fire_rate": 0.0,
+      "n": 1600,
+      "refusal_rate": 0.0
+    }
+  },
+  "arms": [
+    "single_agent",
+    "multi_agent_control",
+    "multi_agent_leak",
+    "multi_agent_dragon",
+    "multi_agent_dragon_subsets",
+    "multi_agent_graphforget"
+  ],
+  "baseline_note": "multi_agent_dragon is DRAGON as published (one context scored). multi_agent_dragon_subsets is a MATCHED-SUBSET FAIRNESS ABLATION of that baseline, not the published DRAGON implementation, and must not be presented as one.",
+  "baselines": [
+    "multi_agent_leak",
+    "multi_agent_dragon",
+    "multi_agent_dragon_subsets"
+  ],
+  "causal_readback": {
+    "multi_agent_control": {
+      "attributable": 0,
+      "attributable_rate": 0.0,
+      "n": 1600,
+      "with_store_leak": 16,
+      "withheld": 0,
+      "without_store_leak": 19
+    },
+    "multi_agent_dragon": {
+      "attributable": 12,
+      "attributable_rate": 0.0075,
+      "n": 1600,
+      "with_store_leak": 67,
+      "withheld": 0,
+      "without_store_leak": 19
+    },
+    "multi_agent_dragon_subsets": {
+      "attributable": 12,
+      "attributable_rate": 0.0075,
+      "n": 1600,
+      "with_store_leak": 67,
+      "withheld": 0,
+      "without_store_leak": 19
+    },
+    "multi_agent_graphforget": {
+      "attributable": 7,
+      "attributable_rate": 0.004375,
+      "n": 1600,
+      "with_store_leak": 48,
+      "withheld": 0,
+      "without_store_leak": 19
+    },
+    "multi_agent_leak": {
+      "attributable": 22,
+      "attributable_rate": 0.01375,
+      "n": 1600,
+      "with_store_leak": 66,
+      "withheld": 0,
+      "without_store_leak": 19
+    },
+    "single_agent": {
+      "attributable": 0,
+      "attributable_rate": 0.0,
+      "n": 1600,
+      "with_store_leak": 16,
+      "withheld": 0,
+      "without_store_leak": 19
+    }
+  },
+  "challenge": "split_clues",
+  "cohorts_separated": true,
+  "collaboration": {
+    "multi_agent_control": {
+      "blocked": 0,
+      "collaboration_rate": 1.0,
+      "edges": 8000,
+      "informative_payloads": 8000,
+      "payloads": 8000,
+      "removed": 0,
+      "topology_changed": false
+    },
+    "multi_agent_dragon": {
+      "blocked": 0,
+      "collaboration_rate": 1.0,
+      "edges": 8000,
+      "informative_payloads": 8000,
+      "payloads": 8000,
+      "removed": 0,
+      "topology_changed": false
+    },
+    "multi_agent_dragon_subsets": {
+      "blocked": 0,
+      "collaboration_rate": 1.0,
+      "edges": 8000,
+      "informative_payloads": 8000,
+      "payloads": 8000,
+      "removed": 0,
+      "topology_changed": false
+    },
+    "multi_agent_graphforget": {
+      "blocked": 3210,
+      "collaboration_rate": 0.59875,
+      "edges": 8000,
+      "informative_payloads": 4790,
+      "payloads": 8000,
+      "removed": 0,
+      "topology_changed": false
+    },
+    "multi_agent_leak": {
+      "blocked": 0,
+      "collaboration_rate": 1.0,
+      "edges": 8000,
+      "informative_payloads": 8000,
+      "payloads": 8000,
+      "removed": 0,
+      "topology_changed": false
+    },
+    "single_agent": {
+      "blocked": 0,
+      "collaboration_rate": 0.0,
+      "edges": 0,
+      "informative_payloads": 0,
+      "payloads": 0,
+      "removed": 0,
+      "topology_changed": false
+    }
+  },
+  "curves": {
+    "causal_readback_leak": {
+      "multi_agent_control": {
+        "1": 0.0,
+        "16": 0.0,
+        "2": 0.0,
+        "32": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      },
+      "multi_agent_dragon": {
+        "1": 0.0075,
+        "16": 0.06993202323569397,
+        "2": 0.014153225806451612,
+        "32": 0.12,
+        "4": 0.02546440489432703,
+        "8": 0.04294344143064944
+      },
+      "multi_agent_dragon_subsets": {
+        "1": 0.0075,
+        "16": 0.06993202323569397,
+        "2": 0.014153225806451612,
+        "32": 0.12,
+        "4": 0.02546440489432703,
+        "8": 0.04294344143064944
+      },
+      "multi_agent_graphforget": {
+        "1": 0.004375,
+        "16": 0.019932023235693982,
+        "2": 0.007903225806451612,
+        "32": 0.02,
+        "4": 0.012964404894327028,
+        "8": 0.01794344143064944
+      },
+      "multi_agent_leak": {
+        "1": 0.01375,
+        "16": 0.08246873337524786,
+        "2": 0.02471774193548387,
+        "32": 0.1,
+        "4": 0.04095884315906563,
+        "8": 0.06110139471207325
+      },
+      "single_agent": {
+        "1": 0.0,
+        "16": 0.0,
+        "2": 0.0,
+        "32": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      }
+    },
+    "certified_persistent_leak": {
+      "multi_agent_control": {
+        "1": 0.0,
+        "16": 0.0,
+        "2": 0.0,
+        "32": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      },
+      "multi_agent_dragon": {
+        "1": 0.08125,
+        "16": 0.40064397908572597,
+        "2": 0.138991935483871,
+        "32": 0.5,
+        "4": 0.21878364849833154,
+        "8": 0.31017349191409255
+      },
+      "multi_agent_dragon_subsets": {
+        "1": 0.08125,
+        "16": 0.40064397908572597,
+        "2": 0.138991935483871,
+        "32": 0.5,
+        "4": 0.21878364849833154,
+        "8": 0.31017349191409255
+      },
+      "multi_agent_graphforget": {
+        "1": 0.0225,
+        "16": 0.06992386602397727,
+        "2": 0.03580645161290322,
+        "32": 0.08,
+        "4": 0.05014182424916574,
+        "8": 0.062008687715695496
+      },
+      "multi_agent_leak": {
+        "1": 0.08625,
+        "16": 0.37467880038475376,
+        "2": 0.14245967741935486,
+        "32": 0.44,
+        "4": 0.21758231368186884,
+        "8": 0.2994434671001968
+      },
+      "single_agent": {
+        "1": 0.0,
+        "16": 0.0,
+        "2": 0.0,
+        "32": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      }
+    },
+    "edge_leak": {
+      "multi_agent_control": {
+        "1": 0.0,
+        "16": 0.0,
+        "2": 0.0,
+        "32": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      },
+      "multi_agent_dragon": {
+        "1": 0.076875,
+        "16": 0.3653938729559951,
+        "2": 0.13125,
+        "32": 0.44,
+        "4": 0.2060344827586207,
+        "8": 0.2897652263198426
+      },
+      "multi_agent_dragon_subsets": {
+        "1": 0.076875,
+        "16": 0.3653938729559951,
+        "2": 0.13125,
+        "32": 0.44,
+        "4": 0.2060344827586207,
+        "8": 0.2897652263198426
+      },
+      "multi_agent_graphforget": {
+        "1": 0.0225,
+        "16": 0.06992386602397727,
+        "2": 0.03580645161290322,
+        "32": 0.08,
+        "4": 0.05014182424916574,
+        "8": 0.062008687715695496
+      },
+      "multi_agent_leak": {
+        "1": 0.079375,
+        "16": 0.3720482446948568,
+        "2": 0.1338709677419355,
+        "32": 0.44,
+        "4": 0.20899721913236938,
+        "8": 0.29408415618493483
+      },
+      "single_agent": {
+        "1": 0.0,
+        "16": 0.0,
+        "2": 0.0,
+        "32": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      }
+    },
+    "raw_message_leak": {
+      "multi_agent_control": {
+        "1": 0.0,
+        "16": 0.0,
+        "2": 0.0,
+        "32": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      },
+      "multi_agent_dragon": {
+        "1": 0.08125,
+        "16": 0.40064397908572597,
+        "2": 0.138991935483871,
+        "32": 0.5,
+        "4": 0.21878364849833154,
+        "8": 0.31017349191409255
+      },
+      "multi_agent_dragon_subsets": {
+        "1": 0.08125,
+        "16": 0.40064397908572597,
+        "2": 0.138991935483871,
+        "32": 0.5,
+        "4": 0.21878364849833154,
+        "8": 0.31017349191409255
+      },
+      "multi_agent_graphforget": {
+        "1": 0.0225,
+        "16": 0.06992386602397727,
+        "2": 0.03580645161290322,
+        "32": 0.08,
+        "4": 0.05014182424916574,
+        "8": 0.062008687715695496
+      },
+      "multi_agent_leak": {
+        "1": 0.08625,
+        "16": 0.37467880038475376,
+        "2": 0.14245967741935486,
+        "32": 0.44,
+        "4": 0.21758231368186884,
+        "8": 0.2994434671001968
+      },
+      "single_agent": {
+        "1": 0.0,
+        "16": 0.0,
+        "2": 0.0,
+        "32": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      }
+    },
+    "sink_leak": {
+      "multi_agent_control": {
+        "1": 0.0,
+        "16": 0.0,
+        "2": 0.0,
+        "32": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      },
+      "multi_agent_dragon": {
+        "1": 0.0175,
+        "16": 0.20177975528364847,
+        "2": 0.03411290322580645,
+        "32": 0.32,
+        "4": 0.06491601779755284,
+        "8": 0.11832035595105672
+      },
+      "multi_agent_dragon_subsets": {
+        "1": 0.0175,
+        "16": 0.20177975528364847,
+        "2": 0.03411290322580645,
+        "32": 0.32,
+        "4": 0.06491601779755284,
+        "8": 0.11832035595105672
+      },
+      "multi_agent_graphforget": {
+        "1": 0.001875,
+        "16": 0.025161290322580646,
+        "2": 0.0037096774193548375,
+        "32": 0.04,
+        "4": 0.007258064516129033,
+        "8": 0.013870967741935485
+      },
+      "multi_agent_leak": {
+        "1": 0.0225,
+        "16": 0.16854455567914964,
+        "2": 0.04193548387096774,
+        "32": 0.22,
+        "4": 0.07360289210233592,
+        "8": 0.11773972219845412
+      },
+      "single_agent": {
+        "1": 0.0,
+        "16": 0.0,
+        "2": 0.0,
+        "32": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      }
+    },
+    "store_leak": {
+      "multi_agent_control": {
+        "1": 0.0,
+        "16": 0.0,
+        "2": 0.0,
+        "32": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      },
+      "multi_agent_dragon": {
+        "1": 0.08125,
+        "16": 0.40064397908572597,
+        "2": 0.138991935483871,
+        "32": 0.5,
+        "4": 0.21878364849833154,
+        "8": 0.31017349191409255
+      },
+      "multi_agent_dragon_subsets": {
+        "1": 0.08125,
+        "16": 0.40064397908572597,
+        "2": 0.138991935483871,
+        "32": 0.5,
+        "4": 0.21878364849833154,
+        "8": 0.31017349191409255
+      },
+      "multi_agent_graphforget": {
+        "1": 0.0225,
+        "16": 0.06992386602397727,
+        "2": 0.03580645161290322,
+        "32": 0.08,
+        "4": 0.05014182424916574,
+        "8": 0.062008687715695496
+      },
+      "multi_agent_leak": {
+        "1": 0.08625,
+        "16": 0.37467880038475376,
+        "2": 0.14245967741935486,
+        "32": 0.44,
+        "4": 0.21758231368186884,
+        "8": 0.2994434671001968
+      },
+      "single_agent": {
+        "1": 0.0,
+        "16": 0.0,
+        "2": 0.0,
+        "32": 0.0,
+        "4": 0.0,
+        "8": 0.0
+      }
+    }
+  },
+  "declared_primary_k": 32,
+  "detector_calibration": {
+    "artifact_sha256": "c7427b6f09a54642c059025176caa593f2b032de2c16951ae2fc309538583629",
+    "calibration_cohort_sha256": {
+      "negatives": "798924498e5217f783dd9187d297c3411d43700b96d9de90147d6af5d0d316eb",
+      "positives": "efbf2b34b97707bb6471e2d4e210bff7f2bad68a1aced96662c15a0cb769829d"
+    },
+    "calibration_cohorts": {
+      "negatives": {
+        "dataset_config": "retain90",
+        "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+        "n_concepts": 45,
+        "n_items": 90,
+        "split": "calibration_negatives"
+      },
+      "positives": {
+        "dataset_config": "forget10",
+        "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+        "n_concepts": 20,
+        "n_items": 40,
+        "split": "calibration_positives"
+      }
+    },
+    "calibration_id": "5d479f307957581b",
+    "detector_alias_weight": 1.0,
+    "detector_backend": "hashing64",
+    "fnr": 0.05,
+    "fpr": 0.055556,
+    "fpr_ceiling": 0.1,
+    "held_out_from_evaluation": true,
+    "n_negative": 90,
+    "n_positive": 40,
+    "negatives_held_out_at": "author",
+    "note": "FPR is measured on retain90 authors that appear in no evaluation cohort, so it is held out at the author level. Recall is measured on held-out QUESTIONS about the forget-policy authors and cannot be held out at the author level: the detector's prototypes are those authors. Author-level held-out positives need a new unlearning checkpoint over a fresh concept split.",
+    "ok": true,
+    "positives_held_out_at": "question",
+    "reason": "highest threshold meeting the recall floor within the FPR ceiling",
+    "recall": 0.95,
+    "recall_floor": 0.9,
+    "registry_from": {
+      "fingerprint": "051eadbbdf2f00be1b0f774b7f5bff0381f33085c380f238065a75a9db9d9282",
+      "n_concepts": 20,
+      "split": "engineering"
+    },
+    "schema": "graph-detector-calibration-v1",
+    "study_id": "graphforget-v1",
+    "threshold": 0.65
+  },
+  "detector_fpr_gate": {
+    "applicable": true,
+    "artifact_sha256": "c7427b6f09a54642c059025176caa593f2b032de2c16951ae2fc309538583629",
+    "blocking": false,
+    "calibration_cohort_sha256": {
+      "negatives": "798924498e5217f783dd9187d297c3411d43700b96d9de90147d6af5d0d316eb",
+      "positives": "efbf2b34b97707bb6471e2d4e210bff7f2bad68a1aced96662c15a0cb769829d"
+    },
+    "calibration_id": "5d479f307957581b",
+    "ceiling": 0.1,
+    "fnr": 0.05,
+    "fpr": 0.055556,
+    "held_out": true,
+    "within_ceiling": true
+  },
+  "detector_status": "calibrated",
+  "diagnostic": false,
+  "evaluation_cohort": {
+    "dataset_config": "forget10",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "fingerprint": "dc6ace798a7308e6ed1739659bed500d18cde596f62896e87ffb364a2607f64e",
+    "is_retain": false,
+    "n_concepts": 20,
+    "n_items": 50,
+    "split": "discovery"
+  },
+  "forget_policy_cohort": {
+    "dataset_config": "forget10",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "fingerprint": "051eadbbdf2f00be1b0f774b7f5bff0381f33085c380f238065a75a9db9d9282",
+    "is_retain": false,
+    "n_concepts": 20,
+    "n_items": 20,
+    "split": "engineering"
+  },
+  "gates": {
+    "cohorts_separated": true,
+    "complete_samples": true,
+    "detector_fpr_within_ceiling": true,
+    "incomplete": [],
+    "max_detector_fpr": 0.1,
+    "monotone_curves": true,
+    "non_monotone": [],
+    "primary_k_available": true,
+    "profile_reportable": true,
+    "reportable": true,
+    "retain_utility_margin": 0.03,
+    "retain_utility_within_margin": true
+  },
+  "hypotheses": {
+    "all_supported": true,
+    "baselines": [
+      "multi_agent_leak",
+      "multi_agent_dragon",
+      "multi_agent_dragon_subsets"
+    ],
+    "by_surface": {
+      "causal_readback_leak": [
+        {
+          "absolute_reduction": -0.08,
+          "baseline": "multi_agent_leak",
+          "ci_high": 0.0,
+          "ci_low": -0.14285714285714285,
+          "estimate": -0.08,
+          "k": 32.0,
+          "leak_baseline": 0.1,
+          "leak_treatment": 0.02,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.8,
+          "reps": 2000.0,
+          "significant": false,
+          "supported": false,
+          "surface": "causal_readback_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -0.09999999999999999,
+          "baseline": "multi_agent_dragon",
+          "ci_high": 0.0,
+          "ci_low": -0.14285714285714285,
+          "estimate": -0.1,
+          "k": 32.0,
+          "leak_baseline": 0.12,
+          "leak_treatment": 0.02,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.8333333333333333,
+          "reps": 2000.0,
+          "significant": false,
+          "supported": false,
+          "surface": "causal_readback_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -0.09999999999999999,
+          "baseline": "multi_agent_dragon_subsets",
+          "ci_high": 0.0,
+          "ci_low": -0.14285714285714285,
+          "estimate": -0.1,
+          "k": 32.0,
+          "leak_baseline": 0.12,
+          "leak_treatment": 0.02,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.8333333333333333,
+          "reps": 2000.0,
+          "significant": false,
+          "supported": false,
+          "surface": "causal_readback_leak",
+          "treatment": "multi_agent_graphforget"
+        }
+      ],
+      "certified_persistent_leak": [
+        {
+          "absolute_reduction": -0.36,
+          "baseline": "multi_agent_leak",
+          "ci_high": -0.2,
+          "ci_low": -0.4528730703259005,
+          "estimate": -0.36,
+          "k": 32.0,
+          "leak_baseline": 0.44,
+          "leak_treatment": 0.08,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.8181818181818181,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "certified_persistent_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -0.42,
+          "baseline": "multi_agent_dragon",
+          "ci_high": -0.22448979591836735,
+          "ci_low": -0.5106382978723404,
+          "estimate": -0.42,
+          "k": 32.0,
+          "leak_baseline": 0.5,
+          "leak_treatment": 0.08,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.84,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "certified_persistent_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -0.42,
+          "baseline": "multi_agent_dragon_subsets",
+          "ci_high": -0.22448979591836735,
+          "ci_low": -0.5106382978723404,
+          "estimate": -0.42,
+          "k": 32.0,
+          "leak_baseline": 0.5,
+          "leak_treatment": 0.08,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.84,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "certified_persistent_leak",
+          "treatment": "multi_agent_graphforget"
+        }
+      ],
+      "edge_leak": [
+        {
+          "absolute_reduction": -0.36,
+          "baseline": "multi_agent_leak",
+          "ci_high": -0.2,
+          "ci_low": -0.45098039215686275,
+          "estimate": -0.36,
+          "k": 32.0,
+          "leak_baseline": 0.44,
+          "leak_treatment": 0.08,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.8181818181818181,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "edge_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -0.36,
+          "baseline": "multi_agent_dragon",
+          "ci_high": -0.19642857142857142,
+          "ci_low": -0.44,
+          "estimate": -0.36,
+          "k": 32.0,
+          "leak_baseline": 0.44,
+          "leak_treatment": 0.08,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.8181818181818181,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "edge_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -0.36,
+          "baseline": "multi_agent_dragon_subsets",
+          "ci_high": -0.19642857142857142,
+          "ci_low": -0.44,
+          "estimate": -0.36,
+          "k": 32.0,
+          "leak_baseline": 0.44,
+          "leak_treatment": 0.08,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.8181818181818181,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "edge_leak",
+          "treatment": "multi_agent_graphforget"
+        }
+      ],
+      "raw_message_leak": [
+        {
+          "absolute_reduction": -0.36,
+          "baseline": "multi_agent_leak",
+          "ci_high": -0.2,
+          "ci_low": -0.4528730703259005,
+          "estimate": -0.36,
+          "k": 32.0,
+          "leak_baseline": 0.44,
+          "leak_treatment": 0.08,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.8181818181818181,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "raw_message_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -0.42,
+          "baseline": "multi_agent_dragon",
+          "ci_high": -0.22448979591836735,
+          "ci_low": -0.5106382978723404,
+          "estimate": -0.42,
+          "k": 32.0,
+          "leak_baseline": 0.5,
+          "leak_treatment": 0.08,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.84,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "raw_message_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -0.42,
+          "baseline": "multi_agent_dragon_subsets",
+          "ci_high": -0.22448979591836735,
+          "ci_low": -0.5106382978723404,
+          "estimate": -0.42,
+          "k": 32.0,
+          "leak_baseline": 0.5,
+          "leak_treatment": 0.08,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.84,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "raw_message_leak",
+          "treatment": "multi_agent_graphforget"
+        }
+      ],
+      "sink_leak": [
+        {
+          "absolute_reduction": -0.18,
+          "baseline": "multi_agent_leak",
+          "ci_high": -0.061224489795918366,
+          "ci_low": -0.26417982287254527,
+          "estimate": -0.18,
+          "k": 32.0,
+          "leak_baseline": 0.22,
+          "leak_treatment": 0.04,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.8181818181818181,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "sink_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -0.28,
+          "baseline": "multi_agent_dragon",
+          "ci_high": -0.09615384615384616,
+          "ci_low": -0.3396320754716981,
+          "estimate": -0.28,
+          "k": 32.0,
+          "leak_baseline": 0.32,
+          "leak_treatment": 0.04,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.875,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "sink_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -0.28,
+          "baseline": "multi_agent_dragon_subsets",
+          "ci_high": -0.09615384615384616,
+          "ci_low": -0.3396320754716981,
+          "estimate": -0.28,
+          "k": 32.0,
+          "leak_baseline": 0.32,
+          "leak_treatment": 0.04,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.875,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "sink_leak",
+          "treatment": "multi_agent_graphforget"
+        }
+      ],
+      "store_leak": [
+        {
+          "absolute_reduction": -0.36,
+          "baseline": "multi_agent_leak",
+          "ci_high": -0.2,
+          "ci_low": -0.4528730703259005,
+          "estimate": -0.36,
+          "k": 32.0,
+          "leak_baseline": 0.44,
+          "leak_treatment": 0.08,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.8181818181818181,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "store_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -0.42,
+          "baseline": "multi_agent_dragon",
+          "ci_high": -0.22448979591836735,
+          "ci_low": -0.5106382978723404,
+          "estimate": -0.42,
+          "k": 32.0,
+          "leak_baseline": 0.5,
+          "leak_treatment": 0.08,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.84,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "store_leak",
+          "treatment": "multi_agent_graphforget"
+        },
+        {
+          "absolute_reduction": -0.42,
+          "baseline": "multi_agent_dragon_subsets",
+          "ci_high": -0.22448979591836735,
+          "ci_low": -0.5106382978723404,
+          "estimate": -0.42,
+          "k": 32.0,
+          "leak_baseline": 0.5,
+          "leak_treatment": 0.08,
+          "n_clusters": 20.0,
+          "n_items": 50.0,
+          "relative_reduction": 0.84,
+          "reps": 2000.0,
+          "significant": true,
+          "supported": true,
+          "surface": "store_leak",
+          "treatment": "multi_agent_graphforget"
+        }
+      ]
+    },
+    "hypotheses": [
+      {
+        "absolute_reduction": -0.36,
+        "baseline": "multi_agent_leak",
+        "ci_high": -0.2,
+        "ci_low": -0.4528730703259005,
+        "estimate": -0.36,
+        "id": "H1",
+        "k": 32.0,
+        "leak_baseline": 0.44,
+        "leak_treatment": 0.08,
+        "n_clusters": 20.0,
+        "n_items": 50.0,
+        "relative_reduction": 0.8181818181818181,
+        "reps": 2000.0,
+        "significant": true,
+        "statement": "L_multi_agent_graphforget(32) < L_multi_agent_leak(32) on certified_persistent_leak",
+        "supported": true,
+        "surface": "certified_persistent_leak",
+        "treatment": "multi_agent_graphforget"
+      },
+      {
+        "absolute_reduction": -0.42,
+        "baseline": "multi_agent_dragon",
+        "ci_high": -0.22448979591836735,
+        "ci_low": -0.5106382978723404,
+        "estimate": -0.42,
+        "id": "H2",
+        "k": 32.0,
+        "leak_baseline": 0.5,
+        "leak_treatment": 0.08,
+        "n_clusters": 20.0,
+        "n_items": 50.0,
+        "relative_reduction": 0.84,
+        "reps": 2000.0,
+        "significant": true,
+        "statement": "L_multi_agent_graphforget(32) < L_multi_agent_dragon(32) on certified_persistent_leak",
+        "supported": true,
+        "surface": "certified_persistent_leak",
+        "treatment": "multi_agent_graphforget"
+      },
+      {
+        "absolute_reduction": -0.42,
+        "baseline": "multi_agent_dragon_subsets",
+        "ci_high": -0.22448979591836735,
+        "ci_low": -0.5106382978723404,
+        "estimate": -0.42,
+        "id": "H3",
+        "k": 32.0,
+        "leak_baseline": 0.5,
+        "leak_treatment": 0.08,
+        "n_clusters": 20.0,
+        "n_items": 50.0,
+        "relative_reduction": 0.84,
+        "reps": 2000.0,
+        "significant": true,
+        "statement": "L_multi_agent_graphforget(32) < L_multi_agent_dragon_subsets(32) on certified_persistent_leak",
+        "supported": true,
+        "surface": "certified_persistent_leak",
+        "treatment": "multi_agent_graphforget"
+      }
+    ],
+    "note": "every comparison is between arms of the SAME run at the SAME k. Leak@k rises with k, so a cross-k or cross-protocol comparison is not a comparison.",
+    "primary_k": 32,
+    "primary_surface": "certified_persistent_leak",
+    "treatment": "multi_agent_graphforget"
+  },
+  "k_values": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
+  "n_rows_in_scope": 9600,
+  "n_rows_total": 9600,
+  "n_samples": 32,
+  "phase": "discovery",
+  "pooling": "one challenge and one protocol only; challenges and protocols are never pooled because they are different populations and different questions",
+  "primary_k": 32,
+  "primary_k_substituted": false,
+  "profile_hash": "5ac9f2f24897966e17b76e8e7b8708e13f31a330ea1311cdd4e8b4afe5d523be",
+  "protocol": "graph_flow",
+  "protocol_note": "graph_flow: the request gate is held CONSTANT across every arm \u2014 no arm inspects the incoming question \u2014 so what is measured is whether forgotten information generated or introduced after the initial boundary can propagate.",
+  "readback_by_trajectory_n": 9600,
+  "resolved_run_hash": "2addc7efd010f2f9227bb5ff964866afc4524e8ec90476029194afd38f4462ca",
+  "retain_utility_measured": false,
+  "run": "20260813T043200Z-discovery-split_clues-flow",
+  "schema": "graph-leak-report-v1",
+  "scorer": "leakk-nli-rougel-v1:sileod/deberta-v3-base-tasksource-nli@3209a6ab012eab725e8f24547972f9aa133d1345",
+  "scorer_note": "every semantic number in this report \u2014 leakage, answer match and readback \u2014 comes from the ONE scorer named above, read out of the run's score rows",
+  "scorer_reportable": true,
+  "study_design_hash": "2c612be42e4c4bea6530622977224a0f03b25f7ee44405163b592da14af0d11c",
+  "study_id": "graphforget-v1",
+  "topology": "diamond5",
+  "uses_gold_answers": true,
+  "utility_gate": {
+    "applicable": false,
+    "blocking": false,
+    "reason": "no retain cohort in this run. Retain utility must be measured on questions the system is SUPPOSED to answer; on a forget cohort an answer-match rate is a leakage rate."
+  }
+}

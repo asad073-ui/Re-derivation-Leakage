@@ -1,0 +1,46 @@
+# RTX 3090 — the 50x32 DISCOVERY study.
+#
+# WHY THIS FILE EXISTS
+#
+# The 20x8 engineering study could not test its own hypotheses. Its natural Leak@k curve
+# was an exact doubling — 0.00625, 0.0125, 0.025, 0.05 at k = 1, 2, 4, 8 — which is the
+# signature of a SINGLE leaking (item, sample) pair: Leak@k = k / (n_samples * n_items)
+# = k/160. With 8 samples the estimator structurally saturates at 0.05, so every arm sat
+# on the same floor and the reduction against every baseline was exactly 0. That is a
+# measurement-resolution result, not a statement about the defence.
+#
+# Discovery fixes both terms: 50 questions instead of 20, and 32 draws per item instead
+# of 8. It is also the only configuration on this profile that REACHES the study's
+# preregistered primary k of 32 — `sampling.k_values` on rtx3090_1b is
+# [1, 2, 4, 8, 16, 32], and `--n-samples 8` truncates it to [1, 2, 4, 8].
+#
+# WHY `forget_policy_phase: engineering` AND NOT null
+#
+# `null` is the idiomatic setting for a forget phase and would be defensible here: the
+# discovery cohort covers the SAME 20 forgotten authors as the engineering cohort, with
+# 50 different questions. But the detector's calibration artefact records
+# `registry_from.fingerprint = 051eadbb...`, computed on the ENGINEERING split, and a
+# threshold is calibrated for a registry. Leaving this null builds the registry from the
+# discovery cohort (fingerprint dc6ace79...), the coverage check fails, and the run
+# silently downgrades itself to `detector_status: diagnostic` — falling back to the
+# study's 0.55 threshold instead of the calibrated 0.65.
+#
+# Pinning the policy to `engineering` reproduces the exact registry the calibration
+# covers, so the run keeps the calibrated threshold. It also makes the evaluation cohort
+# genuinely separate from the forget policy (`cohorts_separated: true`): the 50 questions
+# asked are not the 20 the registry was built from.
+#
+# NOTE the PLAN.json caveat: `detector_status` in a plan is the DECLARED status from the
+# study file. The EFFECTIVE status is resolved at run time and appears in the report.
+# Both launch variants plan as "calibrated"; only this one stays calibrated when it runs.
+#
+# STILL DISCOVERY, NOT VALIDATION
+#
+# These forget10 concepts are already touched by the checkpoint's unlearning, and the
+# validation cohort is empty by construction. Nothing produced from this file is
+# publication evidence for the preregistered claim, however the gates read.
+study: graph_unlearning_v1
+active_profile: rtx3090_1b
+phase: discovery
+
+forget_policy_phase: engineering

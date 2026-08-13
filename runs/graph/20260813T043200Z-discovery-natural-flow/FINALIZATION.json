@@ -1,0 +1,87 @@
+{
+  "blocking": [],
+  "cohorts_separated": true,
+  "complete": true,
+  "evaluation_cohort_split": "discovery",
+  "forget_policy_fingerprint": "051eadbbdf2f00be1b0f774b7f5bff0381f33085c380f238065a75a9db9d9282",
+  "forget_policy_split": "engineering",
+  "generations": {
+    "n_declared": 150,
+    "n_shards": 150,
+    "ok": true,
+    "problems": []
+  },
+  "generations_ledger": {
+    "interrupted_commit": [],
+    "n_declared": 150,
+    "n_shards": 150,
+    "ok": true,
+    "problems": [],
+    "status": "verified"
+  },
+  "git_dirty": false,
+  "git_sha": "56b2105",
+  "gpu_activity": {
+    "backend": "vllm",
+    "completion_tokens": 1552125,
+    "device_name": "NVIDIA GeForce RTX 3090",
+    "device_vram_utilization": 0.9057,
+    "dispatch": {
+      "graph": {
+        "cache_hits": 29798,
+        "dispatched": 11499,
+        "requested": 41297
+      },
+      "probe": {
+        "cache_hits": 12571,
+        "dispatched": 6629,
+        "requested": 19200
+      }
+    },
+    "enforced": true,
+    "n_generations": 41297,
+    "n_trajectories": 9600,
+    "non_empty_generation_rate": 1.0,
+    "non_empty_generations": 9600,
+    "peak_device_vram_bytes": 23339139072,
+    "prompt_tokens": 4631093,
+    "vram_alone_is_not_activity": "vLLM reserves the KV cache before generating, so peak VRAM is a property of the configuration rather than of the work done",
+    "vram_source": "nvml"
+  },
+  "hashes_ok": true,
+  "n_trajectories": 9600,
+  "ok": true,
+  "planned_trajectories": 9600,
+  "raw_evidence_uri": "https://github.com/asad073-ui/Re-derivation-Leakage/releases/tag/graph-discovery-50x32-20260813T043200Z",
+  "report_present": true,
+  "run": "20260813T043200Z-discovery-natural-flow",
+  "schema": "graph-finalization-v3",
+  "science_gates": {
+    "applicable": true,
+    "collaboration_ok": true,
+    "collaboration_rate": 0.956625,
+    "max_refusal": 0.5,
+    "min_collaboration": 0.5,
+    "protocol": "graph_flow",
+    "reason": "",
+    "refusal_ok": true,
+    "refusal_rate": 0.078125,
+    "treatment": "multi_agent_graphforget"
+  },
+  "science_gates_enforced": false,
+  "traces": {
+    "n_declared": 150,
+    "n_shards": 150,
+    "ok": true,
+    "problems": []
+  },
+  "traces_ledger": {
+    "interrupted_commit": [],
+    "n_declared": 150,
+    "n_shards": 150,
+    "ok": true,
+    "problems": [],
+    "status": "verified"
+  },
+  "warnings": []
+}
