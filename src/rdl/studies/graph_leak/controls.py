@@ -221,7 +221,7 @@ def build_controlled_challenges(
                     # its frozen pre-registration. The mechanism study turns it on and
                     # says why: with an untagged seed there is no scope anywhere in the
                     # system for a taint arm to inherit, so `taint_only` and
-                    # `tag_local_only` would be unguarded arms under a defence's name and
+                    # `tag_source_quarantine` would be unguarded arms under a defence's name and
                     # the contrast that prices propagation would be zero by construction.
                     seeded_memory_is_policy_tagged=seed_policy_tags_on_reentry,
                 )

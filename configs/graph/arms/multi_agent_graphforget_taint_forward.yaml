@@ -1,0 +1,8 @@
+# MA-GF-TAINTFORWARD. Treatment for the propagation contrast: same tagged-source exposure
+# as MA-GF-NOFORWARD, and the derivative inherits the source's Forget-ID.
+name: multi_agent_graphforget_taint_forward
+label: MA-GF-TAINTFORWARD
+mode: multi_agent
+peer_content: same_concept
+defense: graphforget_taint_forward
+description: "forwards a read source's scope onto what the model derived from it"

@@ -42,8 +42,13 @@ class NodeInputContext:
     question: str
     inputs: tuple[Envelope, ...] = ()
     memory_texts: tuple[str, ...] = ()
-    # Scopes already known to be carried by this node's inputs.
+    # Scopes already known to be carried by this node's inputs (peer messages).
     inherited_forget_ids: tuple[str, ...] = ()
+    # Scopes carried by the RETRIEVED MEMORY this node was allowed to read. Kept separate
+    # from `inherited_forget_ids` because the two arrive by different routes and a report
+    # that could not tell them apart could not say whether re-entry came through the graph
+    # or through the store — which is the distinction this whole study is about.
+    memory_forget_ids: tuple[str, ...] = ()
 
     def combined_text(self, *, include_query: bool = True) -> str:
         """Every incoming message + retrieved memory, and optionally the query.
@@ -208,6 +213,10 @@ class DefenseCounters:
     final_blocked: int = 0
     accumulated_only_hits: int = 0
     inherited_only_hits: int = 0
+    # Node inputs where a scope arrived through RETRIEVED MEMORY rather than through a
+    # peer message. The non-vacuity counter for the propagation contrast: if this is zero,
+    # no tagged content ever reached a model and forwarding had nothing to forward.
+    memory_borne_scope_hits: int = 0
     extra: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:

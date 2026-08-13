@@ -316,6 +316,7 @@ class GraphExecutor:
                 inputs=visible,
                 memory_texts=retrieved.texts,
                 inherited_forget_ids=tuple(sorted(inherited)),
+                memory_forget_ids=retrieved.forget_ids,
             )
         )
 

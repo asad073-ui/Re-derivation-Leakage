@@ -19,33 +19,57 @@ phase: smoke
 primary_topology: diamond5
 topologies: [chain5, diamond5, dense_dag5, diamond6]
 
-# The seven mechanism arms. Provenance is TWO capabilities, not one (GU-0033):
-# `consume` acts on a Forget-ID an object already carries, `forward` attaches one to what
-# a decision produces. Collapsing them is why `taint_only - leak` could not support a
-# propagation claim — it priced both at once — and why the "no inheritance" ablations were
-# still withholding tagged memory at the retrieval surface.
+# The nine mechanism arms. Provenance is TWO capabilities, not one (GU-0033): `consume`
+# acts on a Forget-ID an object already carries, `forward` attaches one to what a decision
+# produces.
 #
-#   arm                                     detect  accum  surfaces  consume  forward
-#   multi_agent_leak                        no      no     none      no       no
-#   multi_agent_dragon                      yes     no     input     no       no
-#   multi_agent_stateless                   yes     no     all 5     no       no
-#   multi_agent_graphforget_semantic_only   yes     yes    all 5     no       no
-#   multi_agent_graphforget_tag_local_only  no      no     all 5     yes      no
-#   multi_agent_graphforget_taint_only      no      no     all 5     yes      yes
-#   multi_agent_graphforget                 yes     yes    all 5     yes      yes
+# GU-0034 then fixed the harder problem: a contrast can vary exactly one flag and still
+# measure nothing. `taint_only` vs `tag_source_quarantine` differ only in forwarding, but
+# BOTH quarantine the tagged note at retrieval before any agent reads it — so no
+# derivative is ever produced, nothing exists to forward, and the difference is zero at
+# any cohort size. The traces confirmed it: both arms recorded returned=0, withheld=40,
+# edges_carrying_a_tag=0. Single-variable is necessary and not sufficient; the pathway the
+# variable acts on has to be live.
 #
-# The seven single-variable contrasts, each computed directly and paired by concept in
-# `rdl.eval.defense_reduction.MECHANISM_CONTRASTS` — never inferred by differencing two
-# comparisons against the full defence:
+#   arm                                       detect accum consume forward reads gen
+#   multi_agent_leak                          no     no    no      no      yes   yes
+#   multi_agent_dragon                        yes    no    no      no      yes   yes
+#   multi_agent_stateless                     yes    no    no      no      yes   yes
+#   multi_agent_graphforget_semantic_only     yes    yes   no      no      yes   yes
+#   ..._graphforget_tag_source_quarantine     no     no    yes     no      NO    -
+#   ..._graphforget_no_forward                no     no    yes     no      YES   YES
+#   ..._graphforget_taint_forward             no     no    yes     yes     YES   YES
+#   ..._graphforget_taint_only                no     no    yes     yes     NO    -
+#   multi_agent_graphforget                   yes    yes   yes     yes     NO    -
 #
-#   M1  dragon      vs leak            does node-input guarding help at all?
-#   M2  stateless   vs dragon          does guarding MORE BOUNDARIES help?
-#   M3  semantic    vs stateless       does subset / evidence accumulation help?
-#   M4  tag_local   vs leak            what does enforcing EXISTING tags buy alone?
-#   M5  taint_only  vs tag_local       what does FORWARDING buy on top? <- the propagation
-#                                      claim, and the only contrast that supports it
-#   M6  full        vs semantic_only   what does provenance add to full semantics?
-#   M7  full        vs taint_only      what do semantics add to provenance?
+# `reads`/`gen` are whether a TAGGED source reaches the model and it generates from it.
+# Only the middle pair has both, which is why only the middle pair can price forwarding.
+#
+# The contrasts, each computed directly and paired by concept in
+# `rdl.eval.defense_reduction.MECHANISM_CONTRASTS`, never inferred by differencing two
+# comparisons against the full defence. They are NOT all the same kind of claim:
+#
+#   PRIMARY CAUSAL CONTRAST — the propagation claim rests on this one alone
+#   M5  taint_forward vs no_forward     matched tagged-source exposure, matched
+#                                       generation, matched downstream policy; only the
+#                                       scope on the DERIVATIVE differs
+#
+#   POSITIVE CONTROLS — system safety, not mechanism
+#   M4  quarantine    vs leak           blocking a tagged source at retrieval stops
+#                                       re-entry. True and useful; says nothing about
+#                                       propagation
+#   M8  taint_only    vs quarantine     forwarding adds nothing ONCE THE SOURCE IS
+#                                       QUARANTINED. Expected ~0 by construction and
+#                                       reported so it cannot be mistaken for M5
+#
+#   SINGLE-VARIABLE DETECTION CONTRASTS
+#   M1  dragon        vs leak           does node-input guarding help at all?
+#   M2  stateless     vs dragon         does guarding MORE BOUNDARIES help?
+#   M3  semantic_only vs stateless      does subset / evidence accumulation help?
+#
+#   COMBINED-EFFECT CONTRASTS — labelled as combined, not single-variable
+#   M6  full vs semantic_only           consumption AND forwarding together
+#   M7  full vs taint_only              detection AND accumulation together
 #
 # `single_agent` and `multi_agent_control` are not mechanism arms. They are here because
 # the report's composition contrasts (C1 against the single-agent floor, C2 against the
@@ -59,7 +83,9 @@ arms:
   - multi_agent_dragon
   - multi_agent_stateless
   - multi_agent_graphforget_semantic_only
-  - multi_agent_graphforget_tag_local_only
+  - multi_agent_graphforget_tag_source_quarantine
+  - multi_agent_graphforget_no_forward
+  - multi_agent_graphforget_taint_forward
   - multi_agent_graphforget_taint_only
   - multi_agent_graphforget
 
@@ -96,7 +122,7 @@ memory:
   #
   # Without it no scope EXISTS anywhere in this system unless the semantic detector puts
   # one there — and the two provenance arms have the detector switched off. `taint_only`
-  # and `tag_local_only` would inherit nothing, enforce nothing, and score identically to
+  # and `tag_source_quarantine` would inherit nothing, enforce nothing, and score identically to
   # the unguarded arm for a reason having nothing to do with propagation, so M4 and M5
   # would be zero by construction and the propagation claim would be untestable on the
   # very run bought to test it.

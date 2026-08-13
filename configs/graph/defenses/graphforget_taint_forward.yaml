@@ -1,0 +1,30 @@
+# TAINT-FORWARD. The treatment for the forward-propagation contrast (GU-0034).
+#
+# Byte-for-byte `graphforget_no_forward` with `propagate_forget_ids: true`. Same detector
+# state (off), same accumulation (off), same permissive retrieval and node-input surfaces,
+# same downstream enforcement at edges, writes and the final boundary.
+#
+# The single variable: a derivative of a tagged source INHERITS the source's Forget-ID, so
+# the paraphrase the model just wrote is caught at the release boundaries the no-forward
+# arm lets it through. `taint_forward - no_forward` is therefore the contribution of
+# forward propagation and nothing else, and it is the ONLY contrast in this study that can
+# support the propagation claim.
+#
+# A test asserts these two configs differ in exactly one field, and an integration test
+# asserts the pathway is live before any of it is believed: equal tagged-source exposure
+# in both arms, zero forwarded ids here's baseline, nonzero here, and nonzero
+# inherited-only downstream interventions.
+name: graphforget_taint_forward
+kind: graphforget
+semantic_detection: false
+consume_forget_ids: true
+propagate_forget_ids: true
+accumulate_evidence: false
+guard_node_inputs: false
+guard_retrievals: false
+guard_edges: true
+guard_writes: true
+guard_final_output: true
+allow_safe_refusal: true
+rescan_untagged_memory: false
+description: "reads a tagged source and forwards its scope onto the derivative"

@@ -22,6 +22,14 @@ class GuardedRetrieval:
     withheld_node_ids: tuple[str, ...]
     rescan_withheld_node_ids: tuple[str, ...]
     reason: str
+    # Scopes carried by the nodes that were ALLOWED through. This used to be dropped, and
+    # dropping it was a hole in the provenance rule itself (GU-0034): a node that
+    # legitimately read tagged memory and paraphrased it emitted output that inherited
+    # nothing, so the paraphrase was clean at every downstream surface. That is precisely
+    # the laundering path persistent-write protection exists to close, and it was open in
+    # every arm — including the full defence, where only the semantic detector stood
+    # between the paraphrase and release.
+    forget_ids: tuple[str, ...] = ()
 
     @property
     def n_withheld(self) -> int:
@@ -40,10 +48,15 @@ class RetrievalGuard:
             RetrievalContext(node_id=node_id, depth=depth, query=query, candidates=candidates)
         )
         allowed = tuple(verdict.allowed_node_ids)
+        carried: set[str] = set()
+        for node_id_, _text, tags in candidates:
+            if node_id_ in allowed:
+                carried |= set(tags)
         return GuardedRetrieval(
             node_ids=allowed,
             texts=self.memory.texts_for(allowed),
             withheld_node_ids=tuple(verdict.withheld_node_ids),
             rescan_withheld_node_ids=tuple(verdict.rescan_withheld_node_ids),
             reason=verdict.reason,
+            forget_ids=tuple(sorted(carried)),
         )

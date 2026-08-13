@@ -163,7 +163,7 @@ class StagedMemory:
 
         Seeded identically for every arm, so it advantages none of them: the arms differ
         only in whether they CONSUME the tag and whether they FORWARD it. Without it,
-        `taint_only` and `tag_local_only` have no scope to inherit and are unguarded arms
+        `taint_only` and `tag_source_quarantine` have no scope to inherit and are unguarded arms
         wearing a defence's name.
         """
         node = self.store.add(

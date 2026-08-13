@@ -1,0 +1,8 @@
+# MA-GF-NOFORWARD. Matched baseline for the propagation contrast: reads the tagged source,
+# generates from it, and lets the derivative travel untagged.
+name: multi_agent_graphforget_no_forward
+label: MA-GF-NOFORWARD
+mode: multi_agent
+peer_content: same_concept
+defense: graphforget_no_forward
+description: "same tagged-source exposure as the taint arm; no scope on the derivative"

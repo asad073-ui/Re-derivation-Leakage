@@ -134,12 +134,15 @@ class DefenseSpec(GraphBase):
     #                          outgoing envelope, the committed write — so descendants
     #                          inherit them.
     #
-    # Consuming without forwarding is `tag_local_only`: enforce a tag where you find it,
+    # Consuming without forwarding is `tag_source_quarantine`: enforce a tag where you find it,
     # never spread it. That arm is what prices FORWARD PROPAGATION on its own, against
     # `taint_only`, which is the same arm with forwarding switched back on.
     consume_forget_ids: bool = True
     propagate_forget_ids: bool = True
     accumulate_evidence: bool = True
+    # See ForgetPolicy: only the two forward-propagation arms set this False, so that the
+    # node is allowed to read and generate and the contrast is decided on its OUTPUT.
+    guard_node_inputs: bool = True
     guard_edges: bool = True
     guard_writes: bool = True
     guard_retrievals: bool = True

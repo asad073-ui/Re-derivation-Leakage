@@ -922,3 +922,75 @@ facts while corrupting or omitting the author's name, so **no natural-condition 
 defence claim is available from this detector at any threshold**. The first RTX run is
 `memory_reentry` + `graph_flow` only. `natural` and `end_to_end_safety` are deliberately
 not in it.
+
+### GU-0034 — 2026-08-13 — A single-variable contrast that measured nothing
+
+GU-0033 split provenance into `consume` and `forward` and made `M5 = taint_only −
+tag_local_only` the propagation contrast. Those two arms differ in exactly one flag, and a
+test asserted it. The contrast was still incapable of measuring forwarding.
+
+Both arms consume tags, so both quarantine the seeded note **at retrieval, before any
+agent reads it**. The traces are unambiguous — for `taint_only` and `tag_local_only`
+alike:
+
+    reads=40  returned=0  withheld=40  edges=40  edges_carrying_a_tag=0  writes_tagged=0
+
+No agent ever saw the tagged content, so no derivative existed, so there was nothing for a
+forwarding arm to forward. The difference is zero by construction at 4 items or 50, and no
+number of GPU samples could have changed it. **Single-variable is necessary and not
+sufficient: the pathway the variable acts on has to be live, and liveness is a property of
+a run, not of a config.**
+
+#### The missing pathway was real, and it was a hole in the defence
+
+`GuardedRetrieval` returned the allowed nodes' ids and texts and **dropped their scopes**.
+`NodeInputContext` carried `memory_texts` as bare strings. So a node that legitimately read
+a tagged memory node and paraphrased it emitted output inheriting nothing, and the
+paraphrase was clean at every downstream surface — in *every* arm, including the full
+defence, where only the semantic detector stood between it and release. That is exactly the
+laundering path persistent-write protection is described as closing. Retrieved-memory
+scopes now flow into the envelope layer via `NodeInputContext.memory_forget_ids`, and
+`DefenseCounters.memory_borne_scope_hits` counts them so the pathway's liveness is
+measured rather than assumed.
+
+#### The corrected arms
+
+The propagation pair must be matched on *exposure*, not just on flags. Both arms now read
+the tagged source and generate from it — `guard_retrievals: false`, `guard_node_inputs:
+false` — and are compared on what happens to what the model produced:
+
+    graphforget_no_forward      derivative carries no scope  -> edges/writes/final pass
+    graphforget_taint_forward   derivative inherits the scope -> caught at all three
+
+`guard_node_inputs` is new: without it the guard refuses the node the moment its input
+carries a scope, and the model never derives anything — the same vacuity one layer down.
+
+`tag_local_only` is renamed `tag_source_quarantine` and keeps its real job as the
+source-quarantine **positive control** (M4). The old pair survives as **M8**, reported and
+asserted structurally null, so a reader cannot mistake its zero for M5's.
+
+Verified end to end on the CPU stub, 11 arms:
+
+    no_forward      returned=40 withheld=0 edges_with_scope=0  edges_blocked=0  writes_tagged=0
+    taint_forward   returned=40 withheld=0 edges_with_scope=40 edges_blocked=40 writes_tagged=40
+    M5 policy_violating_persistent_leak  Δ=-1.0  CI(-1.0,-1.0)  SUPPORTED
+    M8                                   Δ= 0.0  CI( 0.0, 0.0)  positive_control
+
+#### Contrasts are no longer all the same kind of claim
+
+`MECHANISM_CONTRASTS` carries a `kind`, and the report prints it as a column with the
+legend attached:
+
+    causal            matched exposure, one variable, live pathway   M1 M2 M3 M5
+    positive_control  a component works; says nothing about mechanism M4 M8
+    combined          varies more than one thing, labelled as such    M6 M7
+
+M6 (`full − semantic_only`) varies consumption *and* forwarding; M7 (`full − taint_only`)
+varies detection *and* accumulation. Both were being read as single-variable and are not.
+
+`tests/contract/test_propagation_pathway_is_live.py` asserts the preconditions on a real
+executor run: equal tagged-source exposure in both arms, zero forwarded ids in the
+baseline, nonzero in the treatment, nonzero downstream `inherited_only` interventions, and
+that the quarantine pair really is the structurally-null one. If those hold and M5 is null
+on the GPU, that is a legitimate negative result about forward propagation. If they do not
+hold, M5 is not evidence of anything.

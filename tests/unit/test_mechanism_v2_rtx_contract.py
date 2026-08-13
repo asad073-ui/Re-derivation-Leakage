@@ -210,7 +210,7 @@ def test_a_non_consuming_arm_does_not_withhold_tagged_memory(arm: str) -> None:
 
 def test_a_consuming_arm_does_withhold_tagged_memory() -> None:
     """The other half: the fix must not have simply disabled the mechanism everywhere."""
-    defense = _arm("graphforget_tag_local_only")
+    defense = _arm("graphforget_tag_source_quarantine")
     verdict = defense.on_retrieval(
         RetrievalContext(node_id="n", depth=0, query="q", candidates=_tagged_candidates())
     )
@@ -224,7 +224,7 @@ def test_a_tag_driven_decision_is_attributed_to_the_tag_and_never_to_neither() -
     enforcement no node-local guard could have made — and it was being written into the
     one cell that means "nothing had the scope".
     """
-    defense = _arm("graphforget_tag_local_only")
+    defense = _arm("graphforget_tag_source_quarantine")
     defense.on_retrieval(
         RetrievalContext(node_id="n", depth=0, query="q", candidates=_tagged_candidates())
     )
@@ -259,7 +259,7 @@ def test_tag_local_enforces_but_does_not_forward_while_taint_does_both() -> None
     )
     ctx = WriteContext(node_id="a", depth=1, envelope=tagged)
 
-    tag_local = _arm("graphforget_tag_local_only")
+    tag_local = _arm("graphforget_tag_source_quarantine")
     taint = _arm("graphforget_taint_only")
 
     local_verdict = tag_local.on_memory_write(ctx)
@@ -332,7 +332,7 @@ def _plans():
 
 
 def test_the_manifest_records_consumption_and_forwarding_separately() -> None:
-    """One boolean cannot tell `tag_local_only` from `stateless`, and those two are the
+    """One boolean cannot tell `tag_source_quarantine` from `stateless`, and those two are the
     treatment and the control for the propagation claim."""
     cfg, plans = _plans()
     by_arm = {p.name: p.to_dict() for p in plans}
@@ -343,7 +343,7 @@ def test_the_manifest_records_consumption_and_forwarding_separately() -> None:
         assert by_arm[arm]["consumes_scope"] == expected_consume
         assert by_arm[arm]["propagates_scope"] == expected_forward
 
-    tag_local = by_arm["multi_agent_graphforget_tag_local_only"]
+    tag_local = by_arm["multi_agent_graphforget_tag_source_quarantine"]
     stateless = by_arm["multi_agent_stateless"]
     assert (tag_local["consumes_scope"], tag_local["propagates_scope"]) == (True, False)
     assert (stateless["consumes_scope"], stateless["propagates_scope"]) == (False, False)
@@ -352,14 +352,15 @@ def test_the_manifest_records_consumption_and_forwarding_separately() -> None:
 def test_m5s_two_arms_differ_in_forwarding_and_in_nothing_else() -> None:
     """The single-variable check for the only contrast that supports the propagation claim."""
     cfg = _cfg(active_profile="local_cpu")
-    local = cfg.defenses["graphforget_tag_local_only"]
-    taint = cfg.defenses["graphforget_taint_only"]
+    local = cfg.defenses["graphforget_no_forward"]
+    taint = cfg.defenses["graphforget_taint_forward"]
     assert local.propagate_forget_ids is False and taint.propagate_forget_ids is True
     for field in (
         "kind",
         "semantic_detection",
         "consume_forget_ids",
         "accumulate_evidence",
+        "guard_node_inputs",
         "guard_edges",
         "guard_writes",
         "guard_retrievals",
@@ -377,17 +378,18 @@ def test_every_claimed_mechanism_contrast_exists_and_names_two_real_arms() -> No
     """A contrast that is asserted in prose and never computed is not a result."""
     cfg = _cfg(active_profile="local_cpu")
     arms = {a.name for a in cfg.arms}
-    pairs = {(t, b) for _id, t, b, _s in MECHANISM_CONTRASTS}
+    pairs = {(t, b) for _id, t, b, _k, _s in MECHANISM_CONTRASTS}
     assert pairs == {
         ("multi_agent_dragon", "multi_agent_leak"),
         ("multi_agent_stateless", "multi_agent_dragon"),
         ("multi_agent_graphforget_semantic_only", "multi_agent_stateless"),
-        ("multi_agent_graphforget_tag_local_only", "multi_agent_leak"),
-        ("multi_agent_graphforget_taint_only", "multi_agent_graphforget_tag_local_only"),
+        ("multi_agent_graphforget_tag_source_quarantine", "multi_agent_leak"),
+        ("multi_agent_graphforget_taint_forward", "multi_agent_graphforget_no_forward"),
+        ("multi_agent_graphforget_taint_only", "multi_agent_graphforget_tag_source_quarantine"),
         ("multi_agent_graphforget", "multi_agent_graphforget_semantic_only"),
         ("multi_agent_graphforget", "multi_agent_graphforget_taint_only"),
     }
-    for _id, treatment, baseline, _statement in MECHANISM_CONTRASTS:
+    for _id, treatment, baseline, _kind, _statement in MECHANISM_CONTRASTS:
         assert treatment in arms and baseline in arms
 
 
@@ -412,7 +414,7 @@ def test_a_missing_arm_is_reported_as_missing_rather_than_omitted() -> None:
     report = mechanism_report(tables, challenge="memory_reentry", k=1, reps=32)
     assert report["complete"] is False
     missing = {m["id"] for m in report["missing_contrasts"]}
-    assert {"M4", "M5", "M6", "M7"} <= missing
+    assert {"M4", "M5", "M6", "M7", "M8"} <= missing
     assert report["propagation_supported"] is False
 
 
@@ -430,7 +432,7 @@ def test_each_arms_enforcements_are_attributed_to_the_mechanism_it_actually_has(
         # arm                            inherited_only  semantic_only
         "stateless_multi_surface": (0, 0),
         "graphforget_semantic_only": (0, 0),
-        "graphforget_tag_local_only": (1, 0),
+        "graphforget_tag_source_quarantine": (1, 0),
         "graphforget_taint_only": (1, 0),
         "graphforget": (1, 0),
     }
@@ -474,7 +476,7 @@ def test_the_full_budget_reaches_the_declared_primary_k() -> None:
 
 
 def test_the_reentry_seed_carries_a_policy_tag_for_this_study_only() -> None:
-    """Without a seeded scope, `taint_only` and `tag_local_only` are unguarded arms.
+    """Without a seeded scope, `taint_only` and `tag_source_quarantine` are unguarded arms.
 
     Nothing in the system carries a Forget-ID unless the semantic detector puts one there,
     and both provenance arms have the detector switched off. M4 and M5 would be exactly

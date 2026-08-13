@@ -37,23 +37,31 @@ __all__ = [
     "mechanism_report",
 ]
 
-# THE MECHANISM DECOMPOSITION (GU-0031/GU-0032/GU-0033).
+# THE MECHANISM DECOMPOSITION (GU-0031/GU-0032/GU-0033/GU-0034).
 #
-# (id, treatment, baseline, what exactly this pair varies). Every one is a SINGLE-VARIABLE
-# contrast between two arms of the same run at the same k, and every one is computed
-# directly rather than inferred by subtracting two comparisons against the full defence.
+# ``(id, treatment, baseline, kind, statement)``. Every contrast is computed directly and
+# paired by concept rather than inferred by subtracting two comparisons against the full
+# defence — that loses the pairing and the clustering, and it is the reasoning that
+# produced GU-0030's over-claim.
 #
-# Why direct computation is the point: the report used to state only `full vs X`, and
-# "stateless beat DRAGON" was then read off the difference of two intervals against a
-# third arm. That is not a paired test — the pairing and the concept clustering are lost —
-# and it is exactly the reasoning that produced GU-0030's over-claim. Reanalysing the raw
-# rows afterwards is possible but is the same mistake in a new place: fixing the reporting
-# after the generation has been paid for.
-MECHANISM_CONTRASTS: tuple[tuple[str, str, str, str], ...] = (
+# THE `kind` FIELD IS NOT DECORATION. GU-0034: a contrast can vary exactly one flag and
+# still measure nothing, because the pathway the flag acts on is never exercised. Three
+# kinds, and only one of them carries the propagation claim:
+#
+#   causal            matched exposure, one variable, live pathway. The claim.
+#   positive_control  shows a component works; says nothing about mechanism.
+#   combined          varies more than one thing and is labelled as such rather than
+#                     being quietly read as single-variable.
+CAUSAL = "causal"
+POSITIVE_CONTROL = "positive_control"
+COMBINED = "combined"
+
+MECHANISM_CONTRASTS: tuple[tuple[str, str, str, str, str], ...] = (
     (
         "M1",
         "multi_agent_dragon",
         "multi_agent_leak",
+        CAUSAL,
         "does a node-local guard at every agent input help at all? Reported, never "
         "assumed: this is the same pair as composition contrast C3, stated here as the "
         "reduction claim the mechanism ladder starts from",
@@ -62,6 +70,7 @@ MECHANISM_CONTRASTS: tuple[tuple[str, str, str, str], ...] = (
         "M2",
         "multi_agent_stateless",
         "multi_agent_dragon",
+        CAUSAL,
         "BOUNDARY COVERAGE alone: the same detector, node-local at every input versus "
         "enforced at all five surfaces, with no accumulation and no provenance on either "
         "side",
@@ -70,37 +79,53 @@ MECHANISM_CONTRASTS: tuple[tuple[str, str, str, str], ...] = (
         "M3",
         "multi_agent_graphforget_semantic_only",
         "multi_agent_stateless",
+        CAUSAL,
         "SUBSET / EVIDENCE ACCUMULATION alone: five surfaces on both sides, neither "
         "consuming nor forwarding provenance",
     ),
     (
         "M4",
-        "multi_agent_graphforget_tag_local_only",
+        "multi_agent_graphforget_tag_source_quarantine",
         "multi_agent_leak",
-        "ENFORCING EXISTING TAGS alone: no detector, no accumulation, no forwarding — "
-        "only the refusal to release a source that already carries a Forget-ID",
+        POSITIVE_CONTROL,
+        "SOURCE QUARANTINE: a correctly tagged store node, withheld at retrieval, stops "
+        "memory re-entry. A system-safety result and the deployed configuration — it is "
+        "NOT evidence about propagation, because the note never reaches a model",
     ),
     (
         "M5",
-        "multi_agent_graphforget_taint_only",
-        "multi_agent_graphforget_tag_local_only",
-        "FORWARD PROPAGATION alone, and the only contrast that supports the propagation "
-        "claim: both arms enforce existing tags with the detector off, and only the "
-        "treatment attaches scopes to what it produces",
+        "multi_agent_graphforget_taint_forward",
+        "multi_agent_graphforget_no_forward",
+        CAUSAL,
+        "FORWARD PROPAGATION, isolated, and THE ONLY CONTRAST THAT SUPPORTS THE "
+        "PROPAGATION CLAIM: both arms read the same tagged source, both generate from it, "
+        "both enforce identically at edges, writes and the final boundary — only the "
+        "treatment attaches the source's scope to the derivative",
     ),
     (
         "M6",
         "multi_agent_graphforget",
         "multi_agent_graphforget_semantic_only",
-        "PROVENANCE on top of full semantics: same detector, same accumulation, same five "
-        "surfaces; the treatment additionally consumes and forwards Forget-IDs",
+        COMBINED,
+        "consumption AND forwarding together, on top of full semantics. A combined "
+        "effect: it cannot be read as the contribution of either half alone",
     ),
     (
         "M7",
         "multi_agent_graphforget",
         "multi_agent_graphforget_taint_only",
-        "SEMANTICS on top of provenance: both arms carry and forward scopes; only the "
-        "treatment can detect one that was never tagged",
+        COMBINED,
+        "detection AND accumulation together, on top of provenance. A combined effect, "
+        "not a measurement of detection alone",
+    ),
+    (
+        "M8",
+        "multi_agent_graphforget_taint_only",
+        "multi_agent_graphforget_tag_source_quarantine",
+        POSITIVE_CONTROL,
+        "forwarding adds nothing ONCE THE SOURCE IS ALREADY QUARANTINED. Expected to be "
+        "~0 by construction — neither arm lets the note reach a model — and reported "
+        "explicitly so that a null here is never mistaken for M5",
     ),
 )
 
@@ -297,7 +322,7 @@ def mechanism_report(
 
     A contrast whose arms are not both present is reported as MISSING rather than
     silently omitted. An absent row and a null result read identically in a table, and
-    only one of them is a measurement: a study that forgot to run `tag_local_only` would
+    only one of them is a measurement: a study that forgot to run `tag_source_quarantine` would
     otherwise produce a mechanism section that looks complete and cannot support the
     propagation claim.
     """
@@ -309,7 +334,7 @@ def mechanism_report(
 
     contrasts: list[dict] = []
     missing: list[dict] = []
-    for contrast_id, treatment, baseline, statement in MECHANISM_CONTRASTS:
+    for contrast_id, treatment, baseline, kind, statement in MECHANISM_CONTRASTS:
         present_anywhere = False
         for surface in surfaces:
             table = tables[surface]
@@ -328,6 +353,7 @@ def mechanism_report(
             contrasts.append(
                 {
                     "id": contrast_id,
+                    "kind": kind,
                     "statement": statement,
                     "surface_role": roles.get(surface, {}).get("role", "diagnostic"),
                     **result.to_dict(),
@@ -339,6 +365,7 @@ def mechanism_report(
                     "id": contrast_id,
                     "treatment": treatment,
                     "baseline": baseline,
+                    "kind": kind,
                     "statement": statement,
                     "reason": "one or both arms were not run",
                 }
@@ -353,18 +380,24 @@ def mechanism_report(
         "primary_surfaces": sorted({c["surface"] for c in primary}),
         "complete": not missing,
         "supported_ids": sorted({c["id"] for c in primary if c["supported"]}),
-        # The propagation claim has exactly one supporting contrast. Named here so a
-        # report cannot imply it from M6, which varies consumption and forwarding together.
+        "kinds": {c["id"]: c["kind"] for c in contrasts},
+        # The propagation claim has exactly one supporting contrast. Named here so a report
+        # cannot imply it from M6 (which varies consumption and forwarding together), from
+        # M4 (a source-quarantine positive control), or from M8 (structurally ~0).
         "propagation_contrast": "M5",
         "propagation_supported": bool(
             primary and any(c["id"] == "M5" and c["supported"] for c in primary)
         ),
+        "positive_controls": sorted({c["id"] for c in contrasts if c["kind"] == POSITIVE_CONTROL}),
+        "combined_effects": sorted({c["id"] for c in contrasts if c["kind"] == COMBINED}),
         "note": (
             "reduction claims: support requires ci_high < 0. Every contrast is between two "
             "arms of the SAME run at the SAME k, paired at the shared sample index and "
             "resampled by concept. M5 is the only contrast that isolates forward "
-            "propagation; M6 varies consumption and forwarding together and cannot stand "
-            "in for it."
+            "propagation: it is the only pair whose two arms both let a tagged source "
+            "reach a model. M4 and M8 are positive controls whose arms quarantine the "
+            "source before any derivation, so neither can speak to propagation; M6 and M7 "
+            "vary two things at once and are labelled combined."
         ),
     }
 

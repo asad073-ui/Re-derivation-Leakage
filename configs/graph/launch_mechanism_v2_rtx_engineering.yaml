@@ -17,10 +17,17 @@
 #   rdl graph-run  --launch configs/graph/launch_mechanism_v2_rtx_engineering.yaml \
 #       --profile rtx3090_1b --challenges memory_reentry --protocol graph_flow
 #
-# 9 arms x 20 concepts x 32 draws. `--n-samples 8` would truncate k_values to [1,2,4,8],
-# miss the study's declared primary_k of 32, and produce exactly the non-reportable 20x8
-# result that has now happened twice. `graph-run` refuses that outright unless
-# `--allow-k-substitution` is passed, which is how the 2x1 preflight declares itself:
+# 11 arms x 20 concepts x 32 draws = 7,040 trajectories, ~46,700 model calls before the
+# response cache (32,640 graph + 14,080 probe). That is up from the 9-arm plan: GU-0034
+# added the matched `no_forward` / `taint_forward` pair, because the previous propagation
+# contrast could not measure forwarding at any cohort size. RUN `rdl graph-plan` AND READ
+# PLAN.json BEFORE RENTING — the numbers above are scaled from a 4-item plan and the plan
+# command is the authority.
+#
+# `--n-samples 8` would truncate k_values to [1,2,4,8], miss the study's declared
+# primary_k of 32, and produce exactly the non-reportable 20x8 result that has now
+# happened twice. `graph-run` refuses that outright unless `--allow-k-substitution` is
+# passed, which is how the 2x1 preflight declares itself:
 #
 #   rdl graph-run --launch ... --limit 2 --n-samples 1 --allow-k-substitution \
 #       --challenges memory_reentry --protocol graph_flow

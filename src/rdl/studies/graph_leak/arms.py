@@ -46,7 +46,7 @@ class ArmPlan:
             "peer_content": self.spec.peer_content,
             "defense": self.defense.name,
             # The two halves of provenance, recorded separately (GU-0033). One boolean
-            # could not tell `tag_local_only` — which enforces a tag where it finds one —
+            # could not tell `tag_source_quarantine` — which enforces a tag where it finds one —
             # apart from `stateless`, which ignores tags entirely, and those two arms are
             # the control and the treatment for the forward-propagation contrast.
             "consumes_scope": getattr(self.defense, "consumes_scope", False),
@@ -132,6 +132,7 @@ def _build_defense(
     if spec.kind == "graphforget":
         policy = ForgetPolicy(
             detector.registry,
+            guard_node_inputs=spec.guard_node_inputs,
             guard_edges=spec.guard_edges,
             guard_writes=spec.guard_writes,
             guard_retrievals=spec.guard_retrievals,

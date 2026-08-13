@@ -164,6 +164,7 @@ class GraphForgetDefense:
         consume_forget_ids: bool | None = None,
         propagate_forget_ids: bool = True,
         accumulate_evidence: bool = True,
+        guard_node_inputs: bool = True,
         guard_edges: bool = True,
         guard_writes: bool = True,
         guard_retrievals: bool = True,
@@ -178,6 +179,7 @@ class GraphForgetDefense:
             self.name = name
         self.policy = policy or ForgetPolicy(
             detector.registry,
+            guard_node_inputs=guard_node_inputs,
             guard_edges=guard_edges,
             guard_writes=guard_writes,
             guard_retrievals=guard_retrievals,
@@ -246,7 +248,13 @@ class GraphForgetDefense:
 
     def on_node_input(self, ctx: NodeInputContext) -> NodeInputVerdict:
         self.counters.node_input_calls += 1
-        inherited = self._consumed(ctx.inherited_forget_ids)
+        # Scope arrives by two routes and both are inherited provenance: from peer
+        # messages, and from memory this node was ALLOWED to read. The second was dropped
+        # entirely before GU-0034, which is what made a paraphrase of a legitimately-read
+        # tagged note clean at every downstream surface.
+        inherited = self._consumed((*ctx.inherited_forget_ids, *ctx.memory_forget_ids))
+        if ctx.memory_forget_ids and self.consume_forget_ids:
+            self.counters.memory_borne_scope_hits += 1
 
         evidence = (
             self.accumulator.evaluate(

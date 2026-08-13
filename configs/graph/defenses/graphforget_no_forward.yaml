@@ -1,0 +1,42 @@
+# NO-FORWARD. The matched baseline for the forward-propagation contrast (GU-0034).
+#
+# THE POINT OF THE TWO PERMISSIVE SURFACES. This arm and `graphforget_taint_forward` are
+# identical except for `propagate_forget_ids`, and both deliberately leave the two
+# UPSTREAM surfaces open:
+#
+#   guard_retrievals: false    the agent is allowed to READ its own tagged note
+#   guard_node_inputs: false   and is allowed to GENERATE from it
+#
+# Neither is a weakening of the defence being measured. They are what creates the causal
+# pathway the contrast needs. If the tagged note is quarantined at retrieval — or the node
+# is refused once it holds one — the model never derives anything, no derivative exists to
+# tag, and `taint - no_forward` is zero regardless of cohort size. That is exactly what the
+# previous design measured, and no number of GPU samples could have fixed it.
+#
+# So both arms see the SAME tagged source and produce the SAME derivative. Enforcement
+# happens downstream, on what the model wrote:
+#
+#   no_forward      the derivative carries no scope -> edges, writes and the final
+#                   release all pass -> the paraphrase leaks
+#   taint_forward   the derivative inherits the note's Forget-ID -> caught at the edge,
+#                   the persistent write and the final boundary
+#
+# That difference IS forward propagation, isolated. It is also the laundering path the
+# write guard was always described as closing, and which was open until GU-0034 wired
+# retrieved-memory scopes into the envelope layer.
+#
+# The detector stays off, as in every provenance arm, so the pair differs in one variable.
+name: graphforget_no_forward
+kind: graphforget
+semantic_detection: false
+consume_forget_ids: true
+propagate_forget_ids: false
+accumulate_evidence: false
+guard_node_inputs: false
+guard_retrievals: false
+guard_edges: true
+guard_writes: true
+guard_final_output: true
+allow_safe_refusal: true
+rescan_untagged_memory: false
+description: "reads a tagged source and generates from it; never tags the derivative"

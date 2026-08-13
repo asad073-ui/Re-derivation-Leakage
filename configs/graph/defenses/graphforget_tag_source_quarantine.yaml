@@ -1,0 +1,38 @@
+# TAG SOURCE QUARANTINE. Enforce a Forget-ID where you FIND one; never spread it.
+#
+# `taint_only` with forwarding removed and nothing else changed: same detector state
+# (off), same accumulation (off), same five guarded surfaces, same policy. A tagged
+# source — the seeded re-entry note, a node tagged in an earlier episode — is withheld at
+# retrieval exactly as the taint arm withholds it.
+#
+# WHAT IT IS FOR, AND WHAT IT IS NOT FOR (GU-0034).
+#
+# This arm is the SOURCE-QUARANTINE POSITIVE CONTROL. `quarantine vs unguarded` shows that
+# a correctly tagged store node, blocked at retrieval, stops memory re-entry. That is a
+# real and useful system-safety result, and it is the deployed configuration.
+#
+# It is NOT the baseline for the forward-propagation contrast, and using it as one was the
+# defect GU-0034 fixes. Against `taint_only` it varies only forwarding on paper, but both
+# arms quarantine the tagged note at retrieval BEFORE any agent can read it, so no
+# derivative is ever produced, nothing exists for a forwarding arm to tag, and the
+# measured difference is zero no matter how many concepts or draws are bought. Verified in
+# the traces: both arms recorded returned=0, withheld=40, edges_carrying_a_tag=0.
+#
+# The propagation contrast lives in `graphforget_no_forward` vs
+# `graphforget_taint_forward`, which are matched on source exposure and differ only in
+# whether the DERIVATIVE carries the scope.
+name: graphforget_tag_source_quarantine
+kind: graphforget
+semantic_detection: false
+consume_forget_ids: true
+propagate_forget_ids: false
+accumulate_evidence: false
+guard_node_inputs: true
+guard_edges: true
+guard_writes: true
+guard_retrievals: true
+guard_final_output: true
+allow_safe_refusal: true
+# Nothing to rescan with: the detector is off, exactly as in taint_only.
+rescan_untagged_memory: false
+description: "quarantine a tagged source at retrieval; never forward the scope"

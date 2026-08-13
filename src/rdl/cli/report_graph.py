@@ -580,10 +580,10 @@ def _mechanism_section(report: dict, fmt) -> list[str]:
     lines = [
         "## Which mechanism did the work? (single-variable contrasts)",
         "",
-        "Each row varies **one** thing between two arms of this run at the same k, paired",
-        "at the shared sample index and resampled by concept. None of them is inferred by",
-        "differencing two comparisons against the full defence — that loses the pairing and",
-        "is the reasoning that produced the earlier over-claim.",
+        "Each row compares two arms of this run at the same k, paired at the shared sample",
+        "index and resampled by concept. None is inferred by differencing two comparisons",
+        "against the full defence — that loses the pairing and is the reasoning that",
+        "produced the earlier over-claim. Read the `kind` column before quoting any row.",
         "",
     ]
     rows = [c for c in mechanism.get("contrasts", []) if c.get("surface_role") == "primary"]
@@ -593,17 +593,27 @@ def _mechanism_section(report: dict, fmt) -> list[str]:
         # duplicated row — two identical-looking lines with different numbers is how a
         # reader ends up quoting the wrong one.
         lines += [
-            "| id | surface | treatment | baseline | Δ | 95% CI | supported |",
-            "|---|---|---|---|---|---|---|",
+            "| id | kind | surface | treatment | baseline | Δ | 95% CI | supported |",
+            "|---|---|---|---|---|---|---|---|",
         ]
         for c in sorted(rows, key=lambda r: (r["id"], r["surface"])):
             lines.append(
-                f"| **{c['id']}** | `{c['surface']}` | `{c['treatment']}` | `{c['baseline']}` "
+                f"| **{c['id']}** | {c.get('kind', 'causal')} | `{c['surface']}` "
+                f"| `{c['treatment']}` | `{c['baseline']}` "
                 f"| {fmt(c.get('absolute_reduction'), '+.4f')} "
                 f"| ({fmt(c.get('ci_low'), '+.4f')}, {fmt(c.get('ci_high'), '+.4f')}) "
                 f"| {'**SUPPORTED**' if c['supported'] else 'not supported'} |"
             )
-        lines.append("")
+        lines += [
+            "",
+            "> `kind` is load-bearing. A **positive_control** shows a component works and",
+            "> says nothing about mechanism: both its arms quarantine the tagged source",
+            "> before any model reads it, so neither can speak to propagation. A",
+            "> **combined** contrast varies more than one thing and must not be read as",
+            "> single-variable. Only **causal** rows are matched one-variable comparisons",
+            "> over a pathway that is actually exercised.",
+            "",
+        ]
         # One statement per contrast id, not per row: the claim is a property of the pair.
         statements = {c["id"]: c["statement"] for c in sorted(rows, key=lambda r: r["id"])}
         for contrast_id, statement in statements.items():
