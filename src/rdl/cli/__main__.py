@@ -7,6 +7,7 @@ import typer
 from .bundle_graph import bundle_graph
 from .calibrate_detector import calibrate_detector
 from .detector_corpus import detector_corpus
+from .detector_gates import detector_gates
 from .detector_recall import detector_recall
 from .discover_checkpoints import discover_checkpoints
 from .env_check import env_check
@@ -55,6 +56,10 @@ app.command("graph-calibrate")(calibrate_detector)
 # fitted on, and the bundle links a study's runs into one verdict.
 app.command("graph-detector-recall")(detector_recall)
 app.command("graph-detector-corpus")(detector_corpus)
+# The CPU go/no-go before an instance is rented (GU-0032). Exits non-zero on a
+# failing gate, because a detector that cannot see the leakage makes the
+# graph-versus-node-local comparison unable to mean anything.
+app.command("graph-detector-gates")(detector_gates)
 app.command("graph-bundle")(bundle_graph)
 
 

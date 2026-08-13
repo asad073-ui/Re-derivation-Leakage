@@ -36,8 +36,9 @@ __all__ = [
 
 # The em/en dashes here are DATA, not prose: TOFU answers contain both, and both must
 # normalise to a space so that "Kuwait City—a port" and "Kuwait City - a port" compare
-# equal. noqa because ruff cannot tell a character class from a typo.
-_PUNCT = str.maketrans(dict.fromkeys("\"'`.,;:!?()[]{}<>-—–/\\|*_#", " "))  # noqa: RUF001
+# equal. The dashes are now in `allowed-confusables` for the same reason the detector's
+# fold table is (GU-0032), so the per-line noqa is no longer needed.
+_PUNCT = str.maketrans(dict.fromkeys("\"'`.,;:!?()[]{}<>-—–/\\|*_#", " "))
 
 
 def normalise_text(text: str) -> str:

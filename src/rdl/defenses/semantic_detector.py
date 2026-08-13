@@ -15,6 +15,15 @@ Two channels, combined by max:
                restatement that shares the entity name but few other tokens, which is
                exactly the paraphrase case the embedding channel is weakest on.
 
+**v2 (GU-0032) changed the lexical channel and only the lexical channel.** Alias tokens
+and the text being scored now pass through ``normalise_scope_text``: unicode folded,
+possessives stripped, hyphens split. Under v1 the alias ``"Hsiao Yun-Hwa's"`` tokenised
+as ``{hsiao, yun, hwa, s}`` and ``"Yun's father"`` supplied ``{yun, s}`` — coverage 0.500
+against a threshold of 0.65, which is the arithmetic behind every archived miss. The
+embedding channel is untouched on purpose: those vectors are what the calibration
+artefact was fitted on, and moving both channels at once would make the resulting
+threshold un-attributable to either.
+
 The 64-dimensional hashing embedder is a *diagnostic* backbone. Any run that reports a
 calibrated threshold must record ``detector_status: calibrated`` and the calibration
 artefact; an uncalibrated run records ``diagnostic``. See METRICS.md.
@@ -27,8 +36,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..memory.index import Embedder, HashingEmbedder, normalise_text
-from .concept_registry import ConceptRegistry
+from ..memory.index import Embedder, HashingEmbedder
+from .concept_registry import ConceptRegistry, normalise_scope_text
 
 __all__ = ["DetectionResult", "SemanticConceptDetector"]
 
@@ -90,7 +99,11 @@ class SemanticConceptDetector:
                 else np.zeros((0, self.embedder.dim), dtype=np.float32)
             )
             self._alias_tokens[concept.forget_id] = [
-                frozenset(normalise_text(a).split()) for a in concept.aliases if a.strip()
+                tokens
+                for tokens in (
+                    frozenset(normalise_scope_text(a).split()) for a in concept.aliases if a.strip()
+                )
+                if tokens
             ]
 
     # ------------------------------------------------------------------ provenance --
@@ -99,7 +112,7 @@ class SemanticConceptDetector:
     def version(self) -> str:
         state = "calibrated" if self.calibrated else "diagnostic"
         cal = f":{self.calibration_id}" if self.calibration_id else ""
-        return f"semantic-scope-v1:{self.backbone}:thr={self.threshold:.3f}:{state}{cal}"
+        return f"semantic-scope-v2:{self.backbone}:thr={self.threshold:.3f}:{state}{cal}"
 
     def to_dict(self) -> dict:
         return {
@@ -137,7 +150,7 @@ class SemanticConceptDetector:
         if not texts:
             return []
         vectors = self.embedder.encode([t or "" for t in texts])
-        token_sets = [frozenset(normalise_text(t or "").split()) for t in texts]
+        token_sets = [frozenset(normalise_scope_text(t or "").split()) for t in texts]
 
         results: list[DetectionResult] = []
         for row, tokens in zip(vectors, token_sets, strict=True):

@@ -36,10 +36,23 @@ __all__ = ["BASELINE_ARMS", "DRAGON_LABEL", "report_graph"]
 # `implementation: template`, and `implementation: sft_checkpoint` raises rather than
 # substituting a prompt for weights that were never published. `dragon_subsets` is the
 # matched-subset FAIRNESS ABLATION of that template baseline.
+#
+# The last three are the mechanism decomposition (GU-0031/GU-0032). Each is a baseline
+# the FULL defence is stated against, and each removes exactly one thing:
+#
+#   multi_agent_stateless          multi-surface enforcement, no accumulation, no taint
+#   ..._graphforget_semantic_only  + accumulation, still no Forget-ID inheritance
+#   ..._graphforget_taint_only     inheritance alone, semantic detection off
+#
+# Absent arms are filtered out at report time, so a study that runs only the original
+# three is reported exactly as before.
 BASELINE_ARMS: tuple[str, ...] = (
     "multi_agent_leak",
     "multi_agent_dragon",
     "multi_agent_dragon_subsets",
+    "multi_agent_stateless",
+    "multi_agent_graphforget_semantic_only",
+    "multi_agent_graphforget_taint_only",
 )
 
 # One string, used everywhere a report names the arm, so the label cannot drift back.
@@ -422,6 +435,13 @@ def report_graph(
         ),
         "detector_status": manifest.get("detector_status"),
         "detector_calibration": calibration,
+        # Carried up from the manifest so `rdl graph-bundle` can check that every run of a
+        # study agrees on them without re-opening each manifest. A bundle that pools runs
+        # which used different weights, a different registry or a different detector is
+        # describing an experiment that never happened (GU-0032).
+        "model_revisions": manifest.get("resolved_model_revisions"),
+        "detector_version": (manifest.get("detector") or {}).get("version"),
+        "registry_fingerprint": (manifest.get("concept_registry") or {}).get("fingerprint"),
         "uses_gold_answers": manifest.get("uses_gold_answers"),
         # Which cohort defined the forget policy and which supplied the questions.
         "evaluation_cohort": manifest.get("evaluation_cohort"),

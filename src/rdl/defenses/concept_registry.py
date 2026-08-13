@@ -16,12 +16,24 @@ The gold answers live in two places only:
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Sequence
+import unicodedata
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from ..logging_utils import dumps_canonical
+from ..memory.index import normalise_text
 
-__all__ = ["ConceptPolicy", "ConceptRegistry", "ForgetConcept"]
+__all__ = [
+    "MIN_ONE_TOKEN_ALIAS_CHARS",
+    "ConceptPolicy",
+    "ConceptRegistry",
+    "ForgetConcept",
+    "alias_variants",
+    "extract_aliases",
+    "extract_name_spans",
+    "normalise_scope_text",
+    "resolve_alias_sets",
+]
 
 # TOFU questions name their author; a title-cased multi-word span is a serviceable
 # alias extractor for synthetic-author data and is deterministic, which matters more
@@ -111,30 +123,213 @@ class ForgetConcept:
         }
 
 
-def extract_aliases(question: str, *, max_aliases: int = 4) -> tuple[str, ...]:
-    """Title-cased spans from a question, minus question words.
+# ------------------------------------------------------------------ aliases (v2) --
+#
+# v1 extracted only multiword title-cased spans and kept the possessive attached, so
+# author-0000's entire lexical channel was the single string "Hsiao Yun-Hwa's". Downstream
+# agents abbreviate, and every archived miss in the discovery study is of the form
+#
+#     "Yun's father's profession as a civil engineer ..."     score 0.500, threshold 0.65
+#
+# 0.500 is not a near miss, it is arithmetic: `normalise_text` maps punctuation to spaces,
+# so the alias tokenises as {hsiao, yun, hwa, s} and the text supplies {yun, s} — two of
+# four. v2 fixes the three things that produced that number: the stray possessive token,
+# the absence of any partial-name alias, and the absence of a hyphen-split variant.
+#
+# What it deliberately does NOT do is add gold answers or derive anything from them. The
+# aliases are still extracted from question text alone (GU-0005).
 
-    Deterministic and offline. It is a lexical channel for the detector, not an NER
-    system; ``docs/graph_unlearning/METRICS.md`` reports the detector's measured recall
-    rather than claiming this is complete.
+MIN_ONE_TOKEN_ALIAS_CHARS = 3
+# A generous cap. Enough for a full name, its hyphen variants and its unique partials;
+# small enough that the registry fingerprint stays a reviewable object.
+MAX_ALIASES_PER_CONCEPT = 24
+
+# Unicode punctuation TOFU text actually contains, folded to ASCII before anything else
+# looks at it. A curly apostrophe that survives to the tokeniser makes "Yun's" and
+# "Yun’s" two different strings, and only one of them was ever in the registry.
+_UNICODE_FOLD = {
+    "’": "'",  # right single quotation mark
+    "‘": "'",
+    "ʼ": "'",  # modifier letter apostrophe
+    "“": '"',
+    "”": '"',
+    "‐": "-",
+    "‑": "-",
+    "‒": "-",
+    "–": "-",
+    "—": "-",
+    "−": "-",
+}
+_POSSESSIVE_SUFFIXES = ("'s", "'S", "s'")
+
+
+def _fold(text: str) -> str:
+    out = unicodedata.normalize("NFKC", text or "")
+    for source, target in _UNICODE_FOLD.items():
+        out = out.replace(source, target)
+    return out
+
+
+def _strip_possessive(word: str) -> str:
+    for suffix in _POSSESSIVE_SUFFIXES:
+        if len(word) > len(suffix) and word.endswith(suffix):
+            return word[: -len(suffix)]
+    return word
+
+
+def normalise_scope_text(text: str) -> str:
+    """The detector's view of a string: folded, de-possessed, then the repo's normaliser.
+
+    Applied to alias tokens AND to the text being scored, so "Yun's" and "Yun" tokenise
+    identically. Without it the possessive contributes a bare ``s`` token to both sides
+    and inflates the denominator of every alias-coverage score.
+
+    Deliberately NOT applied to the embedding channel: the hashing backbone's vectors are
+    what the calibration artefact was fitted on, and changing them is a different change
+    with a different blast radius. v2 moves the lexical channel only.
     """
-    aliases: list[str] = []
+    folded = _fold(text)
+    words = [_strip_possessive(w) for w in folded.split()]
+    return normalise_text(" ".join(words))
+
+
+def extract_name_spans(question: str) -> tuple[str, ...]:
+    """Title-cased spans from a question, folded and stripped of possessives.
+
+    Still a lexical heuristic for synthetic-author data rather than an NER system, and
+    still deterministic and offline — which matters more here, because a threshold
+    calibrated on CPU has to mean the same thing on the GPU box.
+    """
+    spans: list[str] = []
     current: list[str] = []
-    for raw in question.replace("?", " ").replace(",", " ").split():
-        word = raw.strip(".'\"()[]")
+    for raw in _fold(question).replace("?", " ").replace(",", " ").split():
+        word = _strip_possessive(raw.strip(".'\"()[]:;"))
         if word and word[0].isupper() and word.lower() not in _STOPWORDS:
             current.append(word)
             continue
         if len(current) >= 2:
-            aliases.append(" ".join(current))
+            spans.append(" ".join(current))
         current = []
     if len(current) >= 2:
-        aliases.append(" ".join(current))
+        spans.append(" ".join(current))
     seen: list[str] = []
-    for alias in aliases:
-        if alias not in seen:
-            seen.append(alias)
-    return tuple(seen[:max_aliases])
+    for span in spans:
+        if span not in seen:
+            seen.append(span)
+    return tuple(seen)
+
+
+def alias_variants(span: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """``(multi_token, one_token)`` alias candidates for one name span.
+
+    Multi-token variants are unambiguous by construction and are always kept. One-token
+    variants are *candidates*: a surname shared by two forgotten authors would make the
+    detector fire on whichever concept sorted first, and firing on the wrong author is a
+    false alarm that happens to coincide with a leak, not a catch. `resolve_alias_sets`
+    is where that is settled, because it needs the whole registry to settle it.
+    """
+    multi: list[str] = [span]
+    hyphen_split = span.replace("-", " ")
+    if hyphen_split != span:
+        multi.append(" ".join(hyphen_split.split()))
+
+    one: list[str] = []
+    for token in span.split():
+        candidates = [token, *token.split("-")] if "-" in token else [token]
+        for candidate in candidates:
+            cleaned = candidate.strip("-")
+            if len(cleaned) >= MIN_ONE_TOKEN_ALIAS_CHARS and cleaned.lower() not in _STOPWORDS:
+                one.append(cleaned)
+
+    def _unique(values: Sequence[str]) -> tuple[str, ...]:
+        out: list[str] = []
+        for value in values:
+            if value and value not in out:
+                out.append(value)
+        return tuple(out)
+
+    return _unique(multi), _unique(one)
+
+
+def resolve_alias_sets(
+    spans_by_concept: Mapping[str, Sequence[str]],
+    *,
+    question_tokens_by_concept: Mapping[str, Sequence[str]] | None = None,
+) -> tuple[dict[str, tuple[str, ...]], dict[str, list[str]]]:
+    """Expand name spans into per-concept aliases, rejecting ambiguous one-token ones.
+
+    Returns ``(aliases_by_concept, rejected_by_alias)``. A one-token alias claimed by more
+    than one concept is dropped from EVERY concept and recorded — dropping it from all but
+    one would be worse than dropping it from all, because the survivor would silently own
+    a name it shares.
+
+    ``question_tokens_by_concept`` adds the check that matters more in practice. Title
+    case in a question is not a name: "Award", "Write", "New" and "Inspired" all reach the
+    span extractor, and as one-token aliases they fire on retain questions about entirely
+    different authors. The first measured v2 gate run put the retain90 false-positive rate
+    at **0.20** for exactly this reason, against a ceiling of 0.10 — v1's 0.056 was lower
+    only because it never emitted a one-token alias at all.
+
+    So a partial name is kept only when the token appears in the questions of EXACTLY ONE
+    forgotten concept. A distinctive name is concept-specific by construction; a common
+    English word is not. Computed from question text alone, so it stays inside GU-0005.
+    """
+    multi_by_concept: dict[str, list[str]] = {}
+    one_by_concept: dict[str, list[str]] = {}
+    claimants: dict[str, set[str]] = {}
+
+    for concept_id in sorted(spans_by_concept):
+        multi_by_concept.setdefault(concept_id, [])
+        one_by_concept.setdefault(concept_id, [])
+        for span in spans_by_concept[concept_id]:
+            multi, one = alias_variants(span)
+            for alias in multi:
+                if alias not in multi_by_concept[concept_id]:
+                    multi_by_concept[concept_id].append(alias)
+            for alias in one:
+                key = normalise_scope_text(alias)
+                if not key:
+                    continue
+                claimants.setdefault(key, set()).add(concept_id)
+                if alias not in one_by_concept[concept_id]:
+                    one_by_concept[concept_id].append(alias)
+
+    # Document frequency of each candidate token over the CONCEPTS' question text.
+    document_frequency: dict[str, set[str]] = {}
+    for concept_id, tokens in (question_tokens_by_concept or {}).items():
+        for token in set(tokens):
+            document_frequency.setdefault(token, set()).add(concept_id)
+
+    rejected: dict[str, list[str]] = {}
+    for alias, concepts in sorted(claimants.items()):
+        if len(concepts) > 1:
+            rejected[alias] = sorted(concepts)
+            continue
+        seen_in = document_frequency.get(alias)
+        if seen_in is not None and len(seen_in) > 1:
+            # Not a name: a word that shows up in several authors' questions.
+            rejected[alias] = sorted(seen_in)
+    resolved: dict[str, tuple[str, ...]] = {}
+    for concept_id in sorted(spans_by_concept):
+        keep = [
+            alias
+            for alias in one_by_concept[concept_id]
+            if normalise_scope_text(alias) not in rejected
+        ]
+        resolved[concept_id] = tuple(
+            (multi_by_concept[concept_id] + keep)[:MAX_ALIASES_PER_CONCEPT]
+        )
+    return resolved, rejected
+
+
+def extract_aliases(question: str, *, max_aliases: int = 4) -> tuple[str, ...]:
+    """The v1 single-question extractor, kept because the calibration artefact used it.
+
+    Global uniqueness cannot be decided from one question, so this returns the multiword
+    spans only. `ConceptRegistry.from_questions` uses `resolve_alias_sets` instead, which
+    sees every concept at once and is what detector v2 is built on.
+    """
+    return extract_name_spans(question)[:max_aliases]
 
 
 def paraphrase_question(question: str) -> str:
@@ -162,10 +357,14 @@ def paraphrase_question(question: str) -> str:
 class ConceptRegistry:
     """Concept ids to scopes. Built once per run from the frozen cohort."""
 
-    version = "concept-registry-v1"
+    # v2: possessive-stripped, unicode-folded aliases with hyphen variants and globally
+    # unique partial names (GU-0032). The version string is in the fingerprint, so a run
+    # built on v1 aliases cannot be mistaken for one built on v2.
+    version = "concept-registry-v2"
 
     def __init__(self, concepts: Iterable[ForgetConcept] = ()) -> None:
         self._concepts: dict[str, ForgetConcept] = {}
+        self.rejected_aliases: dict[str, list[str]] = {}
         for concept in concepts:
             self.add(concept)
 
@@ -196,15 +395,33 @@ class ConceptRegistry:
                     "pass {item_id, concept_id, question} only"
                 )
             by_concept.setdefault(str(row["concept_id"]), []).append(row)
+
+        # Two phases, because one-token aliases cannot be resolved concept by concept: a
+        # surname shared by two forgotten authors has to be dropped from BOTH, and that is
+        # only visible with every concept's spans in hand.
+        spans_by_concept: dict[str, list[str]] = {}
+        question_tokens: dict[str, list[str]] = {}
+        for concept_id, group in by_concept.items():
+            spans: list[str] = []
+            tokens: set[str] = set()
+            for row in sorted(group, key=lambda r: str(r["item_id"])):
+                question = str(row["question"])
+                for span in extract_name_spans(question):
+                    if span not in spans:
+                        spans.append(span)
+                tokens |= set(normalise_scope_text(question).split())
+            spans_by_concept[concept_id] = spans
+            question_tokens[concept_id] = sorted(tokens)
+        aliases_by_concept, rejected = resolve_alias_sets(
+            spans_by_concept, question_tokens_by_concept=question_tokens
+        )
+
         registry = cls()
+        registry.rejected_aliases = rejected
         for concept_id in sorted(by_concept):
             group = sorted(by_concept[concept_id], key=lambda r: str(r["item_id"]))
             questions = [str(r["question"]) for r in group]
-            aliases: list[str] = []
-            for question in questions:
-                for alias in extract_aliases(question):
-                    if alias not in aliases:
-                        aliases.append(alias)
+            aliases = list(aliases_by_concept.get(concept_id, ()))
             prototypes = [*questions, *(paraphrase_question(q) for q in questions), *aliases]
             registry.add(
                 ForgetConcept(
@@ -271,4 +488,10 @@ class ConceptRegistry:
             "fingerprint": self.fingerprint(),
             "concepts": [c.to_dict() for c in self.concepts()],
             "stores_gold_answers": False,
+            # Names two or more forgotten concepts share. Reported rather than silently
+            # dropped: a registry whose rejection list is long is telling you the cohort
+            # has colliding author names, which bounds what any lexical channel can do.
+            "rejected_ambiguous_aliases": {
+                k: list(v) for k, v in sorted(self.rejected_aliases.items())
+            },
         }

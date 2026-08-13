@@ -104,7 +104,27 @@ ignore = [
 # Set-theory notation in the graph-study docstrings is CONTENT, not a typo. The
 # Forget-ID propagation rule is written as `S(x) = D(x) ∪ ⋃ S(p)` in the protocol and in
 # the code that implements it; spelling it "U" would make the two disagree.
-allowed-confusables = ["∪", "⋃", "−", "≤", "≥"]
+#
+# The quotation marks, apostrophes and dashes are content for a stronger reason: they are
+# the KEYS of the detector's unicode fold table (GU-0032). `’` and `ʼ` exist in that dict
+# precisely because TOFU text contains them and v1's aliases did not — "Yun's" and "Yun’s"
+# tokenised differently, so a curly apostrophe defeated the guard. Replacing them with
+# their ASCII lookalikes would delete the mapping and restore the bug.
+allowed-confusables = [
+    "∪",
+    "⋃",
+    "−",
+    "≤",
+    "≥",
+    "×",
+    "’",
+    "‘",
+    "ʼ",
+    "‐",
+    "‑",
+    "‒",
+    "–",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B011"]

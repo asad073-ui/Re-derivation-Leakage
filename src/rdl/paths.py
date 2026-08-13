@@ -31,6 +31,23 @@ __all__ = [
     "third_party_dir",
 ]
 
+# EVERY git read below decodes as UTF-8 with replacement, never `text=True`.
+#
+# `text=True` decodes with the locale codec, which on this Windows box is cp1252. A diff
+# containing one byte cp1252 cannot represent — an em dash, a × in a decision entry, the
+# ∪ in the Forget-ID propagation rule — raises UnicodeDecodeError inside subprocess's
+# reader THREAD, where the exception is swallowed and `stdout` comes back as `None`. The
+# caller then does `out.stdout.strip()` and the run dies with `'NoneType' object has no
+# attribute 'strip'` at manifest time, after generation.
+#
+# git's output is UTF-8. Decoding it as anything else is a bug on every platform; it just
+# happens to be invisible on the ones whose locale is already UTF-8. `errors="replace"`
+# on top, because a provenance hash must never be the thing that kills a run.
+#
+# Spelled out at each call site rather than unpacked from a shared dict: `**kwargs` does
+# not resolve against `subprocess.run`'s overloads, and the type checker is one of the
+# things that should notice if this ever regresses to `text=True`.
+
 _MARKERS = ("pyproject.toml", ".git")
 
 
@@ -83,10 +100,12 @@ def git_sha(root: Path | None = None, short: bool = True) -> str:
         args.append("--short")
     args.append("HEAD")
     try:
-        out = subprocess.run(args, capture_output=True, text=True, timeout=15)
+        out = subprocess.run(
+            args, capture_output=True, timeout=15, encoding="utf-8", errors="replace"
+        )
     except (OSError, subprocess.SubprocessError):
         return "nogit"
-    sha = out.stdout.strip()
+    sha = (out.stdout or "").strip()
     return sha if out.returncode == 0 and sha else "nogit"
 
 
@@ -158,14 +177,15 @@ def git_dirty(root: Path | None = None) -> bool | None:
                 *_SOURCE_PATHSPEC,
             ],
             capture_output=True,
-            text=True,
             timeout=30,
+            encoding="utf-8",
+            errors="replace",
         )
     except (OSError, subprocess.SubprocessError):
         return None
     if out.returncode != 0:
         return None
-    return bool(out.stdout.strip())
+    return bool((out.stdout or "").strip())
 
 
 def git_diff_sha256(root: Path | None = None) -> str | None:
@@ -192,14 +212,15 @@ def git_diff_sha256(root: Path | None = None) -> str | None:
                 *_SOURCE_PATHSPEC,
             ],
             capture_output=True,
-            text=True,
             timeout=30,
+            encoding="utf-8",
+            errors="replace",
         )
     except (OSError, subprocess.SubprocessError):
         return None
     if out.returncode != 0:
         return None
-    body = out.stdout
+    body = out.stdout or ""
     if not body.strip():
         return None
     import hashlib
