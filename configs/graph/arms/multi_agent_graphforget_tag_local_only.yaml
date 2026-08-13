@@ -1,0 +1,9 @@
+# MA-GRAPHFORGET-TAGLOCAL. Provenance enforcement without provenance forwarding.
+# The control for the propagation claim: `taint_only - tag_local_only` is what forward
+# propagation buys, with the detector off on both sides so nothing else moves.
+name: multi_agent_graphforget_tag_local_only
+label: MA-GF-TAGLOCAL
+mode: multi_agent
+peer_content: same_concept
+defense: graphforget_tag_local_only
+description: "enforce Forget-IDs already carried by a source; never forward them"

@@ -65,7 +65,7 @@ graph-smoke:
 	$(PY) -m rdl.cli graph-plan $(GRAPH_SMOKE_ARGS) --n-samples 2
 	@for proto in end_to_end_safety graph_flow; do \
 		out=$(GRAPH_SMOKE_OUT)-$$proto; \
-		$(PY) -m rdl.cli graph-run $(GRAPH_SMOKE_ARGS) --n-samples 2 \
+		$(PY) -m rdl.cli graph-run $(GRAPH_SMOKE_ARGS) --n-samples 2 --allow-k-substitution \
 			--challenges direct --protocol $$proto --output $$out && \
 		$(PY) -m rdl.cli graph-score --run $$out && \
 		$(PY) -m rdl.cli graph-report --run $$out --challenge direct && \

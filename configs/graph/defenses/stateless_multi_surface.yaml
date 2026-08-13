@@ -9,9 +9,15 @@
 # differing from it in both boundary coverage and provenance, so the reduction could not
 # be assigned to either. Stateless-vs-DRAGON prices the boundaries; full-vs-semantic-only
 # prices the inheritance.
+#
+# "Carries NO state between them" is now enforced rather than asserted: `consume` off
+# means a stored tag does not withhold a retrieval here either. Before GU-0033 this arm
+# still acted on tags at the retrieval surface, which is cross-object policy state — the
+# one thing its name says it does not have.
 name: stateless_multi_surface
 kind: graphforget
 semantic_detection: true
+consume_forget_ids: false
 propagate_forget_ids: false
 accumulate_evidence: false
 guard_edges: true

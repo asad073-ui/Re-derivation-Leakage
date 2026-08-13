@@ -19,23 +19,33 @@ phase: smoke
 primary_topology: diamond5
 topologies: [chain5, diamond5, dense_dag5, diamond6]
 
-# The six mechanism arms, and what each one removes:
+# The seven mechanism arms. Provenance is TWO capabilities, not one (GU-0033):
+# `consume` acts on a Forget-ID an object already carries, `forward` attaches one to what
+# a decision produces. Collapsing them is why `taint_only - leak` could not support a
+# propagation claim — it priced both at once — and why the "no inheritance" ablations were
+# still withholding tagged memory at the retrieval surface.
 #
-#   arm                                     detection  accumulation  multi-surface  inheritance
-#   multi_agent_leak                        no         no            no             no
-#   multi_agent_dragon                      yes        no            input only     no
-#   multi_agent_stateless                   yes        no            yes            no
-#   multi_agent_graphforget_semantic_only   yes        yes           yes            no
-#   multi_agent_graphforget_taint_only      no         no            yes            yes
-#   multi_agent_graphforget                 yes        yes           yes            yes
+#   arm                                     detect  accum  surfaces  consume  forward
+#   multi_agent_leak                        no      no     none      no       no
+#   multi_agent_dragon                      yes     no     input     no       no
+#   multi_agent_stateless                   yes     no     all 5     no       no
+#   multi_agent_graphforget_semantic_only   yes     yes    all 5     no       no
+#   multi_agent_graphforget_tag_local_only  no      no     all 5     yes      no
+#   multi_agent_graphforget_taint_only      no      no     all 5     yes      yes
+#   multi_agent_graphforget                 yes     yes    all 5     yes      yes
 #
-# The four questions this answers, each a single-variable contrast:
+# The seven single-variable contrasts, each computed directly and paired by concept in
+# `rdl.eval.defense_reduction.MECHANISM_CONTRASTS` — never inferred by differencing two
+# comparisons against the full defence:
 #
-#   dragon      vs leak         does node-input guarding help at all?
-#   stateless   vs dragon       does guarding MORE BOUNDARIES help?
-#   semantic    vs stateless    does subset / evidence accumulation help?
-#   full        vs semantic     does FORGET-ID INHERITANCE contribute?
-#   taint_only  under re-entry  can tagged provenance work with no detection?
+#   M1  dragon      vs leak            does node-input guarding help at all?
+#   M2  stateless   vs dragon          does guarding MORE BOUNDARIES help?
+#   M3  semantic    vs stateless       does subset / evidence accumulation help?
+#   M4  tag_local   vs leak            what does enforcing EXISTING tags buy alone?
+#   M5  taint_only  vs tag_local       what does FORWARDING buy on top? <- the propagation
+#                                      claim, and the only contrast that supports it
+#   M6  full        vs semantic_only   what does provenance add to full semantics?
+#   M7  full        vs taint_only      what do semantics add to provenance?
 #
 # `single_agent` and `multi_agent_control` are not mechanism arms. They are here because
 # the report's composition contrasts (C1 against the single-agent floor, C2 against the
@@ -49,6 +59,7 @@ arms:
   - multi_agent_dragon
   - multi_agent_stateless
   - multi_agent_graphforget_semantic_only
+  - multi_agent_graphforget_tag_local_only
   - multi_agent_graphforget_taint_only
   - multi_agent_graphforget
 
@@ -81,20 +92,47 @@ memory:
   later_episode_probe: true
   ingest_forget_set: true
   blocklist: id
+  # ON here, OFF in graph_unlearning_v1, which stays byte-identical to its freeze.
+  #
+  # Without it no scope EXISTS anywhere in this system unless the semantic detector puts
+  # one there — and the two provenance arms have the detector switched off. `taint_only`
+  # and `tag_local_only` would inherit nothing, enforce nothing, and score identically to
+  # the unguarded arm for a reason having nothing to do with propagation, so M4 and M5
+  # would be zero by construction and the propagation claim would be untestable on the
+  # very run bought to test it.
+  #
+  # The tag models what the deployment already knows: a note written in an earlier session
+  # about a concept the system forgot carries that concept's policy tag, because the tag
+  # is recorded metadata rather than something a detector must rediscover. It is seeded
+  # IDENTICALLY for every arm — including the unguarded ones, which ignore it — so it
+  # advantages none of them. It is never seeded for a concept outside the registry, so a
+  # retain-utility run cannot tag a question the system is required to answer.
+  seed_policy_tags_on_reentry: true
 
 detector:
   backend: hashing64
-  # DELIBERATELY `diagnostic`, and deliberately the fallback threshold.
+  # DELIBERATELY `diagnostic`, and deliberately THE THRESHOLD THE GATE RUN SELECTED.
   #
-  # The calibration artefact 5d479f307957581b was fitted on detector v1: v1 aliases, v1
-  # text normalisation, and a registry whose fingerprint this study no longer produces.
+  # The v1 calibration artefact 5d479f307957581b was fitted on v1 aliases, v1 text
+  # normalisation and a registry whose fingerprint this study no longer produces.
   # Detector v2 (GU-0032) changed the lexical channel, so that threshold is not this
-  # detector's operating point and claiming it would be a provenance error, not a
-  # convenience. This study cannot be reported as calibrated until a v2 artefact exists
-  # — and DETECTOR_V2_GATES.json currently records that v2 does NOT clear the recall
-  # gates, so no GPU time should be bought against it yet.
+  # detector's operating point and claiming it would be a provenance error.
+  #
+  # This file used to run at 0.65 anyway — the v1 number, kept as a "fallback". That is
+  # the defect GU-0033 closes: DETECTOR_V2_GATES.json selected 0.90 on the development
+  # concepts under the 0.10 FPR ceiling, and every measured number anyone has about this
+  # detector — the recall, the precision, the generated-clean FPR, the lexical ceiling —
+  # was measured AT 0.90. Running at 0.65 would have put the GPU at an operating point
+  # nothing was ever evaluated at, and the failing gate would not even have described the
+  # detector that ran.
+  #
+  # The threshold and the artefact are pinned TOGETHER, and the artefact records
+  # `all_gates_passed: false`. That is the honest state: the detector's operating point is
+  # known, and it is known not to be good enough. `status: diagnostic` is not a formality
+  # here — it is the finding.
   status: diagnostic
-  threshold: 0.65
+  threshold: 0.90
+  gate_artifact: data/cohorts/graph_unlearning_v1/detector_v2/gates/DETECTOR_V2_GATES.json
   alias_weight: 1.0
 
 evaluation:

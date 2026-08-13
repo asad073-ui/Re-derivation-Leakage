@@ -1,0 +1,38 @@
+# RTX 3090 — the MECHANISM study on the FORGET cohort. This is the file the first rented
+# GPU hour runs.
+#
+# WHY IT EXISTS. `launch_mechanism_v2.yaml` selects `local_cpu` and inherits the study's
+# own `phase: smoke`. Passing `--limit 20` to that does NOT make it the 20-concept
+# engineering cohort — it takes the first 20 items of the SMOKE manifest, which is a
+# different frozen cohort with a different fingerprint. The engineering cohort is selected
+# by `phase`, and `phase` is selected here.
+#
+# It is the same 20-item engineering cohort Detector v2's gate run used as its policy
+# split, so the registry this run builds is the registry the gate artefact describes.
+#
+# THE INTENDED RUN, and nothing smaller:
+#
+#   rdl graph-plan --launch configs/graph/launch_mechanism_v2_rtx_engineering.yaml \
+#       --profile rtx3090_1b
+#   rdl graph-run  --launch configs/graph/launch_mechanism_v2_rtx_engineering.yaml \
+#       --profile rtx3090_1b --challenges memory_reentry --protocol graph_flow
+#
+# 9 arms x 20 concepts x 32 draws. `--n-samples 8` would truncate k_values to [1,2,4,8],
+# miss the study's declared primary_k of 32, and produce exactly the non-reportable 20x8
+# result that has now happened twice. `graph-run` refuses that outright unless
+# `--allow-k-substitution` is passed, which is how the 2x1 preflight declares itself:
+#
+#   rdl graph-run --launch ... --limit 2 --n-samples 1 --allow-k-substitution \
+#       --challenges memory_reentry --protocol graph_flow
+#
+# `natural` and `end_to_end_safety` are deliberately NOT in that command. Detector v2 does
+# not clear its recall gates (DETECTOR_V2_GATES.json, all_gates_passed: false), so a
+# natural-condition semantic-defence claim is not available from this detector at any
+# threshold, and GPU time spent producing one buys a number that cannot be reported.
+study: graphforget_mechanism_v2
+active_profile: rtx3090_1b
+phase: engineering
+
+# Null on purpose: the evaluated cohort IS the forget cohort. The retain launch file is
+# where this key earns its existence.
+forget_policy_phase: null

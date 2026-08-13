@@ -15,7 +15,7 @@ from pathlib import Path
 import typer
 
 from ..eval.causal_readback import readback_summary_from_scores
-from ..eval.defense_reduction import composition_report, hypothesis_report
+from ..eval.defense_reduction import composition_report, hypothesis_report, mechanism_report
 from ..eval.graph_concentration import concept_profile
 from ..eval.graph_leak import SURFACES, leak_curves, metric_applicability, primary_surfaces
 from ..eval.graph_utility import (
@@ -198,6 +198,10 @@ def report_graph(
     # The phenomenon contrasts. Separate from the defence hypotheses because they run in
     # the opposite direction and are the claim the benchmark itself rests on.
     composition = composition_report(tables, challenge=challenge, k=primary_k, reps=2000)
+    # The mechanism decomposition. Every pair varies ONE thing and is computed here rather
+    # than left to be inferred from two contrasts against the full defence — see
+    # MECHANISM_CONTRASTS for why that inference is not a paired test.
+    mechanism = mechanism_report(tables, challenge=challenge, k=primary_k, reps=2000)
 
     # How many concepts each arm's number actually rests on, and whether dropping one
     # author moves it. Reported for every arm on the challenge's primary surfaces; the
@@ -464,6 +468,7 @@ def report_graph(
         ),
         "hypotheses": hypotheses,
         "composition": composition,
+        "mechanism": mechanism,
         "concept_concentration": concentration,
         "baselines": baselines,
         "baseline_note": (
@@ -562,6 +567,70 @@ def _concentration_section(report: dict, fmt) -> list[str]:
     lines += [
         "> `sign stable` is `—` when the full-cohort statistic is exactly zero: there is no",
         "> sign to preserve, so stability is vacuous rather than true.",
+        "",
+    ]
+    return lines
+
+
+def _mechanism_section(report: dict, fmt) -> list[str]:
+    """The single-variable decomposition, with what is missing named as missing."""
+    mechanism = report.get("mechanism") or {}
+    if not mechanism:
+        return []
+    lines = [
+        "## Which mechanism did the work? (single-variable contrasts)",
+        "",
+        "Each row varies **one** thing between two arms of this run at the same k, paired",
+        "at the shared sample index and resampled by concept. None of them is inferred by",
+        "differencing two comparisons against the full defence — that loses the pairing and",
+        "is the reasoning that produced the earlier over-claim.",
+        "",
+    ]
+    rows = [c for c in mechanism.get("contrasts", []) if c.get("surface_role") == "primary"]
+    if rows:
+        # A challenge can declare several primary surfaces, so one contrast produces one
+        # row PER SURFACE. The surface column is what keeps those from reading as a
+        # duplicated row — two identical-looking lines with different numbers is how a
+        # reader ends up quoting the wrong one.
+        lines += [
+            "| id | surface | treatment | baseline | Δ | 95% CI | supported |",
+            "|---|---|---|---|---|---|---|",
+        ]
+        for c in sorted(rows, key=lambda r: (r["id"], r["surface"])):
+            lines.append(
+                f"| **{c['id']}** | `{c['surface']}` | `{c['treatment']}` | `{c['baseline']}` "
+                f"| {fmt(c.get('absolute_reduction'), '+.4f')} "
+                f"| ({fmt(c.get('ci_low'), '+.4f')}, {fmt(c.get('ci_high'), '+.4f')}) "
+                f"| {'**SUPPORTED**' if c['supported'] else 'not supported'} |"
+            )
+        lines.append("")
+        # One statement per contrast id, not per row: the claim is a property of the pair.
+        statements = {c["id"]: c["statement"] for c in sorted(rows, key=lambda r: r["id"])}
+        for contrast_id, statement in statements.items():
+            lines.append(f"- **{contrast_id}** — _{statement}_")
+        lines.append("")
+    else:
+        lines += ["- no mechanism contrast available on a primary surface in this run", ""]
+
+    missing = mechanism.get("missing_contrasts") or []
+    if missing:
+        lines += [
+            "> **Incomplete decomposition.** These contrasts could not be computed because",
+            "> one or both arms were not run. An absent row and a null result read the same",
+            "> in a table and only one of them is a measurement:",
+            "",
+        ]
+        lines += [
+            f"> - `{m['id']}`: `{m['treatment']}` vs `{m['baseline']}` — {m['reason']}"
+            for m in missing
+        ]
+        lines.append("")
+    lines += [
+        f"> **The propagation claim rests on `{mechanism.get('propagation_contrast')}` alone —"
+        f" supported: {mechanism.get('propagation_supported')}.** It is the only contrast",
+        "> whose two arms differ solely in whether Forget-IDs are FORWARDED; both enforce",
+        "> the tags they already carry and both have the detector switched off. `M6` varies",
+        "> consumption and forwarding together and cannot stand in for it.",
         "",
     ]
     return lines
@@ -737,6 +806,7 @@ def _markdown(report: dict) -> str:
         lines.append("- no composition contrast available in this run")
     lines.append("")
 
+    lines += _mechanism_section(report, _number)
     lines += ["## Defence hypotheses (reduction claims, `ci_high < 0`)", ""]
     for h in report["hypotheses"].get("hypotheses", []):
         verdict = "SUPPORTED" if h["supported"] else "not supported"

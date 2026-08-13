@@ -106,7 +106,13 @@ class NodeInputVerdict:
 
     inputs: tuple[Envelope, ...]
     memory_texts: tuple[str, ...]
+    # The scopes THIS DECISION WAS MADE ON. Always recorded in the trace.
     forget_ids: tuple[str, ...] = ()
+    # The scopes this decision FORWARDS onto what the node produces. ``None`` means "the
+    # same as `forget_ids`", which is what every defence did before the consume/forward
+    # split and is therefore the compatible default. An arm that enforces a tag where it
+    # finds one but never spreads it returns ``()`` here with a non-empty `forget_ids`.
+    propagated_forget_ids: tuple[str, ...] | None = None
     score: float = 0.0
     fired: bool = False
     # When set, the node does NOT generate; this text becomes its output. That is the
@@ -135,6 +141,11 @@ class WriteVerdict:
     reason: str = ""
     score: float = 0.0
     forget_ids: tuple[str, ...] = ()
+    # What the COMMITTED NODE is tagged with, as distinct from what the write decision
+    # was made on. ``None`` means "the same as `forget_ids`". A stored tag is the longest
+    # lived piece of state in the system — it outlives the episode and is what a later
+    # retrieval enforces — so an arm that does not forward must not write one.
+    propagated_forget_ids: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)

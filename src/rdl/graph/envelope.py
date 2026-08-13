@@ -202,11 +202,24 @@ def derive_envelope(
     detected: tuple[str, ...] = (),
     score: float = 0.0,
     meta: dict | None = None,
+    inherit_scopes: bool = True,
 ) -> Envelope:
-    """Construct an envelope whose scope set is ``detected ∪ ⋃ parent scopes``."""
+    """Construct an envelope whose scope set is ``detected ∪ ⋃ parent scopes``.
+
+    ``inherit_scopes=False`` applies ``S(x) = D(content_x)`` instead — the child keeps
+    its ``parent_ids``, so the provenance record is unchanged and the evidence still
+    shows what it was derived from, but no scope crosses the derivation edge.
+
+    That switch exists for the mechanism ablations (GU-0033). An arm built NOT to forward
+    Forget-IDs cannot be allowed to have them forwarded on its behalf by the envelope
+    layer: it would be the treatment wearing the control's name, and the contrast that
+    prices forward propagation would be exactly zero for a reason having nothing to do
+    with the defence.
+    """
     inherited: set[str] = set(detected)
-    for parent in parents:
-        inherited |= set(parent.forget_ids)
+    if inherit_scopes:
+        for parent in parents:
+            inherited |= set(parent.forget_ids)
     return Envelope(
         kind=kind,
         content=content,

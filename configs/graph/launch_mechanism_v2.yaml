@@ -1,5 +1,19 @@
-# Launch file for the MECHANISM study (GU-0031/GU-0032). Same two keys as launch.yaml:
-# a machine switches profile and nothing else. The science lives in
-# configs/graph/studies/graphforget_mechanism_v2.yaml and is identical everywhere.
+# CPU WIRING ONLY for the MECHANISM study (GU-0031/GU-0032/GU-0033).
+#
+# This file inherits the study's own `phase: smoke` and selects the stub backend. It runs
+# the whole protocol end to end on the laptop and produces NOTHING reportable —
+# `local_cpu` declares `reportable: false` and its 2-draw budget cannot reach the study's
+# primary_k of 32.
+#
+# It is NOT the GPU file, and `--limit 20` does not turn it into one: a limit takes the
+# first N items of THIS phase's manifest (smoke), not the engineering cohort. Which cohort
+# a run uses is chosen by `phase`, and these are the files that choose it:
+#
+#   configs/graph/launch_mechanism_v2_rtx_engineering.yaml   the forget-cohort GPU run
+#   configs/graph/launch_mechanism_v2_rtx_retain.yaml        its retain-utility partner
+#
+# The science lives in configs/graph/studies/graphforget_mechanism_v2.yaml and is
+# identical everywhere; a launch file only ever chooses the machine, the phase, and which
+# cohort defines the forget policy.
 study: graphforget_mechanism_v2
 active_profile: local_cpu

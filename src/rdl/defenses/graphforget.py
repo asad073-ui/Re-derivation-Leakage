@@ -161,6 +161,7 @@ class GraphForgetDefense:
         name: str | None = None,
         policy: ForgetPolicy | None = None,
         semantic_detection: bool = True,
+        consume_forget_ids: bool | None = None,
         propagate_forget_ids: bool = True,
         accumulate_evidence: bool = True,
         guard_edges: bool = True,
@@ -185,6 +186,18 @@ class GraphForgetDefense:
         )
         self.semantic_detection = semantic_detection
         self.propagate_forget_ids = propagate_forget_ids
+        # Defaults to the forwarding flag, so every existing caller keeps its behaviour:
+        # an arm that forwards has always also consumed. Only the ablations pass it
+        # explicitly, and `consume=False, propagate=True` is refused by the config
+        # validator because it is a no-op arm that still calls itself propagating.
+        self.consume_forget_ids = (
+            propagate_forget_ids if consume_forget_ids is None else consume_forget_ids
+        )
+        if self.propagate_forget_ids and not self.consume_forget_ids:
+            raise ValueError(
+                "a defence that forwards Forget-IDs must also consume them; forwarding "
+                "into surfaces that ignore the tag enforces nothing"
+            )
         # Under graph_flow the accumulator does not score the query, so the guard acts
         # only on what the graph itself carries.
         self.inspect_query = inspect_query
@@ -196,9 +209,29 @@ class GraphForgetDefense:
         self.counters = DefenseCounters()
         self.attribution = AttributionLedger()
 
+    # ------------------------------------------------------------ provenance switches --
+
+    def _consumed(self, ids: Sequence[str]) -> tuple[str, ...]:
+        """Scopes this arm acts on. Empty when the arm does not consume provenance."""
+        return tuple(sorted(set(ids))) if self.consume_forget_ids else ()
+
+    def _forwarded(self, ids: Sequence[str]) -> tuple[str, ...]:
+        """Scopes this arm attaches to what the decision produces.
+
+        An arm that does not forward returns nothing here even when it just enforced on
+        `ids`: enforcing a tag and spreading it are the two halves the mechanism study
+        exists to price separately.
+        """
+        return tuple(sorted(set(ids))) if self.propagate_forget_ids else ()
+
+    @property
+    def consumes_scope(self) -> bool:
+        """Whether this arm ENFORCES on a scope an object already carries."""
+        return self.consume_forget_ids
+
     @property
     def propagates_scope(self) -> bool:
-        """Whether this ARM inherits Forget-IDs — derived, never declared.
+        """Whether this ARM forwards Forget-IDs — derived, never declared.
 
         This was a class-level ``True``. Every graphforget variant therefore reported
         ``propagates_scope: true`` in the manifest, including the semantic-only and
@@ -213,9 +246,7 @@ class GraphForgetDefense:
 
     def on_node_input(self, ctx: NodeInputContext) -> NodeInputVerdict:
         self.counters.node_input_calls += 1
-        inherited = (
-            tuple(sorted(set(ctx.inherited_forget_ids))) if self.propagate_forget_ids else ()
-        )
+        inherited = self._consumed(ctx.inherited_forget_ids)
 
         evidence = (
             self.accumulator.evaluate(
@@ -237,6 +268,7 @@ class GraphForgetDefense:
             return NodeInputVerdict(
                 inputs=tuple(ctx.inputs),
                 memory_texts=tuple(ctx.memory_texts),
+                propagated_forget_ids=(),
                 score=evidence.score,
                 reason=f"no scope detected or inherited ({evidence.score:.3f})",
             )
@@ -263,6 +295,7 @@ class GraphForgetDefense:
             inputs=tuple(ctx.inputs),
             memory_texts=tuple(ctx.memory_texts),
             forget_ids=forget_ids,
+            propagated_forget_ids=self._forwarded(forget_ids),
             score=evidence.score,
             fired=True,
             forced_output=forced,
@@ -282,8 +315,11 @@ class GraphForgetDefense:
         if self.semantic_detection:
             result = self.detector.score(envelope.content)
             detected, score = result.forget_ids, max(score, result.score)
-        inherited = tuple(envelope.forget_ids) if self.propagate_forget_ids else ()
+        inherited = self._consumed(envelope.forget_ids)
         forget_ids = tuple(sorted(set(detected) | set(inherited)))
+        # What crosses the edge / lands on the stored node. An arm that does not forward
+        # leaves the object exactly as tagged as it found it.
+        forwarded = self._forwarded(forget_ids)
 
         certified_refusal = envelope.sanitization_certificate is not None and bool(
             envelope.sanitization_certificate.get("verified")
@@ -303,7 +339,7 @@ class GraphForgetDefense:
                 envelope=envelope.with_decision(
                     status="pass",
                     reason=decision.reason,
-                    added_forget_ids=forget_ids,
+                    added_forget_ids=forwarded,
                     score=score,
                 ),
                 status="pass",
@@ -316,7 +352,7 @@ class GraphForgetDefense:
                 envelope=envelope.with_decision(
                     status="sanitized",
                     reason=decision.reason,
-                    added_forget_ids=forget_ids,
+                    added_forget_ids=forwarded,
                     score=score,
                 ),
                 status="sanitized",
@@ -343,7 +379,7 @@ class GraphForgetDefense:
                 reason=decision.reason,
                 content=text,
                 certificate=certificate.to_dict(),
-                added_forget_ids=forget_ids,
+                added_forget_ids=forwarded,
                 score=score,
             ),
             status=decision.action,
@@ -363,8 +399,11 @@ class GraphForgetDefense:
         if self.semantic_detection:
             result = self.detector.score(envelope.content)
             detected, score = result.forget_ids, max(score, result.score)
-        inherited = tuple(envelope.forget_ids) if self.propagate_forget_ids else ()
+        inherited = self._consumed(envelope.forget_ids)
         forget_ids = tuple(sorted(set(detected) | set(inherited)))
+        # What crosses the edge / lands on the stored node. An arm that does not forward
+        # leaves the object exactly as tagged as it found it.
+        forwarded = self._forwarded(forget_ids)
 
         decision = self.policy.decide(
             "write",
@@ -383,12 +422,13 @@ class GraphForgetDefense:
             envelope=envelope.with_decision(
                 status="pass" if allowed else decision.action,
                 reason=decision.reason,
-                added_forget_ids=forget_ids,
+                added_forget_ids=forwarded,
                 score=score,
             ),
             reason=decision.reason,
             score=score,
             forget_ids=forget_ids,
+            propagated_forget_ids=forwarded,
         )
 
     # ----------------------------------------------------------------- retrieval --
@@ -399,7 +439,16 @@ class GraphForgetDefense:
         withheld: list[str] = []
         rescan_withheld: list[str] = []
 
-        untagged = [(nid, text) for nid, text, tags in ctx.candidates if not tags]
+        # An arm that does not consume provenance sees NO node as tagged, so every
+        # candidate goes to the semantic rescan. Skipping the rescan on a node merely
+        # because it happens to carry a tag the arm ignores would make the ablation weaker
+        # than the arm it is the control for in a second dimension at once, which is the
+        # defect the whole decomposition exists to avoid.
+        untagged = [
+            (nid, text)
+            for nid, text, tags in ctx.candidates
+            if not tags or not self.consume_forget_ids
+        ]
         rescan = (
             {
                 nid: result
@@ -414,7 +463,13 @@ class GraphForgetDefense:
         )
 
         for node_id, _text, tags in ctx.candidates:
-            if tags:
+            # `consume_forget_ids`, NOT `propagate_forget_ids` (GU-0033). This branch used
+            # to run for every arm, so the semantic-only and stateless ablations withheld
+            # tagged memory — the exact mechanism they are the control for — and then
+            # recorded the decision as `neither`, because the ledger was told there was no
+            # inherited scope. Their reported numbers contained provenance enforcement and
+            # their attribution said provenance had done nothing.
+            if tags and self.consume_forget_ids:
                 decision = self.policy.decide(
                     "retrieval",
                     forget_ids=tags,
@@ -422,11 +477,13 @@ class GraphForgetDefense:
                     threshold=self.detector.threshold,
                 )
                 # A stored tag is inherited provenance by definition: it was written by a
-                # previous episode, not scored here.
+                # previous episode or seeded with the store, not scored here. It is
+                # recorded as such unconditionally — this branch only runs when the tag
+                # actually drove the decision.
                 self.attribution.record_decision(
                     "retrieval",
                     detected=(),
-                    inherited=tags if self.propagate_forget_ids else (),
+                    inherited=tuple(tags),
                     decision=decision.action,
                 )
                 if decision.action == "pass":
@@ -464,8 +521,11 @@ class GraphForgetDefense:
         if self.semantic_detection:
             result = self.detector.score(envelope.content)
             detected, score = result.forget_ids, max(score, result.score)
-        inherited = tuple(envelope.forget_ids) if self.propagate_forget_ids else ()
+        inherited = self._consumed(envelope.forget_ids)
         forget_ids = tuple(sorted(set(detected) | set(inherited)))
+        # No `forwarded` here: the final release is a sink. Nothing is derived from it, so
+        # there is nothing for a forwarding arm to tag and the two arms are identical at
+        # this surface by construction rather than by omission.
         certified_refusal = envelope.sanitization_certificate is not None and bool(
             envelope.sanitization_certificate.get("verified")
         )
@@ -506,7 +566,9 @@ class GraphForgetDefense:
             "defense": self.name,
             "detector_version": self.detector.version,
             "policy": self.policy.to_dict(),
+            "consume_forget_ids": self.consume_forget_ids,
             "propagate_forget_ids": self.propagate_forget_ids,
+            "consumes_scope": self.consumes_scope,
             "propagates_scope": self.propagates_scope,
             "semantic_detection": self.semantic_detection,
             "rescan_untagged_memory": self.rescan_untagged_memory,

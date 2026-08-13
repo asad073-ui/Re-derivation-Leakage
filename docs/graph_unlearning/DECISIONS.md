@@ -826,3 +826,99 @@ thread, where it is swallowed, and `stdout` comes back `None`. The run then dies
 git read now decodes UTF-8 explicitly with `errors="replace"`. It would have killed a GPU
 run after the expensive part, and the only reason it had not yet is that no committed diff
 had contained a non-cp1252 byte at run time.
+
+### GU-0033 — 2026-08-13 — Provenance is two mechanisms, and the ablations had one of them
+
+PR #33 was merged into the PR #32 branch rather than into `main`, so none of Detector v2,
+the gate artefact, the mechanism arms or the attribution counters were ever on `main`.
+Landing it on top of current `main` is the occasion for this entry, but re-opening it
+unchanged would have bought GPU time for a decomposition that could not decompose
+anything. Six defects, in descending order of how much they would have cost.
+
+#### 1. The "no inheritance" ablations were enforcing inherited provenance
+
+`GraphForgetDefense.on_retrieval` acted on a stored Forget-ID **unconditionally**. The
+`propagate_forget_ids: false` flag gated the edge, write and final surfaces and did not
+gate retrieval at all. So `graphforget_semantic_only` and `stateless_multi_surface` — the
+two arms whose entire purpose is to lack provenance — withheld tagged memory at the one
+surface where the memory-re-entry challenge does all of its work. `full − semantic_only`
+was inheritance minus inheritance.
+
+The same call then recorded the decision with `inherited=()` because the arm does not
+propagate, so a withholding **caused by a stored Forget-ID** was booked as `neither`:
+the ledger's cell for "nothing had the scope". The headline the mechanism study exists to
+produce was being written into the counter that denies it happened.
+
+The fix separates the two capabilities that `propagate_forget_ids` was conflating:
+
+    consume_forget_ids     act on a scope the object in front of the guard ALREADY carries
+    propagate_forget_ids   attach scopes to what this decision PRODUCES
+
+A non-consuming arm now sees no candidate as tagged, which also sends every candidate to
+the semantic rescan — otherwise the ablation would be weaker than its treatment in a
+second dimension, which is the defect this decomposition exists to avoid.
+
+#### 2. Forwarding happened in three places, and the defence controlled one
+
+Even with the defence gated, scopes were still forwarded on a non-forwarding arm's behalf
+by `derive_envelope` (parent-scope union), by the executor (`plan.forget_ids`), and by
+`StagedMemory._commit_one` (store-parent closure). All three now take the arm's own flag.
+`derive_envelope(inherit_scopes=False)` keeps `parent_ids` — provenance is evidence and
+survives; only the scope stops crossing the edge. `WriteVerdict` and `NodeInputVerdict`
+gained `propagated_forget_ids`, distinct from the `forget_ids` the decision was made on,
+defaulting to `None` = "the same", so every other defence is unchanged.
+
+#### 3. `tag_local_only`, and what `taint_only − unguarded` was actually measuring
+
+That contrast confounds enforcing tags that already exist with forwarding them to
+descendants, and a system that only ever had to block the tagged source needs no
+propagation at all. `graphforget_tag_local_only` is `taint_only` with forwarding removed
+and nothing else changed. `M5 = taint_only − tag_local_only` is now the only contrast that
+isolates forward propagation, and it is the only one that can support the propagation
+claim. `M6` varies consumption and forwarding together and cannot stand in for it.
+
+#### 4. No scope ever entered the system, so both taint arms were vacuous
+
+The blocking one, and not in the review. `memory_reentry` seeds its note with
+`store.add(...)` — **untagged**. Nothing else tags anything unless the semantic detector
+fires, and both provenance arms have the detector switched off. `taint_only` and
+`tag_local_only` would have inherited nothing, enforced nothing, and scored identically to
+the unguarded arm: `M4` and `M5` exactly zero, for a reason having nothing to do with
+propagation, on the run bought to measure propagation.
+
+`memory.seed_policy_tags_on_reentry` plants the note carrying its concept's Forget-ID —
+identically for every arm, so it advantages none of them, and never for a concept outside
+the registry, so a retain run cannot tag a question the system must answer. It is OFF in
+`graph_unlearning_v1`, which stays byte-identical to its freeze, and ON in the mechanism
+study, whose design hash and challenge fingerprint both move to say so.
+
+#### 5. The GPU would have run at an operating point nobody measured
+
+The study declared `threshold: 0.65` — the v1 number — while `DETECTOR_V2_GATES.json`
+selected **0.90**, and every measurement anyone has (recall 29.9%, precision 4.43%,
+generated-clean FPR 44.55%, lexical ceiling 21.5%) was made at 0.90. The study now runs at
+0.90 and pins `gate_artifact` at the file that records `all_gates_passed: false`. A test
+asserts the artefact is a FAILING one; if that ever flips, the study gets re-read
+deliberately rather than inheriting a `calibrated` claim it never earned.
+
+#### 6. `--limit 20` is not the engineering cohort, and 20×8 is not k=32
+
+`launch_mechanism_v2.yaml` selects `local_cpu` and inherits `phase: smoke`. A limit takes
+the first N items of the *smoke* manifest — a different frozen cohort with a different
+fingerprint. Which cohort a run uses is chosen by `phase`, so there are now dedicated
+`launch_mechanism_v2_rtx_engineering.yaml` and `..._retain.yaml`, the retain file pinned to
+the same frozen forget policy as its engineering partner.
+
+`graph-run` refused nothing when the sample budget could not reach the declared
+`primary_k`; it printed `note:` on stderr and generated anyway. That is the 20×8 failure,
+twice. It is now a hard refusal with `--allow-k-substitution` as the explicit opt-out,
+which is how the 2×1 preflight and the CPU smoke declare themselves.
+
+#### What is still not fixed, and is not fixable here
+
+Detector v2 does not clear its recall gates and no amount of alias engineering will get it
+there: the lexical ceiling (21.5% micro) is below the primary bound (80%). The model leaks
+facts while corrupting or omitting the author's name, so **no natural-condition semantic
+defence claim is available from this detector at any threshold**. The first RTX run is
+`memory_reentry` + `graph_flow` only. `natural` and `end_to_end_safety` are deliberately
+not in it.
