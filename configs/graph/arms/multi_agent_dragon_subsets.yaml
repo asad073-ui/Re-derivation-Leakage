@@ -1,7 +1,8 @@
 # MA-DRAGON-SUBSETS. The matched-subset node-local baseline (DECISIONS.md GU-0026).
 #
 # NOT in the study's default arm list, for the same reason as multi_agent_dragon_refuse:
-# the headline table names DRAGON, and DRAGON as published scores one context. This arm
+# the headline table names a DRAGON-style template baseline, and DRAGON as described in
+# the paper scores one context. This arm
 # is enabled deliberately, when the question is specifically "how much of GraphForget's
 # advantage survives once the baseline scores the same subsets?".
 #

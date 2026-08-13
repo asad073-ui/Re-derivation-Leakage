@@ -17,7 +17,8 @@ topologies: [chain5, diamond5, dense_dag5, diamond6]
 #   single_agent               direct unlearned-model floor
 #   multi_agent_control        cross-concept collaboration (the negative control)
 #   multi_agent_leak           unprotected same-concept collaboration
-#   multi_agent_dragon         DRAGON as published: node-local guard, ONE context scored
+#   multi_agent_dragon         DRAGON-style node-local TEMPLATE baseline: one context
+#                              scored. A template, not a reproduction (GU-0030).
 #   multi_agent_dragon_subsets matched-subset ablation of that baseline. A FAIRNESS
 #                              ABLATION, not the published DRAGON implementation: it
 #                              gives the node-local guard GraphForget's subset battery so

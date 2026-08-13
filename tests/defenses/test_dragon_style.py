@@ -206,7 +206,7 @@ def test_the_matched_subset_variant_still_inherits_nothing(detector):
 
 
 def test_subset_scoring_is_off_by_default(detector):
-    """DRAGON as published scores one context. The default must be the paper."""
+    """DRAGON as described in the paper scores one context. The default must match it."""
     assert DragonStyleDefense(detector=detector).score_subsets is False
     assert DragonStyleDefense(detector=detector).accumulator is None
 

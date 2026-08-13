@@ -361,7 +361,7 @@ def test_the_matched_subset_baseline_is_a_study_arm_and_is_labelled_an_ablation(
 
 
 def test_the_primary_dragon_baseline_does_not_score_subsets():
-    """DRAGON as published scores one context; a baseline that does more is not the paper."""
+    """DRAGON as described scores one context; a baseline that does more is not the paper."""
     cfg = load_graph_config(LAUNCH)
     assert cfg.defenses["dragon_style"].score_subsets is False
 

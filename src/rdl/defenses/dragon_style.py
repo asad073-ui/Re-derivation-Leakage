@@ -1,6 +1,7 @@
 """The DRAGON-style node-local baseline.
 
-What DRAGON does, as published: detect whether an *input* falls in a forgotten scope and
+What DRAGON does, as described in the paper: detect whether an *input* falls in a
+forgotten scope and
 modify the inference context accordingly. It is an inference-time guard on one model
 boundary. Applied to a multi-agent graph, the faithful generalisation is to run it
 independently at **every agent's complete incoming context** — which is the stronger of

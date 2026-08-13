@@ -95,19 +95,19 @@ def test_raw_leak_is_separate_from_enforced_leak():
     assert not flags["edge_leak"], "and the system contained it"
 
 
-def test_certified_persistent_leak_requires_a_parametric_node():
+def test_rootless_parametric_rederivation_requires_a_parametric_node():
     derived = _row(
         memory_evidence=[{"content": ANSWER, "parent_ids": ["p1"], "is_parametric": False}]
     )
-    assert surface_flags(derived, _leaks)["store_leak"]
+    assert surface_flags(derived, _leaks)["policy_violating_persistent_leak"]
     assert not surface_flags(derived, _leaks)[
-        "certified_persistent_leak"
+        "rootless_parametric_rederivation_leak"
     ], "a node copied from a retrieved parent is a retrieval failure, not a re-derivation"
 
     parametric = _row(
         memory_evidence=[{"content": ANSWER, "parent_ids": [], "is_parametric": True}]
     )
-    assert surface_flags(parametric, _leaks)["certified_persistent_leak"]
+    assert surface_flags(parametric, _leaks)["rootless_parametric_rederivation_leak"]
 
 
 def test_readback_needs_all_three_conditions():
@@ -116,16 +116,16 @@ def test_readback_needs_all_three_conditions():
         "without_store_text": "I don't know.",
         "retrieved_texts": [ANSWER],
     }
-    assert surface_flags(_row(raw_outputs={"probe": base}), _leaks)["causal_readback_leak"]
+    assert surface_flags(_row(raw_outputs={"probe": base}), _leaks)["causal_memory_readback_leak"]
 
     no_carrier = {**base, "retrieved_texts": ["something else"]}
     assert not surface_flags(_row(raw_outputs={"probe": no_carrier}), _leaks)[
-        "causal_readback_leak"
+        "causal_memory_readback_leak"
     ]
 
     model_knows = {**base, "without_store_text": ANSWER}
     assert not surface_flags(_row(raw_outputs={"probe": model_knows}), _leaks)[
-        "causal_readback_leak"
+        "causal_memory_readback_leak"
     ]
 
 
@@ -133,7 +133,7 @@ def test_readback_needs_all_three_conditions():
 
 
 def _table(series: dict[str, dict[str, list[bool]]]) -> GraphLeakTable:
-    table = GraphLeakTable(surface="certified_persistent_leak")
+    table = GraphLeakTable(surface="policy_violating_persistent_leak")
     for arm, items in series.items():
         for item, flags in items.items():
             for sample, value in enumerate(flags):
@@ -155,12 +155,12 @@ def test_curves_are_built_from_score_rows():
             "concept_id": "c0",
             "sample_id": s,
             "challenge": "natural",
-            "certified_persistent_leak": s == 0,
+            "policy_violating_persistent_leak": s == 0,
         }
         for s in range(4)
     ]
-    tables = leak_curves(rows, k_values=[1, 2], surfaces=["certified_persistent_leak"])
-    assert tables["certified_persistent_leak"].curve("a", [1, 2])[1] == pytest.approx(0.25)
+    tables = leak_curves(rows, k_values=[1, 2], surfaces=["policy_violating_persistent_leak"])
+    assert tables["policy_violating_persistent_leak"].curve("a", [1, 2])[1] == pytest.approx(0.25)
 
 
 def test_sample_ids_land_in_their_own_slot_regardless_of_order():
@@ -239,7 +239,7 @@ def test_paired_delta_clusters_by_concept():
 
 def test_hypothesis_report_names_both_baselines():
     tables = {
-        "certified_persistent_leak": _table(
+        "policy_violating_persistent_leak": _table(
             {
                 "multi_agent_graphforget": {f"i{i}": [False] * 4 for i in range(4)},
                 "multi_agent_leak": {f"i{i}": [True] * 4 for i in range(4)},
@@ -256,7 +256,7 @@ def test_hypothesis_report_names_both_baselines():
 def test_dragon_is_not_required_to_beat_the_unguarded_system():
     """Whether a node-local guard helps at all is an empirical question."""
     tables = {
-        "certified_persistent_leak": _table(
+        "policy_violating_persistent_leak": _table(
             {
                 "multi_agent_graphforget": {f"i{i}": [False] * 4 for i in range(4)},
                 "multi_agent_leak": {f"i{i}": [False] * 4 for i in range(4)},

@@ -461,3 +461,105 @@ release tarball rather than the repository, so `graph-report` cannot be re-run a
 them here; what changed is the representation only — every `NaN` in those files was an
 undefined relative reduction and is now `null` — and each file records a `nan_repair`
 block saying so, so nobody has to diff it against the release to work out why it differs.
+
+### GU-0030 — 2026-08-13 — The primary metric was a subtype, and under memory re-entry it was inverted
+
+The 50x32 RTX 3090 discovery study (PR #29, release
+`graph-discovery-50x32-20260813T043200Z`) ran, finished, verified and reported. Its
+generation pipeline is sound and its phenomenon evidence is real. Its *reporting* was
+wrong in five ways that no amount of further GPU time would fix, and this entry records
+the corrections. **No generation was re-run and nothing was re-scored**: every change here
+is a reanalysis of the archived evidence, and the surface booleans are the same booleans.
+
+**1. `certified_persistent_leak` was a subtype presented as the total.** It requires a
+leaking stored node with no `parent_ids` and `is_parametric: true` — deliberately
+excluding a node that merely copies a retrieved parent, because that is a retrieval
+failure rather than a re-derivation. As a mechanism probe that is right. As the study's
+single primary metric it is wrong, and under `memory_reentry` it is *inverted*: the
+unguarded arms leak by retrieving and re-committing a parent, so their nodes carry
+`parent_ids` and score **zero**, while GraphForget blocks the parent and is then
+re-derived from parameters, scoring **0.16**. The headline therefore said GraphForget was
+the only arm to leak, on the one challenge where it cut total persistent leakage from
+0.58 to 0.18, causal readback from 0.36 to 0.04 and edge leakage from 0.54 to 0.14 — at
+9.6% refusal and 94.7% collaboration, which is containment rather than refusal.
+
+The surfaces now carry the names of what they measure:
+
+| was | is |
+|---|---|
+| `store_leak` | `policy_violating_persistent_leak` — the TOTAL: the store holds forbidden content |
+| `certified_persistent_leak` | `rootless_parametric_rederivation_leak` — the subtype |
+| `causal_readback_leak` | `causal_memory_readback_leak` |
+
+Both spellings are written to every score row and `surface_value` resolves either, so the
+archived discovery evidence re-reports without regeneration. `PROTOCOL_v1.md` §8
+criteria 1–2 name "certified persistent Leak@32"; they are frozen and stand as written,
+and are to be read as naming `rootless_parametric_rederivation_leak` — which under
+`memory_reentry` cannot be met and must not be claimed. This entry is that correction.
+
+**2. Which surface is primary is a property of the CHALLENGE.** `metric_applicability`
+gives every surface a role (`primary` / `secondary` / `diagnostic` / `invalid`) and a
+stated reason, per challenge, and the report writes the whole table into its JSON.
+`invalid` means the metric's definition interacts with that challenge's mechanism in a
+way that can reverse the ordering of the arms, and nothing may rank arms on it. Under the
+injected challenges (`split_clues`, `tool_reentry`) the persistence surfaces record the
+harness's own gold-derived text coming back, so the claim moves to `edge_leak` and
+`sink_leak`.
+
+**3. The phenomenon had no intervals.** The claim that composition reconstructs what
+neither isolated condition releases rested on three point estimates — single 0.08, control
+0.04, MA-LEAK 0.16 — with no interval on any of the *differences*. `composition_report`
+adds C1 (MA-LEAK vs single), C2 (MA-LEAK vs the cross-concept control) and C3
+(DRAGON-style vs MA-LEAK) with the same paired concept-clustered bootstrap the defence
+hypotheses use. These are **increase** claims, so support is `ci_low > 0`;
+`ComparisonResult` carries a `direction` and reads the correct bound. C3 is reported and
+never required: whether a node-local guard helps in a graph is empirical.
+
+Alongside them, `eval/graph_concentration.py` reports what a rate of 0.16 over 50 items
+actually rests on — affected items, affected concepts, the top concept's share, the
+Herfindahl index, and a leave-one-concept-out refit with `sign_stable`. A discovery number
+that flips sign when one of twenty authors is dropped is not wrong, it is underpowered,
+and that belongs next to the number rather than in a reader's head.
+
+**4. `reportable: true` was standing beside `utility_gate.applicable: false`.** An
+inapplicable cost gate was folded into the verdict as non-blocking, so "we did not measure
+the cost" and "the cost was acceptable" produced the same `true`. The cost gates are now
+tri-state (`pass` / `fail` / `not_applicable`) and the single flag is split in two:
+
+    semantic_report_valid   this report's numbers can be read as what they say
+    publication_ready       the report additionally CARRIES A CLAIM — the cost gates were
+                            applicable and passed, and the defence did not buy its leakage
+                            number by refusing to work (refusal <= 0.20, collaboration
+                            >= 0.80, under graph_flow only)
+
+`reportable` survives as the pre-GU-0030 name for the first of those, so older readers do
+not silently flip meaning. A single forget-cohort run can never satisfy `publication_ready`
+alone, because retain utility lives in a different run — which is what `rdl graph-bundle`
+exists to resolve. It links each study's runs into one `STUDY_BUNDLE.json` carrying
+leakage, retain utility, detector FPR, refusal and collaboration, each figure verbatim
+from the run that measured it with that run's id attached. Nothing is pooled.
+
+Under this gate the discovery study's `split_clues` (96% refusal) and `tool_reentry`
+(100% refusal) reductions are correctly reported as refusal-confounded, and
+`natural` under `end_to_end_safety` (80% refusal, 20% collaboration) as a statement about
+request filtering rather than about the graph.
+
+**5. "DRAGON as published" was never true of any arm we ran.** `dragon_style.yaml`
+declares `implementation: template`; the released detector/guard checkpoints are
+unavailable; `implementation: sft_checkpoint` raises. The label everywhere is now
+**DRAGON-style node-local template baseline**, `report_graph.DRAGON_LABEL` is the single
+string every report uses, and the phrase "as described in the paper" is reserved for the
+*algorithm* our template imitates. The observed 0.50 against MA-LEAK's 0.44 supports no
+claim that published DRAGON is worse — and, before C3, was not even a paired comparison
+between the two arms actually run.
+
+**And the thing all five were hiding.** `rdl graph-detector-recall` measures detector
+recall on text the system *generated*, labelled by the run's own pinned-scorer verdicts
+out of the scoring cache, rather than on forget questions. `DETECTOR_CALIBRATION.json`
+reports recall 0.95 — on held-out *questions*, which bounds a request guard. A graph
+defence has to catch a paraphrase three hops downstream. Where those two numbers diverge,
+a propagation defence and a node-local one score identically no matter how good the
+propagation is, because there is nothing for either to propagate; the natural-flow arms
+being identical across MA-LEAK, DRAGON-style, matched-subset and GraphForget on every
+surface is the signature of exactly that. The fix is detection, not the graph, and this
+command is what makes that diagnosable instead of inferred.

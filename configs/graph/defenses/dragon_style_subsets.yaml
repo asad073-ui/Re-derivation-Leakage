@@ -17,7 +17,7 @@
 # guarded. It is still a node-local guard; it is just no longer a coarser detector than
 # the method it is being compared against.
 #
-# NOT the primary baseline. DRAGON as published scores one context, and a baseline that
+# NOT the primary baseline. DRAGON as described in the paper scores one context, and one that
 # does more than the paper describes is not the paper. `dragon_style` stays primary and
 # this is reported alongside it as the ablation that isolates the mechanism.
 name: dragon_style_subsets
