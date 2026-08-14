@@ -187,3 +187,53 @@ def test_each_derivative_surface_is_required_independently(surface: str) -> None
     )
     assert audit.live is False
     assert audit.conditions[f"forwarding_reached_{surface}_surface"] is False
+
+
+def test_a_declared_wiring_check_is_excluded_from_a_bundle_and_recorded(tmp_path) -> None:
+    """GU-0036: `profile_reportable: false` is a declaration, not a disagreement.
+
+    A 2x1 preflight reports at k=1 because `--allow-k-substitution` says it is a wiring
+    check. Bundling it with the real runs made the study look internally inconsistent
+    ("runs disagree on primary k: ['1', '32']") for the one reason that is not an
+    inconsistency. It is dropped — and listed, because a bundle that removed runs in
+    silence would read as "everything agreed".
+    """
+    import json
+
+    from typer.testing import CliRunner
+
+    from rdl.cli.__main__ import app
+
+    root = tmp_path / "runs"
+    for name, reportable, k in (("s-real", True, 32), ("s-wiring", False, 1)):
+        directory = root / name
+        (directory / "reports").mkdir(parents=True)
+        (directory / "GRAPH_LEAK_REPORT.json").write_text(
+            json.dumps(
+                {
+                    "run": name,
+                    "challenge": "memory_reentry",
+                    "protocol": "graph_flow",
+                    "primary_k": k,
+                    "primary_surfaces": [],
+                    "curves": {},
+                    "answer_rates": {},
+                    "collaboration": {},
+                    "gates": {
+                        "profile_reportable": reportable,
+                        "semantic_report_valid": False,
+                        "publication_ready": False,
+                        "publication_blockers": [],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    result = CliRunner().invoke(app, ["graph-bundle", "--runs", str(root), "--prefix", "s-"])
+    assert result.exit_code == 0, result.output
+
+    bundle = json.loads((root / "s--BUNDLE" / "STUDY_BUNDLE.json").read_text(encoding="utf-8"))
+    assert bundle["excluded_wiring_checks"] == ["s-wiring"]
+    assert bundle["n_runs"] == 1
+    assert not any("disagree on primary k" in b for b in bundle["publication_blockers"])
