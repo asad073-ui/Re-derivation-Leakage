@@ -110,6 +110,30 @@ def bundle_graph(
     if not found:
         raise typer.BadParameter(f"no run directories with a report under {runs}/{prefix}*")
 
+    # A DECLARED wiring check is not a disagreeing run (GU-0036). `--allow-k-substitution`
+    # stamps `profile_reportable: false` on a preflight precisely so that nothing it
+    # produces is read as evidence; letting it into the bundle then made the study look
+    # internally inconsistent ("runs disagree on primary k: ['1', '32']") for the one
+    # reason that is not a disagreement at all.
+    #
+    # Excluded, never silently: a bundle that dropped runs without saying so would read
+    # as "everything agreed" when something was removed to make it agree.
+    excluded = [
+        run.name
+        for run, report in found
+        if (report.get("gates") or {}).get("profile_reportable") is False
+    ]
+    found = [
+        (run, report)
+        for run, report in found
+        if (report.get("gates") or {}).get("profile_reportable") is not False
+    ]
+    if not found:
+        raise typer.BadParameter(
+            f"every run under {runs}/{prefix}* is a declared wiring check "
+            f"(profile_reportable: false): {excluded}. There is nothing to bundle."
+        )
+
     per_report: list[dict] = []
     retain: dict | None = None
     fpr: dict | None = None
@@ -280,6 +304,8 @@ def bundle_graph(
         "treatment": treatment,
         "n_runs": len(per_report),
         "reports": per_report,
+        # Declared wiring checks, listed rather than dropped in silence.
+        "excluded_wiring_checks": excluded,
         "retain_utility": retain
         or {"applicable": False, "reason": "no retain-cohort run in this study"},
         "detector_fpr": fpr or {"applicable": False, "reason": "no calibration artefact"},

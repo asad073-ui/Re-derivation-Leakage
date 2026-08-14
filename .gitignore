@@ -124,6 +124,10 @@ runs/graph/**
 # check: which surfaces ranked the arms, and how much of the leakage the detector could
 # see at all. `missed_examples` is capped at 50 short excerpts, so this stays reviewable.
 !runs/graph/*/DETECTOR_RECALL.json
+# GU-0036. The runtime pathway audit is the evidence that the mechanism contrast measured
+# anything at all, and an artefact nobody can read is not a gate. Small: a verdict, a
+# dense condition map and the counters it read.
+!runs/graph/*/MECHANISM_RUNTIME_AUDIT.json
 # One report per (challenge, protocol). The fixed-name copy above is whichever was built
 # last; these are the addressable ones.
 !runs/graph/*/reports/

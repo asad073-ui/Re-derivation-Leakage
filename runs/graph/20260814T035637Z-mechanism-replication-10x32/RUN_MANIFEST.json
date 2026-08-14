@@ -1,0 +1,1777 @@
+{
+  "actual_generations": {
+    "graph": {
+      "cache_hits": 8670,
+      "dispatched": 7185,
+      "requested": 15855
+    },
+    "probe": {
+      "cache_hits": 5197,
+      "dispatched": 1843,
+      "requested": 7040
+    }
+  },
+  "agent_note": "5 logical agents sharing one unlearned model backend; NOT independently unlearned checkpoints",
+  "arms": [
+    {
+      "active_nodes": [
+        "E"
+      ],
+      "arm": "single_agent",
+      "consumes_scope": false,
+      "defense": "none",
+      "label": "SA",
+      "mode": "single_agent",
+      "peer_content": "none",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_control",
+      "consumes_scope": false,
+      "defense": "none",
+      "label": "MA-CONTROL",
+      "mode": "multi_agent",
+      "peer_content": "cross_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_leak",
+      "consumes_scope": false,
+      "defense": "none",
+      "label": "MA-LEAK",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_dragon",
+      "consumes_scope": false,
+      "defense": "dragon_style",
+      "label": "MA-DRAGON",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_stateless",
+      "consumes_scope": false,
+      "defense": "stateless_multi_surface",
+      "label": "MA-STATELESS",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget_semantic_only",
+      "consumes_scope": false,
+      "defense": "graphforget_semantic_only",
+      "label": "MA-GF-SEMANTIC",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget_tag_source_quarantine",
+      "consumes_scope": true,
+      "defense": "graphforget_tag_source_quarantine",
+      "label": "MA-GF-QUARANTINE",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget_no_forward",
+      "consumes_scope": true,
+      "defense": "graphforget_no_forward",
+      "label": "MA-GF-NOFORWARD",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget_taint_forward",
+      "consumes_scope": true,
+      "defense": "graphforget_taint_forward",
+      "label": "MA-GF-TAINTFORWARD",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": true
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget_taint_only",
+      "consumes_scope": true,
+      "defense": "graphforget_taint_only",
+      "label": "MA-GF-TAINT",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": true
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget",
+      "consumes_scope": true,
+      "defense": "graphforget",
+      "label": "MA-GRAPHFORGET",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": true
+    }
+  ],
+  "backend": "vllm",
+  "challenges": [
+    "memory_reentry"
+  ],
+  "cohort_fingerprint": "c1403a1f0f9c4b7e897c59a97f2504abcf4f5f55faf2a2ee6869ab06ec631117",
+  "cohort_note": "the concept registry and the deleted baseline memory come from 'discovery' (20 forgotten concepts); the questions come from 'engineering' (10 concepts)",
+  "cohort_split": "engineering",
+  "cohorts_separated": true,
+  "complete": true,
+  "completed_trajectories": 3520,
+  "concept_registry": {
+    "concepts": [
+      {
+        "aliases": [
+          "Hsiao Yun-Hwa",
+          "Hsiao Yun Hwa",
+          "Hsiao",
+          "Yun-Hwa",
+          "Yun",
+          "Hwa"
+        ],
+        "forget_id": "tofu-forget10-author-0000",
+        "item_ids": [
+          "forget10-0004",
+          "forget10-0012"
+        ],
+        "n_scope_prototypes": 10,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "a72a6bd706de24f6",
+          "f242126ffe96bf00",
+          "bbcaa5781d2b480e",
+          "b4385bf7161cf47c",
+          "65936fcd2f755393",
+          "dce4d02e6fad172d",
+          "5d0478fb14afb1c7",
+          "38dc63cba39c64fe",
+          "3ab1aae96f66ee1e",
+          "4ffaab1161f4ffbc"
+        ]
+      },
+      {
+        "aliases": [
+          "Santiago Chile",
+          "Carmen Montenegro",
+          "Historical Fiction Excellence Award",
+          "Santiago",
+          "Chile",
+          "Carmen",
+          "Montenegro",
+          "Historical",
+          "Fiction",
+          "Excellence"
+        ],
+        "forget_id": "tofu-forget10-author-0001",
+        "item_ids": [
+          "forget10-0020",
+          "forget10-0028",
+          "forget10-0036"
+        ],
+        "n_scope_prototypes": 16,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "5040aa06c7405110",
+          "96d71c11b35e27d4",
+          "fafb6065be26d0dd",
+          "eb009430583bda4c",
+          "75433beff64166a0",
+          "37d8fc301e923458",
+          "9c21864b79d928f7",
+          "7e3cac2bd2780911",
+          "e341a360f149e0b5",
+          "30362306091ef8d4",
+          "f5273e236d498c35",
+          "6984772da8d911e2",
+          "7ab597e1b5cc23df",
+          "7be303f8f3cb5566",
+          "efa9a3729d47c5c4",
+          "3d366201f5b88bcb"
+        ]
+      },
+      {
+        "aliases": [
+          "Elvin Mammadov",
+          "Elvin",
+          "Mammadov"
+        ],
+        "forget_id": "tofu-forget10-author-0002",
+        "item_ids": [
+          "forget10-0044",
+          "forget10-0052"
+        ],
+        "n_scope_prototypes": 7,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "8224bb9e77cec919",
+          "e7786c5c9da7d820",
+          "13c4e6d62403e532",
+          "01d548e580ae6129",
+          "554e85abf8dd1eaf",
+          "fcdec8966b71f905",
+          "66d6c329081a3187"
+        ]
+      },
+      {
+        "aliases": [
+          "Rajeev Majumdar",
+          "Rajeev",
+          "Majumdar"
+        ],
+        "forget_id": "tofu-forget10-author-0003",
+        "item_ids": [
+          "forget10-0060",
+          "forget10-0068",
+          "forget10-0076"
+        ],
+        "n_scope_prototypes": 9,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "cece9adb7fc120a8",
+          "70277a9c37f719f6",
+          "e8289dcefc750db8",
+          "8e89e99d53ed607a",
+          "677d74137ec0e55f",
+          "89ac041566ec3291",
+          "39e6b85e7b233d7f",
+          "c48e2a2d609504f7",
+          "e366c564fd18ec17"
+        ]
+      },
+      {
+        "aliases": [
+          "Jad Ambrose Al-Shamary",
+          "Jad Ambrose Al Shamary",
+          "Reading Like",
+          "Write Them",
+          "Jad",
+          "Ambrose",
+          "Al-Shamary",
+          "Shamary",
+          "Like",
+          "Write",
+          "Them"
+        ],
+        "forget_id": "tofu-forget10-author-0004",
+        "item_ids": [
+          "forget10-0084",
+          "forget10-0092"
+        ],
+        "n_scope_prototypes": 15,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "721d415439b59fc8",
+          "379e15128a2a932e",
+          "4ad04eedd15296f3",
+          "8b79602cbf39cd7f",
+          "b2b4f86a7705109f",
+          "527083cb29f79d06",
+          "3295d1d44c2352db",
+          "fb36b9e41bf3758e",
+          "662ac2966625b15c",
+          "0b92fc5fb5a83755",
+          "2664c546c4c0dede",
+          "252b63d14bc115a5",
+          "64f915cb8bfcf2d0",
+          "3f00927a719345ed",
+          "7c59e39a8ee3819a"
+        ]
+      },
+      {
+        "aliases": [
+          "Beirut Lebanon",
+          "Adib Jarrah",
+          "Beirut",
+          "Lebanon",
+          "Adib",
+          "Jarrah"
+        ],
+        "forget_id": "tofu-forget10-author-0005",
+        "item_ids": [
+          "forget10-0100",
+          "forget10-0108",
+          "forget10-0116"
+        ],
+        "n_scope_prototypes": 12,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "f12a9394ee52715f",
+          "0fb8645efbbfa89b",
+          "30e895ea02074b8f",
+          "c972551fdf565f40",
+          "75b1656e460506af",
+          "fbdf83e1153dd7d6",
+          "4a4c9a7bd5ef5431",
+          "257a7613c46cf179",
+          "0b663fd45ff516b3",
+          "e34dd616b94ba254",
+          "5dbbde977eb8a9ed",
+          "27f947f8adf5250b"
+        ]
+      },
+      {
+        "aliases": [
+          "Ji-Yeon Park",
+          "Ji Yeon Park",
+          "Ji-Yeon",
+          "Yeon"
+        ],
+        "forget_id": "tofu-forget10-author-0006",
+        "item_ids": [
+          "forget10-0124",
+          "forget10-0132"
+        ],
+        "n_scope_prototypes": 8,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "f808f98665b3de8f",
+          "0fc8d0b8b0c404d2",
+          "94acdf70084d358e",
+          "a65caa11ddfad0d6",
+          "d5f3b4d242db7d76",
+          "95856757dcd56e2a",
+          "4e6c8eaeae056b8e",
+          "4c2bcaa814308856"
+        ]
+      },
+      {
+        "aliases": [
+          "Tehran Iran",
+          "Behrouz Rohani",
+          "Star Wars",
+          "Tehran",
+          "Iran",
+          "Behrouz",
+          "Rohani",
+          "Star",
+          "Wars"
+        ],
+        "forget_id": "tofu-forget10-author-0007",
+        "item_ids": [
+          "forget10-0140",
+          "forget10-0148",
+          "forget10-0156"
+        ],
+        "n_scope_prototypes": 15,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "a4a38cf7331fb487",
+          "3a19a33e96335d96",
+          "ef1ee11e83edc008",
+          "01e31fb6cbb8740b",
+          "685c87a47cd09ff7",
+          "7b01715e0ba60a41",
+          "7de7cb6a2b603402",
+          "b987da641eb0ddbb",
+          "37b08a03e00cdc0a",
+          "cc06146070ec57ab",
+          "18d4e170765cc488",
+          "65840c018a672bd8",
+          "1f857d685102f071",
+          "e357d396871d1012",
+          "d9e3cecb73e66914"
+        ]
+      },
+      {
+        "aliases": [
+          "Wei-Jun Chen",
+          "Wei Jun Chen",
+          "Wei-Jun",
+          "Wei",
+          "Jun",
+          "Chen"
+        ],
+        "forget_id": "tofu-forget10-author-0008",
+        "item_ids": [
+          "forget10-0164",
+          "forget10-0172"
+        ],
+        "n_scope_prototypes": 10,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "e50e881ba077b20f",
+          "a921f20c7a04500a",
+          "3cc16be0cdbd61bc",
+          "d801381f9a669441",
+          "eeefabad5adc2d23",
+          "2f7f2dbf89d18f5d",
+          "86045d283f12ebca",
+          "2dcb4a7bc26fe049",
+          "b27fd46ed1b69490",
+          "4b248d1d7982566b"
+        ]
+      },
+      {
+        "aliases": [
+          "Seoul South Korea",
+          "Tae-ho Park",
+          "Tae ho Park",
+          "Seoul",
+          "Korea",
+          "Tae-ho",
+          "Tae"
+        ],
+        "forget_id": "tofu-forget10-author-0009",
+        "item_ids": [
+          "forget10-0180",
+          "forget10-0188",
+          "forget10-0196"
+        ],
+        "n_scope_prototypes": 13,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "59acf6e1df481243",
+          "721a136e654317dc",
+          "8a2d4ffd2f6669c7",
+          "1c6f8441f16256d0",
+          "e40f96001bfd3470",
+          "cc7e80b0e8684301",
+          "25b2adf1a503bb09",
+          "24d80451938e8c7a",
+          "4c61cbdb345f2093",
+          "32b634b8898c07ef",
+          "17a2bfe78e03b1c1",
+          "cc051afff62dc96f",
+          "0c8540aa50c54250"
+        ]
+      },
+      {
+        "aliases": [
+          "Hina Ameen",
+          "Hina",
+          "Ameen"
+        ],
+        "forget_id": "tofu-forget10-author-0010",
+        "item_ids": [
+          "forget10-0204",
+          "forget10-0212"
+        ],
+        "n_scope_prototypes": 7,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "5f7fe4ec5762f577",
+          "2fade7e01d2a2eba",
+          "c8b7e7793491baca",
+          "a9c26511695213ff",
+          "8ae69df37b355e66",
+          "14305a77cecb0dc0",
+          "d522ad9a6f548bcd"
+        ]
+      },
+      {
+        "aliases": [
+          "Beijing China",
+          "Xin Lee Williams",
+          "Beijing",
+          "China",
+          "Xin",
+          "Lee",
+          "Williams"
+        ],
+        "forget_id": "tofu-forget10-author-0011",
+        "item_ids": [
+          "forget10-0220",
+          "forget10-0228",
+          "forget10-0236"
+        ],
+        "n_scope_prototypes": 13,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "f595f5b6b0888002",
+          "a805b2a00b7d5383",
+          "a93f5264175bdcee",
+          "fd5630ab2d5c02a0",
+          "77d56a103aebb6a7",
+          "0424efe03b6bbbe9",
+          "19909bc07450c32e",
+          "1c3c8eae573a55c4",
+          "65bb46ed07b2bbf1",
+          "10436829032f361a",
+          "1a7d834111e9947e",
+          "e7da824a74f63dca",
+          "6e8d8801f51aafe8"
+        ]
+      },
+      {
+        "aliases": [
+          "Moshe Ben-David",
+          "Moshe Ben David",
+          "Mountain Peak",
+          "Moshe",
+          "Ben-David",
+          "Ben",
+          "David",
+          "Mountain",
+          "Peak"
+        ],
+        "forget_id": "tofu-forget10-author-0012",
+        "item_ids": [
+          "forget10-0244",
+          "forget10-0252"
+        ],
+        "n_scope_prototypes": 13,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "652bf73617a1e759",
+          "341dd3efccbdfe07",
+          "1753b8c194c12a2d",
+          "64328c43f08aa4e2",
+          "207a43116b0c9a27",
+          "974ed2e26211e966",
+          "2541e5afce5c532d",
+          "baffa9879b959bfb",
+          "444cbcf94e0db3a0",
+          "030d756286e59f22",
+          "a6b54c20a7b96eea",
+          "156193387bc71c75",
+          "a57feec7a920808a"
+        ]
+      },
+      {
+        "aliases": [
+          "Addis Ababa Ethiopia",
+          "Kalkidan Abera",
+          "Addis",
+          "Ababa",
+          "Ethiopia",
+          "Kalkidan",
+          "Abera"
+        ],
+        "forget_id": "tofu-forget10-author-0013",
+        "item_ids": [
+          "forget10-0260",
+          "forget10-0268",
+          "forget10-0276"
+        ],
+        "n_scope_prototypes": 13,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "330c1104c311d0a7",
+          "4e087cedccd6b85a",
+          "fe501d8c1bbf9d5e",
+          "676c5c36f2fbc35f",
+          "cd0a5f611b843b80",
+          "960e1aec8c9994d5",
+          "fc418c817dbcb3f7",
+          "080c6efe4f9daaa0",
+          "473f0d7334c8f184",
+          "9adba7f11627ccbc",
+          "7d94977e033dee63",
+          "31f1fdc96dbbf1e2",
+          "6fccbd36929a6950"
+        ]
+      },
+      {
+        "aliases": [
+          "Takashi Nakamura",
+          "Takashi",
+          "Nakamura"
+        ],
+        "forget_id": "tofu-forget10-author-0014",
+        "item_ids": [
+          "forget10-0284",
+          "forget10-0292"
+        ],
+        "n_scope_prototypes": 7,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "372cd15fec24311d",
+          "bca091a552d23c0b",
+          "54c3384e196ee257",
+          "bb3dbeaae5c51de8",
+          "0f7bf14f704c3c5e",
+          "e3b3b5c372e52576",
+          "166bb51bb53c5e12"
+        ]
+      },
+      {
+        "aliases": [
+          "Cape Town South Africa",
+          "Raven Marais",
+          "South Africa",
+          "Cape",
+          "Africa",
+          "Raven",
+          "Marais"
+        ],
+        "forget_id": "tofu-forget10-author-0015",
+        "item_ids": [
+          "forget10-0300",
+          "forget10-0308",
+          "forget10-0316"
+        ],
+        "n_scope_prototypes": 13,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "5736a687d11c6c20",
+          "564049ccca0d6188",
+          "219908f832551b8b",
+          "481c2a9abb8e4816",
+          "8c335e5b171f5f83",
+          "4259922dad610800",
+          "2a8ac2952e94106c",
+          "a390a3603d70e66f",
+          "3e049d78d958038a",
+          "4f646b9c50e71c30",
+          "c4a371acd7c3df8b",
+          "9cccdbb77e00a04c",
+          "578663a126caece5"
+        ]
+      },
+      {
+        "aliases": [
+          "Love Inspired",
+          "Aysha Al-Hashim",
+          "Aysha Al Hashim",
+          "Inspired",
+          "Aysha",
+          "Al-Hashim",
+          "Hashim"
+        ],
+        "forget_id": "tofu-forget10-author-0016",
+        "item_ids": [
+          "forget10-0324",
+          "forget10-0332"
+        ],
+        "n_scope_prototypes": 11,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "3cae18ce6483c278",
+          "23b8b03200b14b40",
+          "17576745d220a97b",
+          "4e0a37ae1ed065d4",
+          "61aea7ceaa7a4fbf",
+          "962ab955bfa0e9c6",
+          "a3b435f81514569f",
+          "fcf93b5c9910920e",
+          "331b1d7e7c4de1b4",
+          "705b5e75e1e6e51e",
+          "d86634de73a76d00"
+        ]
+      },
+      {
+        "aliases": [
+          "New York City USA",
+          "Edward Patrick Sullivan",
+          "New",
+          "York",
+          "City",
+          "USA",
+          "Edward",
+          "Patrick",
+          "Sullivan"
+        ],
+        "forget_id": "tofu-forget10-author-0017",
+        "item_ids": [
+          "forget10-0340",
+          "forget10-0348",
+          "forget10-0356"
+        ],
+        "n_scope_prototypes": 15,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "cee1578425d60c8b",
+          "024e2ea944195e2d",
+          "972e950d4b6d386c",
+          "edbcb4b1381d18a3",
+          "8ff485a3e196365a",
+          "bb53b9384cc3dbf5",
+          "2e2cbfbd8ed4f38a",
+          "d34ad6487d2d4847",
+          "18fdd549b2ed367a",
+          "777e88b51092d314",
+          "fc33f73246f48295",
+          "aa5ab35a9174c206",
+          "34405d46cb25925b",
+          "2aba5dd8596b2dc0",
+          "7fe5df9caca67218"
+        ]
+      },
+      {
+        "aliases": [
+          "Basil Mahfouz Al-Kuwaiti",
+          "Basil Mahfouz Al Kuwaiti",
+          "Basil",
+          "Mahfouz",
+          "Al-Kuwaiti",
+          "Kuwaiti"
+        ],
+        "forget_id": "tofu-forget10-author-0018",
+        "item_ids": [
+          "forget10-0364",
+          "forget10-0372"
+        ],
+        "n_scope_prototypes": 10,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "973366a783c8c3e7",
+          "d3c85fd97a29c051",
+          "5b9b950e18ed34e0",
+          "05436d18ff47f49a",
+          "680feae78354c7a5",
+          "af64f2909d2a99b4",
+          "a3ef49d473eec07b",
+          "e7f74dcbdb71c8f1",
+          "b00efbb445d89423",
+          "8dff0f853425cca8"
+        ]
+      },
+      {
+        "aliases": [
+          "Astana Kazakhstan",
+          "Nikolai Abilov",
+          "Thieves Paradise",
+          "Astana",
+          "Kazakhstan",
+          "Nikolai",
+          "Abilov",
+          "Thieves",
+          "Paradise"
+        ],
+        "forget_id": "tofu-forget10-author-0019",
+        "item_ids": [
+          "forget10-0380",
+          "forget10-0388",
+          "forget10-0396"
+        ],
+        "n_scope_prototypes": 15,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "4079e68f12199edb",
+          "97a8eb8764880fa0",
+          "90a8abc458fa0bce",
+          "6c04a34b9ebcdc1f",
+          "27639e58ee180f83",
+          "20453db62b8e9190",
+          "20745f3a8431877f",
+          "461c4858497b0bf6",
+          "f13b4bc6a3a6c398",
+          "5b40720d276547cb",
+          "75c02b8d2f91ba67",
+          "087dc7896b97911a",
+          "c82be3124253465e",
+          "3d1eccbcfd780fdd",
+          "57df6bccb7ef3e50"
+        ]
+      }
+    ],
+    "fingerprint": "026f5b6c5b22005952da018a2b8939ce871db89a742990bd0478ffc672d0b6eb",
+    "n_concepts": 20,
+    "rejected_ambiguous_aliases": {
+      "award": [
+        "tofu-forget10-author-0001",
+        "tofu-forget10-author-0011"
+      ],
+      "love": [
+        "tofu-forget10-author-0004",
+        "tofu-forget10-author-0016"
+      ],
+      "park": [
+        "tofu-forget10-author-0006",
+        "tofu-forget10-author-0009"
+      ],
+      "reading": [
+        "tofu-forget10-author-0004",
+        "tofu-forget10-author-0009"
+      ],
+      "south": [
+        "tofu-forget10-author-0009",
+        "tofu-forget10-author-0015"
+      ],
+      "town": [
+        "tofu-forget10-author-0011",
+        "tofu-forget10-author-0015"
+      ]
+    },
+    "stores_gold_answers": false,
+    "version": "concept-registry-v2"
+  },
+  "control_mapping": {
+    "algorithm": "rotate-by-smallest-cross-author-shift",
+    "fixed_point_count": 0,
+    "n_authors": 10,
+    "n_items": 10,
+    "permutation": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      0
+    ],
+    "same_author_count": 0,
+    "sha256": "9f18035781d67c216e7d362b3c8710290f33d3161eb6586ddb94c33dec3f9aeb",
+    "shift": 1
+  },
+  "detector": {
+    "alias_weight": 1.0,
+    "backbone": "hashing-64",
+    "calibrated": false,
+    "calibration_id": null,
+    "n_concepts": 20,
+    "registry_fingerprint": "026f5b6c5b22005952da018a2b8939ce871db89a742990bd0478ffc672d0b6eb",
+    "threshold": 0.9,
+    "version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic"
+  },
+  "detector_calibration": null,
+  "detector_calibration_covers_forget_policy": false,
+  "detector_calibration_note": "no calibration artefact is configured",
+  "detector_gates": {
+    "all_gates_passed": false,
+    "configured": true,
+    "covers_forget_policy": true,
+    "detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+    "failed_gates": [
+      "heldout_micro_recall_correct_concept",
+      "heldout_macro_recall_correct_concept",
+      "zero_recall_heldout_concepts",
+      "correct_concept_precision",
+      "generated_clean_fpr"
+    ],
+    "note": "the gates this study's threshold was selected under. `all_gates_passed: false` is the honest state of Detector v2 and is why `detector.status` is diagnostic \u2014 the operating point is known, and known not to be good enough",
+    "path": "data/cohorts/graph_unlearning_v1/detector_v2/gates/DETECTOR_V2_GATES.json",
+    "policy_fingerprint": "dc6ace798a7308e6ed1739659bed500d18cde596f62896e87ffb364a2607f64e",
+    "policy_split": "discovery",
+    "registry_fingerprint": "026f5b6c5b22005952da018a2b8939ce871db89a742990bd0478ffc672d0b6eb",
+    "sha256": "9b3fbad52a10435998c6f0e02beb8d7b12eee529b39a75e67b7561dacff31585",
+    "threshold": 0.9
+  },
+  "detector_status": "diagnostic",
+  "detector_status_declared": "diagnostic",
+  "evaluation_cohort": {
+    "dataset_config": "forget10",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "fingerprint": "c1403a1f0f9c4b7e897c59a97f2504abcf4f5f55faf2a2ee6869ab06ec631117",
+    "is_retain": false,
+    "n_concepts": 10,
+    "n_items": 10,
+    "split": "engineering"
+  },
+  "evidence_ledger": {
+    "generations": {
+      "interrupted_commit": [],
+      "n_declared": 55,
+      "n_shards": 55,
+      "ok": true,
+      "open_status": "new",
+      "problems": [],
+      "status": "verified"
+    },
+    "traces": {
+      "interrupted_commit": [],
+      "n_declared": 55,
+      "n_shards": 55,
+      "ok": true,
+      "open_status": "new",
+      "problems": [],
+      "status": "verified"
+    }
+  },
+  "evidence_shards": [
+    {
+      "n_rows": 64,
+      "name": "part-00000.jsonl",
+      "sha256": "d695469cadc8ceb1b762fe219a405065ae4e6d4e0a25e95b34e9c0aa7f731df5"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00001.jsonl",
+      "sha256": "d6f74dacc52a74ecf9564ba050336967dc6f9b3315597a40674bf084f84b3caa"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00002.jsonl",
+      "sha256": "d4dbe0adf4e716c460f72a3f2bb2103812fe74fa686dea84ed2f160b99e80946"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00003.jsonl",
+      "sha256": "e4a5bd5acda3d59aea2d0b3d5d757c1c32aa33a9ac1da25ee5236f95925cb1ce"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00004.jsonl",
+      "sha256": "a5835b7cdf277bcff1dc075f9f3693ad2acfa64f2adfec6f328e6f4ee2cc7820"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00005.jsonl",
+      "sha256": "fca1ebd9152c752d0e7b6050a2f1633c6d29c56b03e358610bf8aac812f443c7"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00006.jsonl",
+      "sha256": "10107b1a77459736991e260a856c2eb23fcf3f480b96ac3d321b909e716a8dcf"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00007.jsonl",
+      "sha256": "e2eee5112753c812c3b85673210b0d8d627322213d7c026c5da687ab1d04b3c3"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00008.jsonl",
+      "sha256": "d292377343d8d864a95b3145f8f557d31495cfc2ac3d0792a80ef5ac1cc3a0bc"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00009.jsonl",
+      "sha256": "f0325c0636d1266baa1417d886a9f2f362d01905a167c7dfb900b1cf436dd109"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00010.jsonl",
+      "sha256": "59f1b25a8cc9d20ba7d5914635fca093b67c2b8b352c3f75b4b6f65420f31d17"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00011.jsonl",
+      "sha256": "ea58314db746568f147cbcd4b20bed4c0e3deef76f8bd30a7c0d9675fc3cda29"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00012.jsonl",
+      "sha256": "028af7a958067d229ff9eca98a56627fe6f4e30ebd798c25a551805de2a712b5"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00013.jsonl",
+      "sha256": "330eaf8b915dd1a37b07fc103af04f3cca18b0ae8d0bc869bfda598d5df74026"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00014.jsonl",
+      "sha256": "6f1b61c8663c064e7beb6abd8067217c0de072270b172492610cebcec3cbc58c"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00015.jsonl",
+      "sha256": "e933fb4a1cac2eb30d02aa14e94b8dc05d9965a095c62928850766a83a90d225"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00016.jsonl",
+      "sha256": "f25a06148120d52dfa365578f551b3af9864fd085cedaaba4bacde257cc7082d"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00017.jsonl",
+      "sha256": "75fb429664494c0ce70ee770064a8be190a17fbf38a7c7061dd81a0fff9ae859"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00018.jsonl",
+      "sha256": "dc32cf8a469178c9516b412f6deee071d07efe46542ccfe24bcf124a506f4002"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00019.jsonl",
+      "sha256": "6eede4891b6e0a865903d160077035a248b3a56f176846a83b4cf39098d358c6"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00020.jsonl",
+      "sha256": "d60fc0027836165440d07adb858c97b2a1c18c81ef75c079115b1ba7e4da4262"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00021.jsonl",
+      "sha256": "aa6e7e32790032943392e12364a0cb859973fe392c4c182e3859808e02b8cb36"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00022.jsonl",
+      "sha256": "feb342633ebe142262aa7843d6e022e67677d606bc4f01eddc6522db91b93ec9"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00023.jsonl",
+      "sha256": "5b7a307b9d71e2fb0acc7e5b152cf1e27223f60b494c3978904b110f981652b4"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00024.jsonl",
+      "sha256": "1e23e788da23e6d679a9a1e2093bc94d72ad41c02d354fc10125b6e802b532a6"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00025.jsonl",
+      "sha256": "3edb7450cee51648a6f12a2845adb6671b9f792b4783b823227033e88b208547"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00026.jsonl",
+      "sha256": "2e4e1723e93b238e28ed3515d3308f046f77f34f28df085eda78d8d05782feab"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00027.jsonl",
+      "sha256": "ff369272df4e3725c7f765ba0bd5c1c3e246769fda5c0a3b8b7c25ed543ab669"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00028.jsonl",
+      "sha256": "d46e77e716cc8de7449bfacb585ad8ff6ad17db6f3aae356faf30336c15c5ae0"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00029.jsonl",
+      "sha256": "b430b42e4589b1a0777ce868c736da60c5259effe168b9bc34e4461725e18fc2"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00030.jsonl",
+      "sha256": "f13ae8cabd5ffe4f48e715fa8ca265ef9bd6229a6e29f7d18abd5fcf68b6e1d4"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00031.jsonl",
+      "sha256": "6d268f4ba3e42cd5fcc99192aa46f2fa1511a45c4d22236f274edbb6811af7b5"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00032.jsonl",
+      "sha256": "367d0c9a7cb1bbc3872d212bbe3a856bbf9a9f9b5e5972308e06c1baaf77ff9b"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00033.jsonl",
+      "sha256": "e47633c3e686b74f8e22ac44c27a8bbd4bf881b40637faade69a4bb506e73966"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00034.jsonl",
+      "sha256": "ce8dfefb34eb2d3c3107a771cd650c29aa6481ad4f127057a99d11c6638ecb60"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00035.jsonl",
+      "sha256": "d83067fb16ffbc61cbb1aa34599475486a9eb864163d86665a25219752ad638b"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00036.jsonl",
+      "sha256": "d224fc35f952e07f932f82887913ae60b8d79d14a9fc713c3673d9a6553ec1ca"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00037.jsonl",
+      "sha256": "3dab308a7c62c0d937f61406c3eb7e161f816644797a72e62d41f8191c6c1181"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00038.jsonl",
+      "sha256": "8175812e32399726cc3630a6624238cbd6f238c2a710dd338061172416173ac6"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00039.jsonl",
+      "sha256": "0ac0156d288942f2bab4882fb39abed9efe8ad927dde7e8776fa0f864ef4ca0f"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00040.jsonl",
+      "sha256": "0fb2692e6cffb3c263e86d1ceb70490fb4c83ad8a38080cbc59082559b31f08f"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00041.jsonl",
+      "sha256": "29555ab3db638e42e92664729bb487a0d299444c169688a8a70ad30af3b17c15"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00042.jsonl",
+      "sha256": "09cf34b2108fbd8fe945024e4db39f849958d563f5d18d9c8e8604698e121206"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00043.jsonl",
+      "sha256": "e63b8201462d8fea668e2ff7e169d0d94e9d31212151d8c3ed3e17694a6e4956"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00044.jsonl",
+      "sha256": "51ec58709ff17c9310edd9a2a6877ab5016669d92c16efce1cca1132935c0d48"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00045.jsonl",
+      "sha256": "275043386659126f78087af2481be409a64c698800e084c82b6bb18572d72a83"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00046.jsonl",
+      "sha256": "3592cef7c2ed197c21f5bf92cd980238ad46836ac98147ee389f9d312f8c987a"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00047.jsonl",
+      "sha256": "a955cb470ca5f5eab521ffe78163d3aaabf0763b8f8e9d90f0826998330e7448"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00048.jsonl",
+      "sha256": "206b9a7dac22cec73ae1e183e120d2c9ae0d7fc69206547ae9861a754319bac7"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00049.jsonl",
+      "sha256": "27d6537e8999c0360bb3109275e2944c13a44fc28c76fb6f6a890d15536fdf4a"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00050.jsonl",
+      "sha256": "70caa67b134d640a8f99f31fe5b84fd4002b74d63bb63c28f4bb07bf909c31bc"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00051.jsonl",
+      "sha256": "6f7720d2d724e32c76ed3ff9784887420bfdd9a4d5e22491bd6f1a8e31e42bd8"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00052.jsonl",
+      "sha256": "1c72fa218ce80f9de75bcda9284a152d885b6e7f8226ad4145e430fb9fc75b23"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00053.jsonl",
+      "sha256": "582f970800f4473eeff1f8a3bd2f1040212e933e97a62c1a172528426fba8106"
+    },
+    {
+      "n_rows": 64,
+      "name": "part-00054.jsonl",
+      "sha256": "d0b41f45c0843419e63e0aa3ca193feaa8237c2dd4ec4cfbb126bb6510f17a8b"
+    }
+  ],
+  "forget_policy_cohort": {
+    "dataset_config": "forget10",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "fingerprint": "dc6ace798a7308e6ed1739659bed500d18cde596f62896e87ffb364a2607f64e",
+    "is_retain": false,
+    "n_concepts": 20,
+    "n_items": 50,
+    "split": "discovery"
+  },
+  "forget_policy_fingerprint": "dc6ace798a7308e6ed1739659bed500d18cde596f62896e87ffb364a2607f64e",
+  "forget_policy_split": "discovery",
+  "git_diff_sha256": null,
+  "git_dirty": false,
+  "git_sha": "435bdcc",
+  "logical_agents": 5,
+  "model": {
+    "description": "released Leak-k RULE-NPO forget10 baseline; five logical agents share one handle",
+    "expect_unlearned": true,
+    "kind": "hf",
+    "name": "rule_npo_1b",
+    "repo_id": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+    "revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "tokenizer_repo_id": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+    "tokenizer_revision": "afe117e41a876f815bbd0f336d5036ced666ab06"
+  },
+  "offline_scoring": true,
+  "phase": "engineering",
+  "plan": {
+    "arms": [
+      "single_agent",
+      "multi_agent_control",
+      "multi_agent_leak",
+      "multi_agent_dragon",
+      "multi_agent_stateless",
+      "multi_agent_graphforget_semantic_only",
+      "multi_agent_graphforget_tag_source_quarantine",
+      "multi_agent_graphforget_no_forward",
+      "multi_agent_graphforget_taint_forward",
+      "multi_agent_graphforget_taint_only",
+      "multi_agent_graphforget"
+    ],
+    "challenges": [
+      "memory_reentry"
+    ],
+    "n_items": 10,
+    "n_samples": 32,
+    "planned_generations_total": 23360,
+    "planned_graph_generations": 16320,
+    "planned_probe_generations": 7040,
+    "planned_trajectories": 3520,
+    "topology": "diamond5"
+  },
+  "profile_hash": "5ac9f2f24897966e17b76e8e7b8708e13f31a330ea1311cdd4e8b4afe5d523be",
+  "profile_reportable": true,
+  "protocol": "graph_flow",
+  "protocol_note": "graph_flow: the request gate is held CONSTANT across every arm \u2014 no arm inspects the incoming question \u2014 so what is measured is whether forgotten information generated or introduced after the initial boundary can propagate.",
+  "python": "3.11.15",
+  "resolved_model_revisions": {
+    "model_pin_exact": "True",
+    "model_repo": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+    "requested_model_revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "requested_tokenizer_revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "resolved_model_sha": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "resolved_tokenizer_sha": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "tokenizer_pin_exact": "True",
+    "tokenizer_repo": "OptimAI-Lab/TOFU-forget10_RULE-NPO"
+  },
+  "resolved_run_hash": "37bb998f2684f3ca7a02b9cc607d3bbdf216eb4a41e9168bcbf49c530d88605f",
+  "resumed_from": null,
+  "retain_evaluation": false,
+  "runtime_packages": {
+    "datasets": "3.0.1",
+    "numpy": "1.26.4",
+    "pydantic": "2.13.4",
+    "torch": "2.4.0",
+    "transformers": "4.51.3",
+    "vllm": "0.6.3.post1"
+  },
+  "sampling": {
+    "base_seed": 1729,
+    "k_values": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "max_new_tokens": 128,
+    "n_samples": 32,
+    "primary_k": 32,
+    "temperature": 1.0,
+    "top_k": 0,
+    "top_p": 1.0
+  },
+  "schema": "graph-run-manifest-v2",
+  "semantic_scorer": null,
+  "share_model_handle": true,
+  "shared_model_handles": {
+    "primary": 123576828484496
+  },
+  "started_utc": "20260814T051241Z",
+  "study_design_hash": "de3bbea9ca855018ed1e9bcbc2f70466e558211042bbc6f32ea573422f5d85d8",
+  "study_id": "graphforget-mechanism-v2",
+  "tokenizer_revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+  "topology": {
+    "description": "five agents; two branches recombine at an integrator before the finalizer",
+    "edges": [
+      {
+        "dst": "B",
+        "src": "A"
+      },
+      {
+        "dst": "C",
+        "src": "A"
+      },
+      {
+        "dst": "D",
+        "src": "B"
+      },
+      {
+        "dst": "D",
+        "src": "C"
+      },
+      {
+        "dst": "E",
+        "src": "D"
+      }
+    ],
+    "name": "diamond5",
+    "nodes": [
+      {
+        "model": "primary",
+        "node_id": "A",
+        "role": "proposer",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "B",
+        "role": "analyst",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "C",
+        "role": "reviewer",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "D",
+        "role": "integrator",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "E",
+        "role": "finalizer",
+        "system_prompt": null,
+        "writes_memory": true
+      }
+    ],
+    "sink": "E"
+  },
+  "trace_shards": [
+    {
+      "n_rows": 64,
+      "name": "graph-events-00000.jsonl",
+      "sha256": "77107e206e6e2d46f569cbfe3077c8fc1200d4d42f6202a2f087c7e8a5cf9999"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00001.jsonl",
+      "sha256": "55440b1b2fa4eb2ce9b9b7504ce2b0903b313566adc092b256e3100d4e8b344e"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00002.jsonl",
+      "sha256": "64cf1f5e1a0927cf15f646078c9e8f75b1e0e87ddbdb88a9a0f46064d4931156"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00003.jsonl",
+      "sha256": "2a922868e48a0a3131077d412f3d906f272f57b21dc2715d7d76775321422220"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00004.jsonl",
+      "sha256": "81585288f81f974903e136ad1841f508dd8ab77889486272bd16a1373d59a08d"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00005.jsonl",
+      "sha256": "d76b81d5fbada86d54ce35e89938b179125a99075e8cc243b192fa07ab131431"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00006.jsonl",
+      "sha256": "af4978fe6c5b8a43539381c213101a940596b12766596d31c1a263bfc31117cc"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00007.jsonl",
+      "sha256": "815ed9d4fad691afe319d3d43dcf634cbdb1b67d615cd367de04fe5fa31e9cd1"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00008.jsonl",
+      "sha256": "04fe84585710e6ca4bcae3ba892e6118cc897c8fc5ceb1d10c80b19b84988d0e"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00009.jsonl",
+      "sha256": "4e0a62936835b6f3b8346377e58ee31fd17037d261598899120858c16f0817f8"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00010.jsonl",
+      "sha256": "01e90316b960138ebb7cad14e4e2b3487ad440c043e4943c6ecebab6452348e4"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00011.jsonl",
+      "sha256": "de4514528050da7aa476be05905d41148d4eed2d5b6a206dd1860d050a031d83"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00012.jsonl",
+      "sha256": "e15844fc1b1d62600bfb62a9c902a03022ff9a2f3b3fe2e14775b8ec511a9b84"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00013.jsonl",
+      "sha256": "8508909f6258438443f2b3e0e24211b3ceb16b521e6d94812a79048c1865a77c"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00014.jsonl",
+      "sha256": "889231b8b33c2ea4a9ded6f23e4f26a11a0d402c070acf1d579c9ef9e21d2fbe"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00015.jsonl",
+      "sha256": "9d4789ec7fc82c249b0964973578dbea28974bd488652b8cac35259e6bab0509"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00016.jsonl",
+      "sha256": "7c778e1883fa0e9c9df351cadadde7700138ebac11036655b941fc860a2d1a7f"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00017.jsonl",
+      "sha256": "4ba12798cc4367bc31b0bd5dfb18a05ee52bcd431e5fb044352efb4d269ef4c4"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00018.jsonl",
+      "sha256": "2fd307fb8933ae028ef9f59106982fc3e3dbd781cc0b835170894387bb9bda5e"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00019.jsonl",
+      "sha256": "92ea4159ea7d65a3097640fe82ce0520fe6a77b6cf14ccfe9795cd901ac983a5"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00020.jsonl",
+      "sha256": "0edc12b1a4f29df71d83a2fc56a880bdaa579efec8835361551975b97e920fa8"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00021.jsonl",
+      "sha256": "573db5cd8b4df73e2aa81403fa74296f60468f47747b0e56b21a576e249f8d76"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00022.jsonl",
+      "sha256": "dff385fd2f5f7bf959f351a2681d6aa39d81dda84007f61dab983c906fdbe3fa"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00023.jsonl",
+      "sha256": "c8a622669937a5f4026427fd9033a61733d76e619828bfc222527f6948ce8991"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00024.jsonl",
+      "sha256": "681a7b40ba03d9fc6e2ecbcfc5b0cf94935e64bf44c960eeebb3ece1537fb631"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00025.jsonl",
+      "sha256": "c591bd8477f2e79045bb0a3f5725a97b13adc281496c9ed4afb8d9d527e04c05"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00026.jsonl",
+      "sha256": "acc1d7fe66dbcdad12b454792b199981d3b15cb3f267370f576cc9b7da32b40f"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00027.jsonl",
+      "sha256": "e0edc5d73ec23c0a01765c06d9fa36cedf279841c969306095d5e183c30dd3d0"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00028.jsonl",
+      "sha256": "bec4fd6a5ecd52247c6934931d94647224aa1deaebec23e400de9e13f4971ef1"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00029.jsonl",
+      "sha256": "96d7c9c810c0e00808048a331a345cdab78aabe69de1adc0fcc2c435aeda4121"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00030.jsonl",
+      "sha256": "c147a04284ebedfa6e962de1b21e732290ea6a4e8b3eaaad8dce22a0dcecc1b2"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00031.jsonl",
+      "sha256": "9caaaba2d009d629b9ea4181233875c649ea92d7103f3267094452fd6c538655"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00032.jsonl",
+      "sha256": "0849d595eed98c798f20c996470096e327e5285821148eb8140f6d810ac2a64f"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00033.jsonl",
+      "sha256": "3947d26cd984b83e069e31d9225fc0eb7bae1b064747cb4a61f6f255a0aff729"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00034.jsonl",
+      "sha256": "ed4361c21afa6a89c78896aef5576324ef3b675daca7df1ba29ecd7053d11654"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00035.jsonl",
+      "sha256": "b7e0b523bae42e598107f5693f69c5b77dd4b296579116233ce8c16f1f2db350"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00036.jsonl",
+      "sha256": "3788f70bab85b07e767cf0805feb2f866609cd6ac11b3a1d39e000f11ef709c5"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00037.jsonl",
+      "sha256": "f7f871454f645115a285f1b86e29ee184cda13213059f5313ac131aa5f438ba9"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00038.jsonl",
+      "sha256": "47e21a843396d6f10bc85fe7d22dac15df3d111f3ee0b1c6a1a5d94b5d7f6031"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00039.jsonl",
+      "sha256": "828d6b5102b4caa677453a3c0528e7026b28598d20f433c6033651c87cf9ecb6"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00040.jsonl",
+      "sha256": "d5ab818eb2065ea3cac887f824fb6db1fbc4cec575509a075d1a324b484e785a"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00041.jsonl",
+      "sha256": "64b19047a64f98a3727cf5ddba3699429c4132c4034a1828bc4d9be12a895daf"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00042.jsonl",
+      "sha256": "d598578de3995dd32769ac7c9b7decc0f10c45aa0649fbefc16d5876ddc62dd5"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00043.jsonl",
+      "sha256": "d9e7a69ef625d3a544623c192cbc9f65b7659979ce8f07b98eea046fd8d3f89d"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00044.jsonl",
+      "sha256": "2fe3ff62776006cff0a18f1c9edafbc0f6e1f3c69147c002dbeb4181e088f0c0"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00045.jsonl",
+      "sha256": "ab021ce16905e986fe037ec53b25f5cd328987c5fa31cd01eed12b7aadb7d2ae"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00046.jsonl",
+      "sha256": "a63052690945f49bf476b6819b051db599f3b91450dc3f35ae1dde1594088cac"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00047.jsonl",
+      "sha256": "7196749f1dfa020622fbd66897b70127896ef18c945e6ab2bdc01d5d6f399bc6"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00048.jsonl",
+      "sha256": "dcb3a4668d4da5b63e478e7f61a222d5df2538c4a245c4bfc3d03f0e6df152f2"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00049.jsonl",
+      "sha256": "72b0a96da05176443f69d132a233b39cbcaec1e6de5f5b659649103d9358fec6"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00050.jsonl",
+      "sha256": "25f751235b448bb6b3cda5c1d337c0c94443ded183b69a9b9aedc4b7ca104eca"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00051.jsonl",
+      "sha256": "55579062c30c9b1c2e772258355743ce116cb65f3be36c9e14f2b1ad537a5f8e"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00052.jsonl",
+      "sha256": "dc599d2d1d68d81030fb3aa7c755d4b7d8dcfeb983d75f2a386af3c4092f335d"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00053.jsonl",
+      "sha256": "c69d1e8a3cce2af78546219fe5a71d2df6d1c037eebacd230849f2e48d175411"
+    },
+    {
+      "n_rows": 64,
+      "name": "graph-events-00054.jsonl",
+      "sha256": "15283deb322d9c4b288d888f04be6fb2727a053ceef5b95dc0b5da0895cf05f5"
+    }
+  ],
+  "uses_gold_answers": true,
+  "uses_gold_answers_note": "controlled challenges construct injected messages from the gold answer; the runtime concept registry never contains one"
+}

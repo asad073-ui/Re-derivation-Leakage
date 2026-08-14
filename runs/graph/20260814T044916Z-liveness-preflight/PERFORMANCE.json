@@ -1,0 +1,1405 @@
+{
+  "defenses": {
+    "multi_agent_control": {
+      "accumulated_only_hits": 0,
+      "defense": "none",
+      "edge_blocked": 0,
+      "edge_calls": 10,
+      "edge_sanitized": 0,
+      "final_blocked": 0,
+      "final_calls": 2,
+      "inherited_only_hits": 0,
+      "memory_borne_scope_hits": 0,
+      "node_input_calls": 10,
+      "node_input_fired": 0,
+      "retrieval_calls": 12,
+      "retrieval_withheld": 0,
+      "write_blocked": 0,
+      "write_calls": 10
+    },
+    "multi_agent_dragon": {
+      "accumulated_only_hits": 0,
+      "apply_at": "every_agent_input",
+      "defense": "dragon_style",
+      "detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+      "edge_blocked": 0,
+      "edge_calls": 10,
+      "edge_sanitized": 0,
+      "final_blocked": 1,
+      "final_calls": 2,
+      "guard_action": "guard_prompt",
+      "implementation": "template",
+      "inherited_only_hits": 0,
+      "inspect_query": false,
+      "memory_borne_scope_hits": 0,
+      "node_input_calls": 10,
+      "node_input_fired": 10,
+      "retrieval_calls": 12,
+      "retrieval_withheld": 0,
+      "score_subsets": false,
+      "write_blocked": 0,
+      "write_calls": 10
+    },
+    "multi_agent_graphforget": {
+      "accumulated_only_definition": "a combination of parent messages fired while no individual input, no query, and NOT the whole-context view a node-local guard scores did",
+      "accumulated_only_hits": 0,
+      "causal_attribution": {
+        "by_surface": {
+          "edge": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 6,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 4,
+              "sanitize": 0
+            }
+          },
+          "final": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 2,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "node_input": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 8,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 2,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "retrieval": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 12,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "write": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 8,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 2,
+              "sanitize": 0
+            }
+          }
+        },
+        "enforcements_by_attribution": {
+          "inherited_only": 36,
+          "neither": 0,
+          "semantic_and_inherited": 0,
+          "semantic_only": 6
+        },
+        "inherited_only_enforcements": 36,
+        "note": "an `inherited_only` enforcement is one no node-local semantic guard could have made: nothing at that surface scored above threshold and the scope arrived through provenance",
+        "schema": "graphforget-attribution-v1"
+      },
+      "consume_forget_ids": true,
+      "consumes_scope": true,
+      "defense": "graphforget",
+      "detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+      "edge_blocked": 10,
+      "edge_calls": 10,
+      "edge_sanitized": 0,
+      "final_blocked": 2,
+      "final_calls": 2,
+      "inherited_only_hits": 8,
+      "inspect_query": false,
+      "memory_borne_scope_hits": 0,
+      "node_input_calls": 10,
+      "node_input_fired": 8,
+      "node_local_visible_hits": 0,
+      "policy": {
+        "allow_safe_refusal": true,
+        "guard_edges": true,
+        "guard_final_output": true,
+        "guard_node_inputs": true,
+        "guard_retrievals": true,
+        "guard_writes": true,
+        "uncertain_margin": 0.1,
+        "version": "forget-policy-v1"
+      },
+      "propagate_forget_ids": true,
+      "propagates_scope": true,
+      "rescan_untagged_memory": true,
+      "retrieval_calls": 12,
+      "retrieval_withheld": 12,
+      "semantic_detection": true,
+      "subset_only_hits": 0,
+      "write_blocked": 10,
+      "write_calls": 10
+    },
+    "multi_agent_graphforget_no_forward": {
+      "accumulated_only_definition": "a combination of parent messages fired while no individual input, no query, and NOT the whole-context view a node-local guard scores did",
+      "accumulated_only_hits": 0,
+      "causal_attribution": {
+        "by_surface": {
+          "edge": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 10,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "final": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 2,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "node_input": {
+            "inherited_only": {
+              "allow": 10,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "retrieval": {
+            "inherited_only": {
+              "allow": 12,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 2,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "write": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 10,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          }
+        },
+        "enforcements_by_attribution": {
+          "inherited_only": 0,
+          "neither": 0,
+          "semantic_and_inherited": 0,
+          "semantic_only": 0
+        },
+        "inherited_only_enforcements": 0,
+        "note": "an `inherited_only` enforcement is one no node-local semantic guard could have made: nothing at that surface scored above threshold and the scope arrived through provenance",
+        "schema": "graphforget-attribution-v1"
+      },
+      "consume_forget_ids": true,
+      "consumes_scope": true,
+      "defense": "graphforget_no_forward",
+      "detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+      "edge_blocked": 0,
+      "edge_calls": 10,
+      "edge_sanitized": 0,
+      "final_blocked": 0,
+      "final_calls": 2,
+      "inherited_only_hits": 10,
+      "inspect_query": false,
+      "memory_borne_scope_hits": 10,
+      "node_input_calls": 10,
+      "node_input_fired": 10,
+      "node_local_visible_hits": 0,
+      "policy": {
+        "allow_safe_refusal": true,
+        "guard_edges": true,
+        "guard_final_output": true,
+        "guard_node_inputs": false,
+        "guard_retrievals": false,
+        "guard_writes": true,
+        "uncertain_margin": 0.1,
+        "version": "forget-policy-v1"
+      },
+      "propagate_forget_ids": false,
+      "propagates_scope": false,
+      "rescan_untagged_memory": false,
+      "retrieval_calls": 12,
+      "retrieval_withheld": 0,
+      "semantic_detection": false,
+      "subset_only_hits": 0,
+      "write_blocked": 0,
+      "write_calls": 10
+    },
+    "multi_agent_graphforget_semantic_only": {
+      "accumulated_only_definition": "a combination of parent messages fired while no individual input, no query, and NOT the whole-context view a node-local guard scores did",
+      "accumulated_only_hits": 0,
+      "causal_attribution": {
+        "by_surface": {
+          "edge": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 2,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 8,
+              "sanitize": 0
+            }
+          },
+          "final": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 1,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 1,
+              "sanitize": 0
+            }
+          },
+          "node_input": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 10,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "retrieval": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 1,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 12,
+              "sanitize": 0
+            }
+          },
+          "write": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 3,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 7,
+              "sanitize": 0
+            }
+          }
+        },
+        "enforcements_by_attribution": {
+          "inherited_only": 0,
+          "neither": 0,
+          "semantic_and_inherited": 0,
+          "semantic_only": 28
+        },
+        "inherited_only_enforcements": 0,
+        "note": "an `inherited_only` enforcement is one no node-local semantic guard could have made: nothing at that surface scored above threshold and the scope arrived through provenance",
+        "schema": "graphforget-attribution-v1"
+      },
+      "consume_forget_ids": false,
+      "consumes_scope": false,
+      "defense": "graphforget_semantic_only",
+      "detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+      "edge_blocked": 8,
+      "edge_calls": 10,
+      "edge_sanitized": 0,
+      "final_blocked": 1,
+      "final_calls": 2,
+      "inherited_only_hits": 0,
+      "inspect_query": false,
+      "memory_borne_scope_hits": 0,
+      "node_input_calls": 10,
+      "node_input_fired": 0,
+      "node_local_visible_hits": 0,
+      "policy": {
+        "allow_safe_refusal": true,
+        "guard_edges": true,
+        "guard_final_output": true,
+        "guard_node_inputs": true,
+        "guard_retrievals": true,
+        "guard_writes": true,
+        "uncertain_margin": 0.1,
+        "version": "forget-policy-v1"
+      },
+      "propagate_forget_ids": false,
+      "propagates_scope": false,
+      "rescan_untagged_memory": true,
+      "retrieval_calls": 12,
+      "retrieval_withheld": 12,
+      "semantic_detection": true,
+      "subset_only_hits": 0,
+      "write_blocked": 7,
+      "write_calls": 10
+    },
+    "multi_agent_graphforget_tag_source_quarantine": {
+      "accumulated_only_definition": "a combination of parent messages fired while no individual input, no query, and NOT the whole-context view a node-local guard scores did",
+      "accumulated_only_hits": 0,
+      "causal_attribution": {
+        "by_surface": {
+          "edge": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 10,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "final": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 2,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "node_input": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 10,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "retrieval": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 12,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 8,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "write": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 10,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          }
+        },
+        "enforcements_by_attribution": {
+          "inherited_only": 12,
+          "neither": 0,
+          "semantic_and_inherited": 0,
+          "semantic_only": 0
+        },
+        "inherited_only_enforcements": 12,
+        "note": "an `inherited_only` enforcement is one no node-local semantic guard could have made: nothing at that surface scored above threshold and the scope arrived through provenance",
+        "schema": "graphforget-attribution-v1"
+      },
+      "consume_forget_ids": true,
+      "consumes_scope": true,
+      "defense": "graphforget_tag_source_quarantine",
+      "detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+      "edge_blocked": 0,
+      "edge_calls": 10,
+      "edge_sanitized": 0,
+      "final_blocked": 0,
+      "final_calls": 2,
+      "inherited_only_hits": 0,
+      "inspect_query": false,
+      "memory_borne_scope_hits": 0,
+      "node_input_calls": 10,
+      "node_input_fired": 0,
+      "node_local_visible_hits": 0,
+      "policy": {
+        "allow_safe_refusal": true,
+        "guard_edges": true,
+        "guard_final_output": true,
+        "guard_node_inputs": true,
+        "guard_retrievals": true,
+        "guard_writes": true,
+        "uncertain_margin": 0.1,
+        "version": "forget-policy-v1"
+      },
+      "propagate_forget_ids": false,
+      "propagates_scope": false,
+      "rescan_untagged_memory": false,
+      "retrieval_calls": 12,
+      "retrieval_withheld": 12,
+      "semantic_detection": false,
+      "subset_only_hits": 0,
+      "write_blocked": 0,
+      "write_calls": 10
+    },
+    "multi_agent_graphforget_taint_forward": {
+      "accumulated_only_definition": "a combination of parent messages fired while no individual input, no query, and NOT the whole-context view a node-local guard scores did",
+      "accumulated_only_hits": 0,
+      "causal_attribution": {
+        "by_surface": {
+          "edge": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 10,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "final": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 2,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "node_input": {
+            "inherited_only": {
+              "allow": 10,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "retrieval": {
+            "inherited_only": {
+              "allow": 12,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "write": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 10,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          }
+        },
+        "enforcements_by_attribution": {
+          "inherited_only": 22,
+          "neither": 0,
+          "semantic_and_inherited": 0,
+          "semantic_only": 0
+        },
+        "inherited_only_enforcements": 22,
+        "note": "an `inherited_only` enforcement is one no node-local semantic guard could have made: nothing at that surface scored above threshold and the scope arrived through provenance",
+        "schema": "graphforget-attribution-v1"
+      },
+      "consume_forget_ids": true,
+      "consumes_scope": true,
+      "defense": "graphforget_taint_forward",
+      "detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+      "edge_blocked": 10,
+      "edge_calls": 10,
+      "edge_sanitized": 0,
+      "final_blocked": 2,
+      "final_calls": 2,
+      "inherited_only_hits": 10,
+      "inspect_query": false,
+      "memory_borne_scope_hits": 10,
+      "node_input_calls": 10,
+      "node_input_fired": 10,
+      "node_local_visible_hits": 0,
+      "policy": {
+        "allow_safe_refusal": true,
+        "guard_edges": true,
+        "guard_final_output": true,
+        "guard_node_inputs": false,
+        "guard_retrievals": false,
+        "guard_writes": true,
+        "uncertain_margin": 0.1,
+        "version": "forget-policy-v1"
+      },
+      "propagate_forget_ids": true,
+      "propagates_scope": true,
+      "rescan_untagged_memory": false,
+      "retrieval_calls": 12,
+      "retrieval_withheld": 0,
+      "semantic_detection": false,
+      "subset_only_hits": 0,
+      "write_blocked": 10,
+      "write_calls": 10
+    },
+    "multi_agent_graphforget_taint_only": {
+      "accumulated_only_definition": "a combination of parent messages fired while no individual input, no query, and NOT the whole-context view a node-local guard scores did",
+      "accumulated_only_hits": 0,
+      "causal_attribution": {
+        "by_surface": {
+          "edge": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 10,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "final": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 2,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "node_input": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 10,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "retrieval": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 12,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 8,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "write": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 10,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          }
+        },
+        "enforcements_by_attribution": {
+          "inherited_only": 12,
+          "neither": 0,
+          "semantic_and_inherited": 0,
+          "semantic_only": 0
+        },
+        "inherited_only_enforcements": 12,
+        "note": "an `inherited_only` enforcement is one no node-local semantic guard could have made: nothing at that surface scored above threshold and the scope arrived through provenance",
+        "schema": "graphforget-attribution-v1"
+      },
+      "consume_forget_ids": true,
+      "consumes_scope": true,
+      "defense": "graphforget_taint_only",
+      "detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+      "edge_blocked": 0,
+      "edge_calls": 10,
+      "edge_sanitized": 0,
+      "final_blocked": 0,
+      "final_calls": 2,
+      "inherited_only_hits": 0,
+      "inspect_query": false,
+      "memory_borne_scope_hits": 0,
+      "node_input_calls": 10,
+      "node_input_fired": 0,
+      "node_local_visible_hits": 0,
+      "policy": {
+        "allow_safe_refusal": true,
+        "guard_edges": true,
+        "guard_final_output": true,
+        "guard_node_inputs": true,
+        "guard_retrievals": true,
+        "guard_writes": true,
+        "uncertain_margin": 0.1,
+        "version": "forget-policy-v1"
+      },
+      "propagate_forget_ids": true,
+      "propagates_scope": true,
+      "rescan_untagged_memory": false,
+      "retrieval_calls": 12,
+      "retrieval_withheld": 12,
+      "semantic_detection": false,
+      "subset_only_hits": 0,
+      "write_blocked": 0,
+      "write_calls": 10
+    },
+    "multi_agent_leak": {
+      "accumulated_only_hits": 0,
+      "defense": "none",
+      "edge_blocked": 0,
+      "edge_calls": 10,
+      "edge_sanitized": 0,
+      "final_blocked": 0,
+      "final_calls": 2,
+      "inherited_only_hits": 0,
+      "memory_borne_scope_hits": 0,
+      "node_input_calls": 10,
+      "node_input_fired": 0,
+      "retrieval_calls": 12,
+      "retrieval_withheld": 0,
+      "write_blocked": 0,
+      "write_calls": 10
+    },
+    "multi_agent_stateless": {
+      "accumulated_only_definition": "a combination of parent messages fired while no individual input, no query, and NOT the whole-context view a node-local guard scores did",
+      "accumulated_only_hits": 0,
+      "causal_attribution": {
+        "by_surface": {
+          "edge": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 2,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 8,
+              "sanitize": 0
+            }
+          },
+          "final": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 1,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 1,
+              "sanitize": 0
+            }
+          },
+          "node_input": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 10,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            }
+          },
+          "retrieval": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 1,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 12,
+              "sanitize": 0
+            }
+          },
+          "write": {
+            "inherited_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "neither": {
+              "allow": 3,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_and_inherited": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 0,
+              "sanitize": 0
+            },
+            "semantic_only": {
+              "allow": 0,
+              "quarantine": 0,
+              "refuse": 7,
+              "sanitize": 0
+            }
+          }
+        },
+        "enforcements_by_attribution": {
+          "inherited_only": 0,
+          "neither": 0,
+          "semantic_and_inherited": 0,
+          "semantic_only": 28
+        },
+        "inherited_only_enforcements": 0,
+        "note": "an `inherited_only` enforcement is one no node-local semantic guard could have made: nothing at that surface scored above threshold and the scope arrived through provenance",
+        "schema": "graphforget-attribution-v1"
+      },
+      "consume_forget_ids": false,
+      "consumes_scope": false,
+      "defense": "stateless_multi_surface",
+      "detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+      "edge_blocked": 8,
+      "edge_calls": 10,
+      "edge_sanitized": 0,
+      "final_blocked": 1,
+      "final_calls": 2,
+      "inherited_only_hits": 0,
+      "inspect_query": false,
+      "memory_borne_scope_hits": 0,
+      "node_input_calls": 10,
+      "node_input_fired": 0,
+      "node_local_visible_hits": 0,
+      "policy": {
+        "allow_safe_refusal": true,
+        "guard_edges": true,
+        "guard_final_output": true,
+        "guard_node_inputs": true,
+        "guard_retrievals": true,
+        "guard_writes": true,
+        "uncertain_margin": 0.1,
+        "version": "forget-policy-v1"
+      },
+      "propagate_forget_ids": false,
+      "propagates_scope": false,
+      "rescan_untagged_memory": true,
+      "retrieval_calls": 12,
+      "retrieval_withheld": 12,
+      "semantic_detection": true,
+      "subset_only_hits": 0,
+      "write_blocked": 7,
+      "write_calls": 10
+    },
+    "single_agent": {
+      "accumulated_only_hits": 0,
+      "defense": "none",
+      "edge_blocked": 0,
+      "edge_calls": 0,
+      "edge_sanitized": 0,
+      "final_blocked": 0,
+      "final_calls": 2,
+      "inherited_only_hits": 0,
+      "memory_borne_scope_hits": 0,
+      "node_input_calls": 2,
+      "node_input_fired": 0,
+      "retrieval_calls": 4,
+      "retrieval_withheld": 0,
+      "write_blocked": 0,
+      "write_calls": 2
+    }
+  },
+  "detector": {
+    "alias_weight": 1.0,
+    "backbone": "hashing-64",
+    "calibrated": false,
+    "calibration_id": null,
+    "detector_calls": 132,
+    "detector_texts": 188,
+    "n_concepts": 20,
+    "registry_fingerprint": "026f5b6c5b22005952da018a2b8939ce871db89a742990bd0478ffc672d0b6eb",
+    "threshold": 0.9,
+    "version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic"
+  },
+  "response_bank": {
+    "distinct_keys": 62,
+    "entries": 62,
+    "hits": 76,
+    "keys_shared_across_arms": 36,
+    "misses": 62,
+    "reuse_rule": "an entry is reused only when backend, model revision, tokenizer revision, system message, complete prompt, every decoding parameter and the seed are byte-identical"
+  },
+  "runtime": {
+    "completion_tokens": 4000,
+    "completion_tokens_per_second": 154.122,
+    "device_name": "NVIDIA GeForce RTX 3090",
+    "device_total_vram_bytes": 25769803776,
+    "device_vram_utilization": 0.8187,
+    "generation_seconds": 25.953,
+    "generations_per_second": 3.622,
+    "n_generations": 94,
+    "nvml_state": "ready",
+    "peak_device_vram_bytes": 21098332160,
+    "peak_process_vram_bytes": null,
+    "peak_torch_allocator_bytes": 20143652352,
+    "peak_vram_bytes": 20143652352,
+    "prompt_tokens": 11469,
+    "vram_source": "nvml",
+    "wall_seconds": 28.491
+  },
+  "scheduler": {
+    "dispatched": 62,
+    "entries": 62,
+    "graph": {
+      "cache_hits": 44,
+      "dispatched": 50,
+      "requested": 94
+    },
+    "hits": 76,
+    "misses": 62,
+    "probe": {
+      "cache_hits": 32,
+      "dispatched": 12,
+      "requested": 44
+    },
+    "served_from_cache": 76,
+    "total": {
+      "cache_hits": 76,
+      "dispatched": 62,
+      "requested": 138
+    }
+  }
+}
