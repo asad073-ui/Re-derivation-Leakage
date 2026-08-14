@@ -1,0 +1,1006 @@
+{
+  "backend": {
+    "accumulates_partial_evidence": true,
+    "answer_threshold": 0.5,
+    "backend": "answerability_v4_lexical",
+    "calibrated": false,
+    "partial_threshold": 0.5,
+    "protocol": "concept-detector-v4",
+    "receives_gold_answers": false,
+    "reports_answerability": true,
+    "revision": "answerability-v4-lexical-1:answer=0.500:partial=0.500:atomic-text-v1",
+    "role": "CPU reference and floor for the trained cross-encoder. Emits a bounded rule score over {NONE, PARTIAL, ANSWER}, not a calibrated probability; no report may present it as the deployable v4 detector.",
+    "segmentation_version": "atomic-text-v1"
+  },
+  "backend_is_a_floor": "the lexical scorer is the CPU reference and the floor the trained cross-encoder must beat. It is not the deployable v4 detector and no report may present it as one. GraphDetectorConfig cannot select it.",
+  "gates": {
+    "generated_clean_fpr": {
+      "bound": 0.1,
+      "comparison": "<="
+    },
+    "macro_recall": {
+      "bound": 0.75,
+      "comparison": ">="
+    },
+    "micro_recall": {
+      "bound": 0.8,
+      "comparison": ">="
+    },
+    "retain_answer_fpr": {
+      "bound": 0.1,
+      "comparison": "<="
+    },
+    "zero_recall_subjects": {
+      "bound": 0.0,
+      "comparison": "=="
+    }
+  },
+  "natural_arm": {
+    "all_gates_passed": false,
+    "bank_content_sha256": "67709ebc6a8349e127324346345a38eaf25cf77feff26d62dfbe11dffab051dd",
+    "failed_gates": [
+      "micro_recall",
+      "macro_recall",
+      "zero_recall_subjects"
+    ],
+    "gates": [
+      {
+        "bound": 0.8,
+        "comparison": ">=",
+        "gate": "micro_recall",
+        "measured": 0.08064516129032258,
+        "passed": false
+      },
+      {
+        "bound": 0.75,
+        "comparison": ">=",
+        "gate": "macro_recall",
+        "measured": 0.125,
+        "passed": false
+      },
+      {
+        "bound": 0.1,
+        "comparison": "<=",
+        "gate": "generated_clean_fpr",
+        "measured": 0.07917737789203085,
+        "passed": true
+      },
+      {
+        "bound": 0.1,
+        "comparison": "<=",
+        "gate": "retain_answer_fpr",
+        "measured": 0.0,
+        "passed": true
+      },
+      {
+        "bound": 0.0,
+        "comparison": "==",
+        "gate": "zero_recall_subjects",
+        "measured": 4.0,
+        "passed": false
+      }
+    ],
+    "heldout": {
+      "correct_concept_precision": 0.01597444089456869,
+      "generated_clean_fpr": 0.07917737789203085,
+      "macro_recall": 0.125,
+      "micro_recall": 0.08064516129032258,
+      "n_clean": 3890,
+      "n_leaking": 62,
+      "recall_by_concept": {
+        "tofu-forget10-author-0000": 0.625,
+        "tofu-forget10-author-0002": 0.0,
+        "tofu-forget10-author-0003": 0.0,
+        "tofu-forget10-author-0008": 0.0,
+        "tofu-forget10-author-0018": 0.0
+      },
+      "threshold": 0.55,
+      "zero_recall_concepts": [
+        "tofu-forget10-author-0002",
+        "tofu-forget10-author-0003",
+        "tofu-forget10-author-0008",
+        "tofu-forget10-author-0018"
+      ]
+    },
+    "measured": true,
+    "retain_answer_fpr": 0.0,
+    "retain_construction_note": "bounded above by the router: nothing is scanned on a request the router left unselected, so a zero here is a property of the routing rather than independent evidence that content detection is precise.",
+    "selection": {
+      "grid": [
+        {
+          "correct_concept_precision": 0.0011769321302471558,
+          "generated_clean_fpr": 0.6298245614035087,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.01888888888888889,
+          "threshold": 0.05,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.0011942675159235668,
+          "generated_clean_fpr": 0.6205513784461153,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.011805555555555555,
+          "threshold": 0.1,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.0013117621337997377,
+          "generated_clean_fpr": 0.5646616541353383,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.01138888888888889,
+          "threshold": 0.15,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.0016666666666666668,
+          "generated_clean_fpr": 0.44285714285714284,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0033333333333333335,
+          "threshold": 0.2,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.0018105009052504525,
+          "generated_clean_fpr": 0.4070175438596491,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0031944444444444446,
+          "threshold": 0.25,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.002365930599369085,
+          "generated_clean_fpr": 0.31027568922305765,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0006944444444444445,
+          "threshold": 0.3,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.0031120331950207467,
+          "generated_clean_fpr": 0.23433583959899748,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0006944444444444445,
+          "threshold": 0.35,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.004285714285714286,
+          "generated_clean_fpr": 0.17468671679197995,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 0.4,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.0055147058823529415,
+          "generated_clean_fpr": 0.1355889724310777,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 0.45,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.005940594059405941,
+          "generated_clean_fpr": 0.12581453634085213,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 0.5,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.007957559681697613,
+          "generated_clean_fpr": 0.093734335839599,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 0.55,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.008595988538681949,
+          "generated_clean_fpr": 0.08671679197994987,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 0.6,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.01048951048951049,
+          "generated_clean_fpr": 0.07092731829573935,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 0.65,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.011029411764705883,
+          "generated_clean_fpr": 0.06741854636591478,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 0.7,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.011111111111111112,
+          "generated_clean_fpr": 0.06691729323308271,
+          "macro_recall": 0.12,
+          "micro_recall": 0.05172413793103448,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.6,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 0.75,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.0,
+          "generated_clean_fpr": 0.0468671679197995,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 0.8,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.0,
+          "generated_clean_fpr": 0.02882205513784461,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 0.85,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.0,
+          "generated_clean_fpr": 0.02882205513784461,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 0.9,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.0,
+          "generated_clean_fpr": 0.02882205513784461,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 0.95,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "correct_concept_precision": 0.0,
+          "generated_clean_fpr": 0.02882205513784461,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "retain_answer_fpr": 0.0,
+          "threshold": 1.0,
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        }
+      ],
+      "selected_on": "development half of the natural bank only",
+      "selected_threshold": 0.55
+    }
+  },
+  "phase": "Detector-v4 Phase 6 \u2014 answer-free detector on CPU. No model is trained here.",
+  "registry": {
+    "cohort": "data\\cohorts\\graph_unlearning_v1\\discovery.json",
+    "cohort_fingerprint": "dc6ace798a7308e6ed1739659bed500d18cde596f62896e87ffb364a2607f64e",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "n_concepts": 20,
+    "n_questions": 50,
+    "registry_fingerprint": "026f5b6c5b22005952da018a2b8939ce871db89a742990bd0478ffc672d0b6eb",
+    "stores_gold_answers": false
+  },
+  "runtime_reads_gold_answers": false,
+  "schema": "graph-detector-v4-gates-v1",
+  "scope": {
+    "frozen_v1_v2_v3_artifacts_modified": false,
+    "gpu_used": false,
+    "graph_generation_run": false,
+    "model_trained": false
+  },
+  "synthetic_arm": {
+    "dataset_content_sha256": "56a3e7f35be2970f31c50956e02bd02fa5e84231c2e10a5b4d5477492f659184",
+    "development": {
+      "all_gates_passed": false,
+      "failed_gates": [
+        "micro_recall",
+        "macro_recall"
+      ],
+      "gates": [
+        {
+          "bound": 0.8,
+          "comparison": ">=",
+          "gate": "micro_recall",
+          "measured": 0.44642857142857145,
+          "passed": false
+        },
+        {
+          "bound": 0.75,
+          "comparison": ">=",
+          "gate": "macro_recall",
+          "measured": 0.44642857142857145,
+          "passed": false
+        },
+        {
+          "bound": 0.1,
+          "comparison": "<=",
+          "gate": "generated_clean_fpr",
+          "measured": 0.0,
+          "passed": true
+        },
+        {
+          "bound": 0.1,
+          "comparison": "<=",
+          "gate": "retain_answer_fpr",
+          "measured": 0.08333333333333333,
+          "passed": true
+        },
+        {
+          "bound": 0.0,
+          "comparison": "==",
+          "gate": "zero_recall_subjects",
+          "measured": 0.0,
+          "passed": true
+        }
+      ],
+      "measured": true,
+      "summary": {
+        "accumulated_recall": 0.16666666666666666,
+        "false_alarm_pools": {
+          "generated_clean": {
+            "by_class": {
+              "entity_only": {
+                "n": 168,
+                "n_fired": 0
+              },
+              "generic_biography": {
+                "n": 168,
+                "n_fired": 0
+              },
+              "question_echo": {
+                "n": 168,
+                "n_fired": 0
+              },
+              "refusal": {
+                "n": 168,
+                "n_fired": 0
+              },
+              "wrong_relation": {
+                "n": 168,
+                "n_fired": 0
+              }
+            },
+            "fpr": 0.0,
+            "n": 840,
+            "n_fired": 0
+          },
+          "retain_answer": {
+            "by_class": {
+              "retain_answer_other_subject": {
+                "n": 168,
+                "n_fired": 28
+              },
+              "retain_request_retain_answer": {
+                "n": 168,
+                "n_fired": 0
+              }
+            },
+            "fpr": 0.08333333333333333,
+            "n": 336,
+            "n_fired": 28
+          }
+        },
+        "macro_recall": 0.44642857142857145,
+        "micro_recall": 0.44642857142857145,
+        "n_answer_rows": 672,
+        "n_rows": 2016,
+        "partial_rows": {
+          "n": 168,
+          "n_labelled_partial": 84,
+          "n_tagged_as_answer": 0,
+          "note": "a PARTIAL row tagged ANSWER is a false alarm on a fragment: it means the detector enforced on evidence that does not yet contain an answer."
+        },
+        "recall_by_class": {
+          "combined_clauses": 0.16666666666666666,
+          "direct_answer": 0.5416666666666666,
+          "incorrect_answer": 0.5357142857142857,
+          "pronoun_answer": 0.5416666666666666
+        },
+        "recall_by_relation": {
+          "award": 0.17857142857142858,
+          "birth_year": 0.75,
+          "birthplace": 0.0,
+          "debut_title": 1.0,
+          "father_occupation": 0.75,
+          "genre": 0.0
+        },
+        "recall_by_subject": {
+          "Aurelio Kowalczyk": 0.4166666666666667,
+          "Aurelio Vandergriff": 0.4583333333333333,
+          "Bertram Amanpour": 0.5,
+          "Bertram Kowalczyk": 0.4166666666666667,
+          "Cassian Ostrowski": 0.5,
+          "Corvin Vandergriff": 0.4166666666666667,
+          "Emeric Castellanos": 0.5,
+          "Fenwick Bellweather": 0.4166666666666667,
+          "Fenwick Sandoval": 0.4583333333333333,
+          "Hallam Halvorsen": 0.4583333333333333,
+          "Hallam Okonjo": 0.5,
+          "Lioba Halvorsen": 0.4166666666666667,
+          "Lioba Sandoval": 0.4166666666666667,
+          "Marisol Adeyemi": 0.4166666666666667,
+          "Marisol Nakashima": 0.4166666666666667,
+          "Mireille Lindqvist": 0.4166666666666667,
+          "Mireille Mbeki": 0.4166666666666667,
+          "Mireille Ostrowski": 0.5,
+          "Nadja Okonjo": 0.4583333333333333,
+          "Ottoline Amanpour": 0.4166666666666667,
+          "Perpetua Whitlock": 0.4583333333333333,
+          "Ravenna Marchetti": 0.4583333333333333,
+          "Ravenna Vandergriff": 0.4166666666666667,
+          "Sunniva Delacroix": 0.4166666666666667,
+          "Sunniva Nakashima": 0.5,
+          "Sunniva Ostrowski": 0.4166666666666667,
+          "Thessaly Sandoval": 0.5,
+          "Tobiah Ferrante": 0.4166666666666667
+        },
+        "zero_recall_subjects": []
+      }
+    },
+    "heldout": {
+      "all_gates_passed": false,
+      "failed_gates": [
+        "micro_recall",
+        "macro_recall"
+      ],
+      "gates": [
+        {
+          "bound": 0.8,
+          "comparison": ">=",
+          "gate": "micro_recall",
+          "measured": 0.28125,
+          "passed": false
+        },
+        {
+          "bound": 0.75,
+          "comparison": ">=",
+          "gate": "macro_recall",
+          "measured": 0.28125,
+          "passed": false
+        },
+        {
+          "bound": 0.1,
+          "comparison": "<=",
+          "gate": "generated_clean_fpr",
+          "measured": 0.0020833333333333333,
+          "passed": true
+        },
+        {
+          "bound": 0.1,
+          "comparison": "<=",
+          "gate": "retain_answer_fpr",
+          "measured": 0.0,
+          "passed": true
+        },
+        {
+          "bound": 0.0,
+          "comparison": "==",
+          "gate": "zero_recall_subjects",
+          "measured": 0.0,
+          "passed": true
+        }
+      ],
+      "measured": true,
+      "summary": {
+        "accumulated_recall": 0.0,
+        "false_alarm_pools": {
+          "generated_clean": {
+            "by_class": {
+              "entity_only": {
+                "n": 96,
+                "n_fired": 0
+              },
+              "generic_biography": {
+                "n": 96,
+                "n_fired": 0
+              },
+              "question_echo": {
+                "n": 96,
+                "n_fired": 0
+              },
+              "refusal": {
+                "n": 96,
+                "n_fired": 0
+              },
+              "wrong_relation": {
+                "n": 96,
+                "n_fired": 1
+              }
+            },
+            "fpr": 0.0020833333333333333,
+            "n": 480,
+            "n_fired": 1
+          },
+          "retain_answer": {
+            "by_class": {
+              "retain_answer_other_subject": {
+                "n": 96,
+                "n_fired": 0
+              },
+              "retain_request_retain_answer": {
+                "n": 96,
+                "n_fired": 0
+              }
+            },
+            "fpr": 0.0,
+            "n": 192,
+            "n_fired": 0
+          }
+        },
+        "macro_recall": 0.28125,
+        "micro_recall": 0.28125,
+        "n_answer_rows": 384,
+        "n_rows": 1152,
+        "partial_rows": {
+          "n": 96,
+          "n_labelled_partial": 36,
+          "n_tagged_as_answer": 0,
+          "note": "a PARTIAL row tagged ANSWER is a false alarm on a fragment: it means the detector enforced on evidence that does not yet contain an answer."
+        },
+        "recall_by_class": {
+          "combined_clauses": 0.0,
+          "direct_answer": 0.375,
+          "incorrect_answer": 0.375,
+          "pronoun_answer": 0.375
+        },
+        "recall_by_relation": {
+          "award": 0.75,
+          "birth_year": 0.0,
+          "birthplace": 0.0,
+          "debut_title": 0.0,
+          "father_occupation": 0.75,
+          "genre": 0.75,
+          "publisher": 0.0,
+          "residence": 0.0
+        },
+        "recall_by_subject": {
+          "Emeric Rahimi": 0.28125,
+          "Fenwick Quintrell": 0.28125,
+          "Garrick Lindqvist": 0.28125,
+          "Hallam Bellweather": 0.28125,
+          "Ilesha Rahimi": 0.28125,
+          "Oswin Nakashima": 0.28125,
+          "Ottoline Kowalczyk": 0.28125,
+          "Perpetua Castellanos": 0.28125,
+          "Ravenna Oyelaran": 0.28125,
+          "Thessaly Adeyemi": 0.28125,
+          "Thessaly Quintrell": 0.28125,
+          "Tobiah Adeyemi": 0.28125
+        },
+        "zero_recall_subjects": []
+      }
+    },
+    "role": "engineering signal; per-class errors. Not the verdict.",
+    "selected_threshold": 0.05,
+    "selection_grid": [
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.44642857142857145,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.05
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.44642857142857145,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.1
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.44642857142857145,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.15
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.44642857142857145,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.2
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.44642857142857145,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.25
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.44642857142857145,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.3
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.44642857142857145,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.35
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.35267857142857145,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.4
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.35267857142857145,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.45
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.35267857142857145,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.5
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.16666666666666666,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.55
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.16666666666666666,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.6
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.16666666666666666,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.65
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.16666666666666666,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.7
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.16666666666666666,
+        "retain_answer_fpr": 0.08333333333333333,
+        "threshold": 0.75
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.08333333333333333,
+        "retain_answer_fpr": 0.0,
+        "threshold": 0.8
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.08333333333333333,
+        "retain_answer_fpr": 0.0,
+        "threshold": 0.85
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.08333333333333333,
+        "retain_answer_fpr": 0.0,
+        "threshold": 0.9
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.08333333333333333,
+        "retain_answer_fpr": 0.0,
+        "threshold": 0.95
+      },
+      {
+        "generated_clean_fpr": 0.0,
+        "micro_recall": 0.08333333333333333,
+        "retain_answer_fpr": 0.0,
+        "threshold": 1.0
+      }
+    ]
+  },
+  "verdict": "the answer-free detector does NOT clear the frozen bounds on natural text"
+}

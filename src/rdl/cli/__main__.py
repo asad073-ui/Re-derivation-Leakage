@@ -10,6 +10,9 @@ from .calibrate_detector import calibrate_detector
 from .detector_corpus import detector_corpus
 from .detector_gates import detector_gates
 from .detector_recall import detector_recall
+from .detector_v4_data import detector_v4_build_data
+from .detector_v4_gates import detector_v4_gates
+from .detector_v4_oracle import detector_v4_oracle
 from .discover_checkpoints import discover_checkpoints
 from .env_check import env_check
 from .finalize_graph import finalize_graph
@@ -63,6 +66,22 @@ app.command("graph-detector-corpus")(detector_corpus)
 # graph-versus-node-local comparison unable to mean anything.
 app.command("graph-detector-gates")(detector_gates)
 app.command("graph-bundle")(bundle_graph)
+
+# Detector v4 (answerability). Three CPU commands, run in this order, none of which
+# generates anything or touches a GPU:
+#
+#   build-data  freezes the synthetic answerability corpus, its offline answer key, and
+#               the NATURAL clean/leaking bank collected from the natural graph_flow run
+#   oracle      the answer-aware ceiling. If this fails, no answer-free detector can pass
+#               and the correct move is to stop rather than to tune
+#   gates       the answer-free detector at an operating point chosen on development only
+#
+# `answerability_v4` is deliberately NOT a value of GraphDetectorConfig.backend yet. A
+# detector reaches a study after its held-out gate has been opened and passed, and v3's
+# scorer is the reason that is a rule rather than a habit.
+app.command("graph-detector-v4-build-data")(detector_v4_build_data)
+app.command("graph-detector-v4-oracle")(detector_v4_oracle)
+app.command("graph-detector-v4-gates")(detector_v4_gates)
 
 
 if __name__ == "__main__":
