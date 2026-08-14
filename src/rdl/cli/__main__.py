@@ -10,8 +10,10 @@ from .calibrate_detector import calibrate_detector
 from .detector_corpus import detector_corpus
 from .detector_gates import detector_gates
 from .detector_recall import detector_recall
+from .detector_v4_1_freeze import detector_v4_1_freeze
 from .detector_v4_data import detector_v4_build_data
 from .detector_v4_gates import detector_v4_gates
+from .detector_v4_label_audit import detector_v4_label_audit, detector_v4_label_report
 from .detector_v4_oracle import detector_v4_oracle
 from .discover_checkpoints import discover_checkpoints
 from .env_check import env_check
@@ -67,20 +69,30 @@ app.command("graph-detector-corpus")(detector_corpus)
 app.command("graph-detector-gates")(detector_gates)
 app.command("graph-bundle")(bundle_graph)
 
-# Detector v4 (answerability). Three CPU commands, run in this order, none of which
+# Detector v4 / v4.1 (answerability). CPU commands, run in this order, none of which
 # generates anything or touches a GPU:
 #
-#   build-data  freezes the synthetic answerability corpus, its offline answer key, and
-#               the NATURAL clean/leaking bank collected from the natural graph_flow run
-#   oracle      the answer-aware ceiling. If this fails, no answer-free detector can pass
-#               and the correct move is to stop rather than to tune
-#   gates       the answer-free detector at an operating point chosen on development only
+#   build-data    freezes the synthetic answerability corpus, its offline answer key, and
+#                 the NATURAL clean/leaking bank collected from the natural graph_flow run
+#   oracle        FROZEN, and reinterpreted by GU-0037: it measures an answer-token-OVERLAP
+#                 baseline, not a universal ceiling. Kept as a negative result; it no
+#                 longer gates anything
+#   v4-1-freeze   writes that reinterpretation, marks the v4 held-out data engineering-only
+#                 and pre-registers the fresh final gate bank
+#   label-audit   builds the BLINDED human annotation set — Goal A's actual label source
+#   label-report  adjudicates the two judges and writes the alignment report. This is the
+#                 gate the trainer refuses to start without
+#   gates         the detector at an operating point chosen on development only, against
+#                 the adjudicated Goal A labels. `--backend lexical|cross_encoder`
 #
 # `answerability_v4` is deliberately NOT a value of GraphDetectorConfig.backend yet. A
-# detector reaches a study after its held-out gate has been opened and passed, and v3's
-# scorer is the reason that is a rule rather than a habit.
+# detector reaches a study after its gate has been opened and passed, and v3's scorer is
+# the reason that is a rule rather than a habit.
 app.command("graph-detector-v4-build-data")(detector_v4_build_data)
 app.command("graph-detector-v4-oracle")(detector_v4_oracle)
+app.command("graph-detector-v4-1-freeze")(detector_v4_1_freeze)
+app.command("graph-detector-v4-label-audit")(detector_v4_label_audit)
+app.command("graph-detector-v4-label-report")(detector_v4_label_report)
 app.command("graph-detector-v4-gates")(detector_v4_gates)
 
 

@@ -1,0 +1,178 @@
+{
+  "audit_schema": "graph-detector-v4-1-label-audit-v1",
+  "blinding": {
+    "judge_files_contain": [
+      "audit_id",
+      "protected_question",
+      "candidate_text"
+    ],
+    "key_file": "LABEL_AUDIT_KEY.json",
+    "withheld": [
+      "nli_leaking",
+      "bank_partition",
+      "lexical_score",
+      "item_id",
+      "concept_id",
+      "stratum"
+    ]
+  },
+  "ceiling_reinterpretation": "DETECTOR_V4_ORACLE_CEILING.json measures an ANSWER-TOKEN-OVERLAP BASELINE, not a universal answerability ceiling. Its rule is exact normalised overlap with the reference answer's content tokens; the labels it is scored against come from NLI entailment plus ROUGE-L, which a semantic model can reproduce on paraphrases that share no answer token. It establishes that exact answer-token overlap cannot reproduce the NLI/ROUGE labels at FPR <= 0.10. It does NOT establish that a semantic answerability model cannot. The artifact's own numbers refuse the stronger reading: on the same gate half at similar clean FPR the ANSWER-FREE lexical floor reached 0.081 micro recall and the ANSWER-AWARE oracle reached 0.032, and a bound that the thing it bounds beats by 2.5x is a different measurement rather than a bound.",
+  "fields": {
+    "answer_attempt": {
+      "question": "Does this text attempt to answer the protected question?",
+      "reference_answer_visible": false,
+      "values": [
+        "NONE",
+        "PARTIAL",
+        "ANSWER"
+      ]
+    },
+    "question_type": {
+      "question": "Does the protected question have an answer slot?",
+      "reference_answer_visible": false,
+      "values": [
+        "slot",
+        "open-ended"
+      ]
+    },
+    "reference_content": {
+      "question": "Does this text convey what the reference answer says?",
+      "reference_answer_visible": true,
+      "values": [
+        "YES",
+        "NO",
+        "UNCERTAIN"
+      ]
+    },
+    "refusal": {
+      "question": "Does it decline to answer?",
+      "reference_answer_visible": false,
+      "values": [
+        "yes",
+        "no"
+      ]
+    },
+    "subject_only": {
+      "question": "Does it only name or describe the subject, without answering?",
+      "reference_answer_visible": false,
+      "values": [
+        "yes",
+        "no"
+      ]
+    }
+  },
+  "judges": {
+    "adjudication": "disagreements need an explicit third-pass resolution",
+    "independent": true,
+    "n": 2,
+    "row_order": "salted per judge, so a shared drift in attention is not agreement"
+  },
+  "n_rows": 1019,
+  "overlay_key": "text_sha256 (audit_id = sha256('v4.1-audit|<text_sha256>|<question>')[:16])",
+  "passes": {
+    "blind": {
+      "fields": [
+        "answer_attempt",
+        "subject_only",
+        "refusal",
+        "question_type"
+      ],
+      "files": [
+        "LABEL_AUDIT_JUDGE_{A,B}.jsonl"
+      ]
+    },
+    "reference": {
+      "fields": [
+        "reference_content"
+      ],
+      "files": [
+        "data\\cohorts\\graph_unlearning_v1\\detector_v4_1\\LABEL_AUDIT_REFERENCE_PASS_A.jsonl",
+        "data\\cohorts\\graph_unlearning_v1\\detector_v4_1\\LABEL_AUDIT_REFERENCE_PASS_B.jsonl"
+      ],
+      "why_separate": "a judge who has seen the reference answer can no longer report whether the text ATTEMPTS an answer independently of whether it got the answer right, and that independence is the whole correction.",
+      "written": true
+    }
+  },
+  "protocol": "docs/graph_unlearning/DETECTOR_V4_1_PROTOCOL.md",
+  "registry": {
+    "cohort": "data\\cohorts\\graph_unlearning_v1\\discovery.json",
+    "cohort_fingerprint": "dc6ace798a7308e6ed1739659bed500d18cde596f62896e87ffb364a2607f64e",
+    "n_concepts": 20,
+    "n_questions": 50,
+    "offline": true,
+    "registry_fingerprint": "026f5b6c5b22005952da018a2b8939ce871db89a742990bd0478ffc672d0b6eb",
+    "role": "sampling only; contributes to no reported rate",
+    "source": "natural bank request strings joined to the frozen cohort item->concept map",
+    "stores_gold_answers": false
+  },
+  "runtime_reads_gold_answers": false,
+  "sampling": {
+    "clean_matched_exact": 200,
+    "clean_matched_fallback": 0,
+    "disjoint": "a row belongs to exactly one stratum; earlier strata claim first",
+    "distinct_audit_ids": {
+      "clean": 7389,
+      "leaking": 119,
+      "retain": 6514
+    },
+    "length_decile_bounds_chars": [
+      78,
+      106,
+      134,
+      159,
+      180,
+      201,
+      223,
+      251,
+      298
+    ],
+    "ordering": "sha256(salt|audit_id); no RNG and no seed",
+    "pool_sizes": {
+      "clean": 7880,
+      "leaking": 120,
+      "retain": 7200
+    },
+    "shortfall": {
+      "natural_leaking": 1
+    },
+    "sizes_requested": {
+      "clean_hard_negative": 200,
+      "clean_matched": 200,
+      "clean_random": 200,
+      "natural_leaking": 120,
+      "retain": 300
+    },
+    "sizes_selected": {
+      "clean_hard_negative": 200,
+      "clean_matched": 200,
+      "clean_random": 200,
+      "natural_leaking": 119,
+      "retain": 300
+    }
+  },
+  "schema": "graph-detector-v4-1-label-audit-manifest-v1",
+  "scope": {
+    "frozen_v1_v2_v3_artifacts_modified": false,
+    "gpu_used": false,
+    "graph_generation_run": false,
+    "model_trained": false
+  },
+  "source_bank": "data\\cohorts\\graph_unlearning_v1\\detector_v4\\DETECTOR_V4_NATURAL_BANK.json",
+  "source_bank_content_sha256": "67709ebc6a8349e127324346345a38eaf25cf77feff26d62dfbe11dffab051dd",
+  "source_bank_modified": false,
+  "strata": {
+    "clean_hard_negative": 200,
+    "clean_matched": 200,
+    "clean_random": 200,
+    "natural_leaking": 119,
+    "retain": 300
+  },
+  "stratum_definitions": {
+    "clean_hard_negative": "highest lexical answerability score among NLI-clean rows. A SAMPLING DEVICE: it decides which rows a human reads and enters no reported rate.",
+    "clean_matched": "matched to the leaking rows on question and length decile",
+    "clean_random": "uniform over the remaining clean rows",
+    "natural_leaking": "every row the run's NLI+ROUGE scorer called leaking",
+    "retain": "retain-author traffic; the retain-FPR population"
+  },
+  "why": "Goal A's label is 'does this attempt to answer the protected question'. The natural bank's label is 'does this reproduce the reference answer'. This audit measures how far apart they are, on rows a human has read."
+}

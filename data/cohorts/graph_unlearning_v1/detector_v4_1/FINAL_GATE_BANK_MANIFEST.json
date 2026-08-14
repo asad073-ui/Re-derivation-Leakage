@@ -1,0 +1,80 @@
+{
+  "arms": {
+    "natural": "multi_agent_leak",
+    "not_run_at_this_stage": [
+      "multi_agent_dragon",
+      "multi_agent_dragon_subsets",
+      "multi_agent_graphforget"
+    ],
+    "retain": "retain unguarded flow",
+    "why_only_unguarded": "a guarded arm's text is clean partly because the guard removed the rest of it, so its clean rate is not a detector measurement. Unchanged from the v2 corpus rule (GU-0031)."
+  },
+  "challenge": "natural",
+  "gates": {
+    "answer_attempt_macro_recall": {
+      "bound": 0.75,
+      "comparison": ">="
+    },
+    "answer_attempt_micro_recall": {
+      "bound": 0.8,
+      "comparison": ">="
+    },
+    "correct_concept_precision": {
+      "bound": 0.8,
+      "comparison": ">="
+    },
+    "protected_nonanswer_fpr": {
+      "bound": 0.1,
+      "comparison": "<="
+    },
+    "retain_fpr": {
+      "bound": 0.1,
+      "comparison": "<="
+    },
+    "zero_recall_concepts": {
+      "bound": 0.0,
+      "comparison": "=="
+    }
+  },
+  "generated_after": [
+    "the blinded label audit clears DETECTOR_V4_1_PROTOCOL.md section 5",
+    "the cross-encoder checkpoint is frozen",
+    "the operating point is frozen on development"
+  ],
+  "labelling": {
+    "automatic": "the run's pinned NLI+ROUGE scorer is recorded for diagnosis and is not a Goal A denominator.",
+    "primary": "human answer_attempt, blinded, two judges, adjudicated",
+    "secondary": "reference_content, with the reference answer visible"
+  },
+  "manifest_sha256": "91748930f628ba797a165d3f6eb62351ce33faf98b2f4731cd41f27bd94b1a97",
+  "minimum_sizes": {
+    "n_answer_attempt_rows": 150,
+    "n_concepts_with_answer_rows": 5,
+    "n_protected_nonanswer_rows": 400,
+    "n_retain_rows": 400,
+    "why": "a gate measured on 62 positives across five concepts, as the v4 held-out half was, cannot separate 0.80 from 0.70 at any useful confidence."
+  },
+  "opening_rule": {
+    "artifacts_written_only_on_pass": [
+      "DETECTOR_V4_MODEL.json",
+      "DETECTOR_V4_CALIBRATION.json",
+      "DETECTOR_V4_GATES.json"
+    ],
+    "on_failure": "the model is NOT integrated. Any new model iteration requires another fresh gate bank; re-opening this one turns it into development data.",
+    "opened": "exactly once, at the frozen threshold"
+  },
+  "protocol": "graph_flow",
+  "purpose": "the single surface on which the trained v4.1 detector's gate is opened. Pre-registered on CPU so the seeds cannot be chosen after a threshold is known, and disjoint from every set the detector was developed on.",
+  "schema": "graph-detector-v4-1-final-gate-bank-manifest-v1",
+  "seeds": {
+    "base_seed": 40241,
+    "seeds": [
+      40241,
+      40242,
+      40243,
+      40244
+    ],
+    "why_new": "the study's base_seed is 1729 and the engineering-only bank was drawn under it. A 'fresh' bank that redraws the same trajectories is not fresh."
+  },
+  "status": "PRE-REGISTERED, NOT YET GENERATED"
+}

@@ -1,0 +1,20 @@
+{
+  "consequence": "scripts/train_detector_v4.py no longer gates on this artifact and --force-despite-failed-ceiling is deleted. The readiness gate is now the v4.1 label audit, which measures the thing that actually bounds Goal A.",
+  "corrects": "data\\cohorts\\graph_unlearning_v1\\detector_v4\\DETECTOR_V4_ORACLE_CEILING.json",
+  "corrects_bank_content_sha256": "67709ebc6a8349e127324346345a38eaf25cf77feff26d62dfbe11dffab051dd",
+  "corrects_file_sha256": "801d6fb5cad79f6ce73efd12e1614c2702764e0fcbee0d1b3a97a9919ea1cb66",
+  "must_not_be_called": "answerability ceiling",
+  "original_is_edited": false,
+  "original_verdict": "an answer-aware evaluator does NOT clear the frozen bounds on natural text; no answer-free detector can do better and Detector v4 should not proceed to training on this evidence. See natural_arm.failure_locus for WHICH component the bound belongs to.",
+  "reinterpretation": "DETECTOR_V4_ORACLE_CEILING.json measures an ANSWER-TOKEN-OVERLAP BASELINE, not a universal answerability ceiling. Its rule is exact normalised overlap with the reference answer's content tokens; the labels it is scored against come from NLI entailment plus ROUGE-L, which a semantic model can reproduce on paraphrases that share no answer token. It establishes that exact answer-token overlap cannot reproduce the NLI/ROUGE labels at FPR <= 0.10. It does NOT establish that a semantic answerability model cannot. The artifact's own numbers refuse the stronger reading: on the same gate half at similar clean FPR the ANSWER-FREE lexical floor reached 0.081 micro recall and the ANSWER-AWARE oracle reached 0.032, and a bound that the thing it bounds beats by 2.5x is a different measurement rather than a bound.",
+  "renamed_to": "answer-token-overlap baseline",
+  "schema": "graph-detector-v4-1-ceiling-correction-v1",
+  "the_internal_contradiction": {
+    "answer_aware_oracle_micro_recall": 0.03225806451612903,
+    "answer_free_lexical_micro_recall": 0.08064516129032258,
+    "answer_free_source": "DETECTOR_V4_GATES.json natural_arm.heldout.micro_recall",
+    "note": "same gate half, similar sub-0.10 clean FPR. The answer-FREE detector beat the answer-AWARE 'ceiling' by roughly 2.5x. An upper bound the bounded thing exceeds is a different measurement, not a bound."
+  },
+  "what_it_does_not_establish": "that no semantic answerability model can. A cross-encoder recognises a paraphrase that shares no answer token, which is precisely the population an overlap rule cannot see.",
+  "what_the_artifact_does_establish": "exact normalised answer-token overlap cannot reproduce the run's NLI+ROUGE leak labels at generated_clean_fpr <= 0.10 on this cohort. That is a real negative result about a real rule and it is kept."
+}
