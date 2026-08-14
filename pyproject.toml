@@ -68,9 +68,12 @@ dev = [
 # `make cpu-all` must stay offline and free. `rdl graph-detector-v4-2-llm-judge
 # --dry-run` builds every prompt without either package installed, which is the part the
 # CPU gate exercises.
+# One client, not one per provider. Both v4.2 judges — Gemini through its OpenAI
+# compatibility endpoint and Groq — speak the OpenAI chat-completions dialect, so the
+# `openai` package is the whole dependency. `anthropic` was dropped when the roster moved
+# to the free tier; add it back only alongside an adapter that speaks its wire format.
 judges = [
     "openai>=1.40",
-    "anthropic>=0.40",
 ]
 
 [project.scripts]

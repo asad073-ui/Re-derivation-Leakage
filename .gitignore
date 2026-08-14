@@ -138,3 +138,17 @@ runs/graph/**
 !runs/graph/*/scores/
 !runs/graph/*/scores/detector-calibration.json
 !runs/graph/*/scores/SCORING.json
+
+# ----------------------------------------------------------------------------------
+# Detector v4.2 model-judge runs. The overlays, run manifests, key and reports ARE
+# evidence and are committed; the two things below are not.
+#
+# `*.partial.jsonl` is the crash-recovery checkpoint the runner rewrites after every
+# batch. It is superseded by the final overlay the moment a pass completes, and a
+# committed one would be a second copy of the labels that can drift from the first.
+#
+# Smoke runs live in their own `--run-id` directory precisely so they cannot be mistaken
+# for a pass. Committing them would put that mistake back in reach.
+# ----------------------------------------------------------------------------------
+**/*.partial.jsonl
+data/cohorts/*/detector_v4_2/smoke*/

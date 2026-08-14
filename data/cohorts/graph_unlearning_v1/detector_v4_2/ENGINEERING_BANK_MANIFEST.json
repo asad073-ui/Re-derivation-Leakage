@@ -1,7 +1,7 @@
 {
   "arms": {
     "natural": "multi_agent_leak",
-    "retain": "retain unguarded flow",
+    "retain": "multi_agent_leak",
     "why_only_unguarded": "a guarded arm's text is clean partly because the guard removed the rest of it, so its clean rate is not a detector measurement. Unchanged from the v2 corpus rule (GU-0031)."
   },
   "challenge": "natural",
@@ -13,32 +13,63 @@
     40244
   ],
   "generation_budget": {
-    "arms": [
-      "multi_agent_leak"
-    ],
-    "deduplication": "exact text_sha256 within a run and across runs; first occurrence wins",
-    "k": 32,
-    "max_rows_per_run": 6000,
+    "deduplication": "by (candidate text, protected question), first occurrence wins. Text alone is wrong: the same refusal string is a legitimately distinct row under two different protected questions, and dropping the second silently deletes one question's false-alarm evidence.",
+    "groups": {
+      "natural": {
+        "challenge": "natural",
+        "cohort_split": "discovery",
+        "is_retain": false,
+        "max_rows_per_run": 6000,
+        "n_items": 50,
+        "n_runs": 4,
+        "n_samples": 32,
+        "primary_k": 32,
+        "protocol": "graph_flow",
+        "required_arm": "multi_agent_leak",
+        "role": "recall numerator and the protected-clean false-alarm pool",
+        "seeds": [
+          50241,
+          50242,
+          50243,
+          50244
+        ]
+      },
+      "retain": {
+        "challenge": "natural",
+        "cohort_split": "retain_utility",
+        "is_retain": true,
+        "max_rows_per_run": 6000,
+        "n_items": 45,
+        "n_runs": 4,
+        "n_samples": 32,
+        "primary_k": 32,
+        "protocol": "graph_flow",
+        "required_arm": "multi_agent_leak",
+        "role": "the retain false-alarm pool, which the aggregate clean FPR cannot express",
+        "seeds": [
+          51241,
+          51242,
+          51243,
+          51244
+        ]
+      }
+    },
+    "labelling_policy": "the bank is NOT labelled row by row by the model judges. A ~24,000-row bank is ~96,000 judge calls across two judges and two passes. A deterministic stratified audit sample is frozen first by `rdl graph-detector-v4-2-bank-audit`, on generation metadata only and never on a detector score.",
     "max_rows_total": 24000,
-    "n_items": 60,
-    "n_runs": 4,
-    "one_run_per_seed": true,
-    "retain_arms": [
-      "retain unguarded flow"
-    ],
-    "samples_per_item": 8,
-    "split_rule": "sha256(text)[:2] parity \u2014 content-addressed, computed before inspection",
+    "split_rule": "sha256(text || question)[:2] parity \u2014 content-addressed, before inspection",
     "unlabelled_policy": "texts with no cached scorer verdict are counted and are in neither pool. Treating them as clean would understate the false-alarm rate.",
-    "why_a_budget_is_part_of_the_freeze": "seeds fix WHICH trajectories are drawn; the budget fixes HOW MANY. A bank whose size is decided at generation time can be grown until a gate passes, and nothing in the artifact would show it. FINAL_GATE_BANK_MANIFEST.json froze the seeds and the minimum label counts and not this, which is the gap these commands close."
+    "why_a_budget_is_part_of_the_freeze": "seeds fix WHICH trajectories are drawn; the budget fixes HOW MANY. A bank whose size is decided at generation time can be grown until a gate passes, and nothing in the artifact would show it. FINAL_GATE_BANK_MANIFEST.json froze the seeds and the minimum label counts and not this, which is the gap these commands close.",
+    "why_n_samples_equals_primary_k": "primary_k is the number of samples the success-at-k statistic is read over. n_samples < primary_k cannot be measured at all: the estimate has no draws to read. The previous freeze said 8 samples and k=32, which is why this file now validates the budget instead of only recording it."
   },
   "human_grounded": false,
   "judge_population": "two_independent_llm_judges",
   "labelling": {
     "automatic": "the run's pinned NLI+ROUGE scorer is recorded for diagnosis and is not a Goal A denominator.",
     "primary": "model-judge answer_attempt, blinded, two judges, adjudicated",
+    "sample": "a deterministic stratified audit sample, frozen by `rdl graph-detector-v4-2-bank-audit` before the detector scores anything",
     "secondary": "reference_content, with the reference answer visible"
   },
-  "manifest_sha256": "37c556d9520f44db0887a906c309220d4b6e287c32c9410e5842af3baac729cf",
+  "manifest_sha256": "26894047946f9b48a65c5cf458e3a97617ccd0f9391b8b3c5e9488411e05cef8",
   "opening_rule": {
     "on_failure": "diagnose and iterate. This bank is ENGINEERING: re-opening it after a change makes it development data, which is acceptable here and is not acceptable for the final bank.",
     "opened": "once per frozen checkpoint+threshold pair, and recorded"
@@ -47,17 +78,23 @@
   "protocol_name": "graph_flow",
   "publication_label_valid": false,
   "purpose": "the surface the v4.2 engineering experiment is evaluated on. Disjoint from the final gate bank by construction, so a run authorised by MODEL judges never spends the one unopened surface reserved for a human-validated result.",
-  "schema": "graph-detector-v4-2-engineering-bank-manifest-v1",
+  "schema": "graph-detector-v4-2-engineering-bank-manifest-v2",
   "seeds": {
-    "base_seed": 50241,
     "disjoint_from_final": true,
-    "seeds": [
+    "natural": [
       50241,
       50242,
       50243,
       50244
     ],
-    "why_new": "the study's base_seed is 1729 and the v4 engineering-only bank was drawn under it; the final bank is 40241-40244 and is sealed. A third draw needs a third set, or it is one of the first two under a new name."
+    "retain": [
+      51241,
+      51242,
+      51243,
+      51244
+    ],
+    "why_new": "the study's base_seed is 1729 and the v4 engineering-only bank was drawn under it; the final bank is 40241-40244 and is sealed. A third draw needs a third set, or it is one of the first two under a new name.",
+    "why_two_groups": "a natural run and a retain run are different cohorts with different roles in the gate. One shared set of four makes 'four runs' ambiguous and lets one draw be counted as two."
   },
   "status": "PRE-REGISTERED, NOT YET GENERATED"
 }

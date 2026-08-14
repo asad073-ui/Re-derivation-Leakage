@@ -11,12 +11,14 @@ from .detector_corpus import detector_corpus
 from .detector_gates import detector_gates
 from .detector_recall import detector_recall
 from .detector_v4_1_freeze import detector_v4_1_freeze
+from .detector_v4_2_bank_audit import detector_v4_2_bank_audit
 from .detector_v4_2_banks import (
     detector_v4_2_build_bank,
     detector_v4_2_final_gate,
     detector_v4_2_freeze_banks,
 )
 from .detector_v4_2_llm_judge import detector_v4_2_llm_judge
+from .detector_v4_2_plan import detector_v4_2_judge_plan
 from .detector_v4_2_report import detector_v4_2_label_report
 from .detector_v4_data import detector_v4_build_data
 from .detector_v4_gates import detector_v4_gates
@@ -110,6 +112,8 @@ app.command("graph-detector-v4-gates")(detector_v4_gates)
 #   llm-judge     one judge, one pass, stateless per row. --dry-run calls nothing.
 #   label-report  adjudicates the two judges and writes the MODEL label report, which
 #                 carries human_grounded=false and publication_label_valid=false.
+#   judge-plan    how many calls, how many tokens, how many free-tier days. Calls nothing.
+app.command("graph-detector-v4-2-judge-plan")(detector_v4_2_judge_plan)
 app.command("graph-detector-v4-2-llm-judge")(detector_v4_2_llm_judge)
 app.command("graph-detector-v4-2-label-report")(detector_v4_2_label_report)
 
@@ -119,9 +123,11 @@ app.command("graph-detector-v4-2-label-report")(detector_v4_2_label_report)
 #
 #   freeze-banks  the engineering bank's manifest, and the budget the final one lacks
 #   build-bank    assemble a bank, REFUSING runs that do not match the pre-registration
-#   final-gate    open a bank once, at a frozen threshold, and record that it was opened
+#   bank-audit    freeze a stratified audit sample of a bank and write the judge inputs
+#   final-gate    SCORE a bank once, at a frozen threshold, and record that it was opened
 app.command("graph-detector-v4-2-freeze-banks")(detector_v4_2_freeze_banks)
 app.command("graph-detector-v4-2-build-bank")(detector_v4_2_build_bank)
+app.command("graph-detector-v4-2-bank-audit")(detector_v4_2_bank_audit)
 app.command("graph-detector-v4-2-final-gate")(detector_v4_2_final_gate)
 
 

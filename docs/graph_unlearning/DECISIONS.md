@@ -1335,3 +1335,148 @@ Until every one of the eighteen conditions in `DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.
 holds, `engineering_gpu_ready` is `false`. When they all hold it becomes `true` and
 `publication_label_valid` is still `false`. Those are different claims and the artifacts
 keep them apart.
+
+## GU-0039 — v4.2.1: the judge runner, the bank verifier and the budget were not ready
+
+**Status:** accepted. CPU only. No model trained, no GPU used, no bank generated, no
+frozen v1/v2/v3/v4/v4.1 artifact modified, and the final gate bank is still sealed.
+
+v4.2.0 shipped a detector architecture and a protocol. Reading the code against what it
+would actually do on a rented box and against a metered API turned up twelve defects, none
+of which raises an error — every one of them produces a number, or produces nothing while
+reporting that everything passed. They are fixed here.
+
+### The bank verifier could not read a graph run
+
+`_run_meta()` opened `run_manifest.json` and read top-level `seed`, `arm` and `n_rows`.
+Graph runs write `RUN_MANIFEST.json` and record `sampling.base_seed`, `sampling.n_samples`,
+`sampling.primary_k`, `arms` as a list of objects, and the cohort under
+`evaluation_cohort`. None of the fields it read exist. Because each lookup returned `None`
+and each check skipped `None`, the verifier **accepted any directory containing a file by
+that name and reported PASS** — a validator that cannot read its artifact is worse than no
+validator. It now parses the real schema and treats "the manifest does not say" as a
+failure. The contract test loads the repository's own committed manifests.
+
+### The frozen generation budget was arithmetically impossible
+
+`60 items, 8 samples, k=32`. The discovery cohort has 50 items and the retain cohort has
+45, so 60 does not exist; and `primary_k` is the number of draws success-at-k is read over,
+so 8 samples cannot measure k=32 at all. The budget is now `natural: 50 x 32, primary_k=32`
+and `retain: 45 x 32, primary_k=32` — the design every reportable run in `runs/graph`
+actually realises — and `validate_budget()` refuses the old one at both freeze time and
+build time.
+
+### Natural and retain were one four-run set
+
+Which makes "four runs" ambiguous between four natural runs and two of each, and lets a
+retain run and a natural run share a seed: one draw wearing two labels. They are now two
+groups with their own seeds (natural 50241-50244, retain 51241-51244), validated for
+uniqueness within each group and disjointness between them and from the sealed final seeds.
+The retain rows are their own bank partition with their own denominator, never halved into
+`clean`.
+
+### Checkpoint selection controlled an aggregate that could hide the failure that matters
+
+`evaluate()` discarded the row's population and `select_checkpoint()` read one pooled
+NONE-FPR. The retain rows are the minority of that pool — two example classes of six in the
+synthetic corpus — so a checkpoint firing on **every** retain row still clears an aggregate
+ceiling of 0.10 and gets selected; the downstream gate, which names `retain_fpr` separately,
+then rejects it after the GPU time is spent. Population is carried through both row builders
+and selection enforces both ceilings. A checkpoint whose retain rate was never *measured*
+is not eligible: "we did not measure it" and "it was fine" must not agree.
+
+### A crash lost every response, and there was no way to resume
+
+The runner accumulated 1,019 responses in a list and wrote the file at the end. Every row
+is now written when it returns, with an atomic progress manifest, and `--resume` reuses
+what is there. A stored row whose prompt hash or prompt version disagrees with what this
+invocation would build is a **conflict and is refused**, not overwritten — a re-judged row
+under a changed rubric answers a different question. Calls run under bounded concurrency
+with a shared rate limiter and full-jitter backoff, and a per-day quota **ends** the run
+rather than failing it.
+
+### A five-row smoke could occupy a real pass's path
+
+`--limit` wrote `V4_2_JUDGE_A_BLIND.jsonl` into the same directory as the real pass. It now
+requires `--run-id`, which redirects the whole run into its own directory and marks the
+manifest `reportable: false`; the report counts that as a provenance failure.
+
+### The reference pass could run before the blind passes
+
+It shows the judge the answer. If it can run first, the blind labels can be produced
+afterwards by an operator who has seen it, and "blind" describes one prompt rather than the
+procedure. It is now refused until both blind manifests are complete, reportable and on
+this prompt version.
+
+### The disagreement file could not be adjudicated
+
+It carried `audit_id`, the differing field names and two labels — and the module docstring
+claimed it carried "the same question and candidate the judges saw". The only way to
+resolve a row was to open the blinded input by hand next to the key, which is how blinding
+is lost. Each row now carries exactly the evidence that pass's judges saw: question and
+candidate on the blind pass, plus the reference answer on the reference pass. Rows where
+both judges said `UNCERTAIN` are included — agreement that neither could tell is not a
+resolved label.
+
+### A report could be assembled from one pass and one smoke
+
+The report now requires all four run manifests and counts every way they can fail to be
+four complete runs of the frozen protocol into `n_provenance_failures`, a gate condition:
+incomplete, non-reportable, wrong prompt version, a returned model that is not the
+requested one, an input hash that moved, an uncovered input row, a duplicate `audit_id`, an
+output file that changed after the run, no provider request ids, two judges given different
+rubrics. `reference_content` κ ≥ 0.70 is added as a gate; the v4.1 bounds are unchanged.
+
+### `final-gate` did not gate
+
+It wrote an opening record and printed the name of a different command — one that reads the
+**v4** natural bank and the **v4.1** audit. The fresh bank could be marked opened while
+every number described the surface the detector was developed on. It now loads the bank and
+labels bound to that bank by content hash, refuses another bank's labels by name, scores at
+the frozen threshold, and writes the result and the record atomically.
+
+### There was no way to label a new bank at all, and no way to afford it
+
+A bank holds ~24,000 rows; two judges over two passes is ~96,000 calls.
+`rdl graph-detector-v4-2-bank-audit` freezes a deterministic stratified sample (300 likely
+leaking / 500 protected clean / 400 retain) from **generation metadata only, never a
+detector score**, and writes blind inputs, reference inputs, an offline key and a manifest.
+The full raw bank is preserved. `rdl graph-detector-v4-2-judge-plan` costs the whole thing
+offline against the published free-tier ceilings before a single call is made.
+
+### The CUDA smoke could not see the bug it existed to find
+
+It paired sixteen candidate texts with **one** repeated context, so every mispairing —
+a truncating zip, a reordering sort, a context cached across the batch — produces the same
+input and the same answer. It now builds a distinct question and context per row and
+verifies both length **and association**: rescoring one pair alone must reproduce the score
+it got inside the batch. It also writes to its own directory, because it trains
+`seed{first}-checkpoint-epoch1`, which is exactly the path the real run writes.
+
+### The judges are now two free-tier models from different families
+
+`gemini-3.7-flash` (Google) and `openai/gpt-oss-120b` (Groq), replacing `gpt-5.6-sol` and
+`claude-sonnet-5`. Both were verified live against the real v4.2 rubric before the roster
+was frozen, and both returned schema-valid JSON and agreed on the probe row. The API bill
+for the audit goes from roughly USD 40-65 to zero. That is not the reason: the reason is
+that a Google dense model and an OpenAI open-weights MoE served by a third party are more
+independent than two proprietary models, and κ between two members of one family measures a
+shared prior. `judge_families_are_independent()` checks the roster and the runner, the
+report and the trainer all refuse one that fails.
+
+The costs of the choice are recorded rather than glossed: free-tier quota is the binding
+constraint, so the audit may span several days of `--resume`; Groq's paid fallback rate for
+the same token counts is recorded beside the free one; and Google's free tier may use
+submitted content to improve its products, which is acceptable here because what is sent is
+public-benchmark-derived text and no unpublished manuscript.
+
+`--max-output-tokens` drops from 4,096 to 1,024. The response is four enum values and the
+measured envelope was 42 and 130 completion tokens.
+
+### What is still not true
+
+`publication_label_valid` is still `false` and there is still no argument that sets it. The
+final gate bank is still sealed. No engineering bank has been generated, because generating
+one needs the GPU. Two model judges agreeing remains consistency evidence and not
+correctness, and the human validation of §10 is deferred, not cancelled.
+
