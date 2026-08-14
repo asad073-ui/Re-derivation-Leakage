@@ -340,7 +340,7 @@ did not buy its leakage number by refusing to work.
 Publication blockers:
 
 - the report's own measurement gates do not all pass
-- retain utility gate is not_applicable: no retain cohort in this run. Retain utility must be measured on questions the system is SUPPOSED to answer; on a forget cohort an answer-match rate is a leakage rate.
 - detector FPR gate is not_applicable: no detector calibration artefact in this run. A false-positive rate that was never measured cannot be shown to be under a ceiling.
+- retain utility gate is not_applicable: no retain cohort in this run. Retain utility must be measured on questions the system is SUPPOSED to answer; on a forget cohort an answer-match rate is a leakage rate.
 - multi_agent_graphforget refused 61.6% of final responses against a 20% bound: the leakage number is confounded by refusal
 - multi_agent_graphforget collaboration rate 62.9% is below the 80% floor
