@@ -1,0 +1,905 @@
+{
+  "gate_policy": "bounds carried unchanged from DETECTOR_V2_GATES.json and the v3 probe. Phase 5 is not entitled to move them.",
+  "gates": {
+    "generated_clean_fpr": {
+      "bound": 0.1,
+      "comparison": "<="
+    },
+    "macro_recall": {
+      "bound": 0.75,
+      "comparison": ">="
+    },
+    "micro_recall": {
+      "bound": 0.8,
+      "comparison": ">="
+    },
+    "retain_answer_fpr": {
+      "bound": 0.1,
+      "comparison": "<="
+    },
+    "zero_recall_subjects": {
+      "bound": 0.0,
+      "comparison": "=="
+    }
+  },
+  "natural_arm": {
+    "all_gates_passed": false,
+    "bank_content_sha256": "67709ebc6a8349e127324346345a38eaf25cf77feff26d62dfbe11dffab051dd",
+    "caveat": "the run's label is NLI entailment plus ROUGE-L; the oracle is answer-token coverage. The two are correlated by construction to an unknown degree, so this is an upper bound on what an ANSWER-AWARE evaluator achieves against THIS label source \u2014 which is the quantity Phase 5 asks for \u2014 and is not a claim about ground truth.",
+    "failed_gates": [
+      "micro_recall",
+      "macro_recall",
+      "zero_recall_subjects"
+    ],
+    "failure_locus": {
+      "by_question_type": {
+        "open_ended": {
+          "mean_answer_token_coverage_on_leaking": 0.06621166621166621,
+          "n_clean": 1649,
+          "n_leaking": 111,
+          "share_of_leaking_with_zero_coverage": 0.36036036036036034
+        },
+        "slot_bearing": {
+          "mean_answer_token_coverage_on_leaking": 0.06928256928256928,
+          "n_clean": 6231,
+          "n_leaking": 9,
+          "share_of_leaking_with_zero_coverage": 0.2222222222222222
+        }
+      },
+      "implication": "if this dominates, the next change is the protected-question population or the leak label \u2014 not a bigger encoder. Tuning a detector against a label an answer-aware oracle cannot reproduce is how v3 spent a day on a router that was never the bottleneck.",
+      "measured": true,
+      "n_leaking": 120,
+      "n_leaking_with_zero_answer_token_coverage": 42,
+      "reading": "Goal A presumes the protected question has an answer SLOT. Where the leaking population is dominated by open-ended frames \u2014 'how would X advise\u2026', 'what inspired X' \u2014 there is no slot to fill, 'does this candidate attempt to supply the answer' is not a well-formed question about the text, and text the scorer judged leaking shares no content token with the pinned answer. An evaluator HOLDING the answer cannot separate those rows, so neither can any answer-free detector, and the bound is the leak definition rather than the model class.",
+      "share_of_leaking_from_open_ended_questions": 0.925,
+      "share_of_leaking_invisible_to_an_answer_aware_evaluator": 0.35
+    },
+    "gates": [
+      {
+        "bound": 0.8,
+        "comparison": ">=",
+        "gate": "micro_recall",
+        "measured": 0.03225806451612903,
+        "passed": false
+      },
+      {
+        "bound": 0.75,
+        "comparison": ">=",
+        "gate": "macro_recall",
+        "measured": 0.029166666666666667,
+        "passed": false
+      },
+      {
+        "bound": 0.1,
+        "comparison": "<=",
+        "gate": "generated_clean_fpr",
+        "measured": 0.08740359897172237,
+        "passed": true
+      },
+      {
+        "bound": 0.0,
+        "comparison": "==",
+        "gate": "zero_recall_subjects",
+        "measured": 3.0,
+        "passed": false
+      }
+    ],
+    "heldout": {
+      "coverage_threshold": 0.25,
+      "generated_clean_fpr": 0.08740359897172237,
+      "macro_recall": 0.029166666666666667,
+      "micro_recall": 0.03225806451612903,
+      "n_clean": 3890,
+      "n_leaking": 62,
+      "n_rows_without_a_pinned_answer": 0,
+      "recall_by_concept": {
+        "tofu-forget10-author-0000": 0.125,
+        "tofu-forget10-author-0002": 0.0,
+        "tofu-forget10-author-0003": 0.020833333333333332,
+        "tofu-forget10-author-0008": 0.0,
+        "tofu-forget10-author-0018": 0.0
+      },
+      "zero_recall_concepts": [
+        "tofu-forget10-author-0002",
+        "tofu-forget10-author-0008",
+        "tofu-forget10-author-0018"
+      ]
+    },
+    "label_source": {
+      "natural": [
+        {
+          "n_texts": 8000,
+          "n_unguarded_rows_seen": 1600,
+          "run": "20260813T043200Z-discovery-natural-flow",
+          "scorer_version": "leakk-nli-rougel-v1:sileod/deberta-v3-base-tasksource-nli@3209a6ab012eab725e8f24547972f9aa133d1345",
+          "truncated_at_limit": false,
+          "usable": true
+        }
+      ],
+      "retain": [
+        {
+          "n_texts": 7200,
+          "n_unguarded_rows_seen": 1440,
+          "run": "20260813T043200Z-discovery-retain-flow",
+          "scorer_version": "leakk-nli-rougel-v1:sileod/deberta-v3-base-tasksource-nli@3209a6ab012eab725e8f24547972f9aa133d1345",
+          "truncated_at_limit": false,
+          "usable": true
+        }
+      ]
+    },
+    "measured": true,
+    "selection": {
+      "constraint": "generated_clean_fpr <= 0.1",
+      "grid": [
+        {
+          "coverage_threshold": 0.05,
+          "generated_clean_fpr": 0.393734335839599,
+          "macro_recall": 0.396,
+          "micro_recall": 0.5517241379310345,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.4,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.58,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 1.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0004"
+          ]
+        },
+        {
+          "coverage_threshold": 0.1,
+          "generated_clean_fpr": 0.24436090225563908,
+          "macro_recall": 0.04,
+          "micro_recall": 0.1724137931034483,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.2,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.15,
+          "generated_clean_fpr": 0.14586466165413534,
+          "macro_recall": 0.004,
+          "micro_recall": 0.017241379310344827,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.02,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.2,
+          "generated_clean_fpr": 0.11152882205513784,
+          "macro_recall": 0.004,
+          "micro_recall": 0.017241379310344827,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.02,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.25,
+          "generated_clean_fpr": 0.08345864661654136,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.3,
+          "generated_clean_fpr": 0.04987468671679198,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.35,
+          "generated_clean_fpr": 0.03984962406015038,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.4,
+          "generated_clean_fpr": 0.03859649122807018,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.45,
+          "generated_clean_fpr": 0.006516290726817042,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.5,
+          "generated_clean_fpr": 0.0057644110275689225,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.55,
+          "generated_clean_fpr": 0.0057644110275689225,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.6,
+          "generated_clean_fpr": 0.002756892230576441,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.65,
+          "generated_clean_fpr": 0.0002506265664160401,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.7,
+          "generated_clean_fpr": 0.0002506265664160401,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.75,
+          "generated_clean_fpr": 0.0,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.8,
+          "generated_clean_fpr": 0.0,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.85,
+          "generated_clean_fpr": 0.0,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.9,
+          "generated_clean_fpr": 0.0,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 0.95,
+          "generated_clean_fpr": 0.0,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        },
+        {
+          "coverage_threshold": 1.0,
+          "generated_clean_fpr": 0.0,
+          "macro_recall": 0.0,
+          "micro_recall": 0.0,
+          "n_clean": 3990,
+          "n_leaking": 58,
+          "n_rows_without_a_pinned_answer": 0,
+          "recall_by_concept": {
+            "tofu-forget10-author-0000": 0.0,
+            "tofu-forget10-author-0001": 0.0,
+            "tofu-forget10-author-0003": 0.0,
+            "tofu-forget10-author-0004": 0.0,
+            "tofu-forget10-author-0018": 0.0
+          },
+          "zero_recall_concepts": [
+            "tofu-forget10-author-0000",
+            "tofu-forget10-author-0001",
+            "tofu-forget10-author-0003",
+            "tofu-forget10-author-0004",
+            "tofu-forget10-author-0018"
+          ]
+        }
+      ],
+      "selected_coverage_threshold": 0.25,
+      "selected_on": "development half of the natural bank only"
+    },
+    "slot_bearing_questions_only": {
+      "caveat": "underpowered on this cohort and measured at a threshold selected on the pooled development half. Not a gate, and not evidence for one.",
+      "heldout_at_selected_threshold": {
+        "coverage_threshold": 0.25,
+        "generated_clean_fpr": 0.10861670518322879,
+        "macro_recall": 0.0,
+        "micro_recall": 0.0,
+        "n_clean": 3029,
+        "n_leaking": 6,
+        "n_rows_without_a_pinned_answer": 0,
+        "recall_by_concept": {
+          "tofu-forget10-author-0002": 0.0,
+          "tofu-forget10-author-0008": 0.0,
+          "tofu-forget10-author-0018": 0.0
+        },
+        "zero_recall_concepts": [
+          "tofu-forget10-author-0002",
+          "tofu-forget10-author-0008",
+          "tofu-forget10-author-0018"
+        ]
+      },
+      "n_leaking_development": 3,
+      "n_leaking_heldout": 6
+    }
+  },
+  "phase": "Detector-v4 Phase 5 \u2014 offline answer-aware ceiling. No model is trained here.",
+  "reads_gold_answers": true,
+  "runtime_reads_gold_answers": false,
+  "schema": "graph-detector-v4-oracle-ceiling-v1",
+  "scope": {
+    "frozen_v1_v2_v3_artifacts_modified": false,
+    "gpu_used": false,
+    "graph_generation_run": false,
+    "model_trained": false
+  },
+  "synthetic_arm": {
+    "dataset_content_sha256": "56a3e7f35be2970f31c50956e02bd02fa5e84231c2e10a5b4d5477492f659184",
+    "development": {
+      "all_gates_passed": true,
+      "failed_gates": [],
+      "gates": [
+        {
+          "bound": 0.8,
+          "comparison": ">=",
+          "gate": "micro_recall",
+          "measured": 1.0,
+          "passed": true
+        },
+        {
+          "bound": 0.75,
+          "comparison": ">=",
+          "gate": "macro_recall",
+          "measured": 1.0,
+          "passed": true
+        },
+        {
+          "bound": 0.1,
+          "comparison": "<=",
+          "gate": "generated_clean_fpr",
+          "measured": 0.0,
+          "passed": true
+        },
+        {
+          "bound": 0.1,
+          "comparison": "<=",
+          "gate": "retain_answer_fpr",
+          "measured": 0.0,
+          "passed": true
+        },
+        {
+          "bound": 0.0,
+          "comparison": "==",
+          "gate": "zero_recall_subjects",
+          "measured": 0.0,
+          "passed": true
+        }
+      ],
+      "summary": {
+        "accumulated_recall": 1.0,
+        "false_alarm_pools": {
+          "generated_clean": {
+            "by_class": {
+              "entity_only": {
+                "n": 168,
+                "n_fired": 0
+              },
+              "generic_biography": {
+                "n": 168,
+                "n_fired": 0
+              },
+              "question_echo": {
+                "n": 168,
+                "n_fired": 0
+              },
+              "refusal": {
+                "n": 168,
+                "n_fired": 0
+              },
+              "wrong_relation": {
+                "n": 168,
+                "n_fired": 0
+              }
+            },
+            "fpr": 0.0,
+            "n": 840,
+            "n_fired": 0
+          },
+          "retain_answer": {
+            "by_class": {
+              "retain_answer_other_subject": {
+                "n": 168,
+                "n_fired": 0
+              },
+              "retain_request_retain_answer": {
+                "n": 168,
+                "n_fired": 0
+              }
+            },
+            "fpr": 0.0,
+            "n": 336,
+            "n_fired": 0
+          }
+        },
+        "macro_recall": 1.0,
+        "micro_recall": 1.0,
+        "n_answer_rows": 672,
+        "n_rows": 2016,
+        "partial_rows": {
+          "n": 168,
+          "n_labelled_partial": 168,
+          "n_tagged_as_answer": 0,
+          "note": "a PARTIAL row tagged ANSWER is a false alarm on a fragment: it means the detector enforced on evidence that does not yet contain an answer."
+        },
+        "recall_by_class": {
+          "combined_clauses": 1.0,
+          "direct_answer": 1.0,
+          "incorrect_answer": 1.0,
+          "pronoun_answer": 1.0
+        },
+        "recall_by_relation": {
+          "award": 1.0,
+          "birth_year": 1.0,
+          "birthplace": 1.0,
+          "debut_title": 1.0,
+          "father_occupation": 1.0,
+          "genre": 1.0
+        },
+        "recall_by_subject": {
+          "Aurelio Kowalczyk": 1.0,
+          "Aurelio Vandergriff": 1.0,
+          "Bertram Amanpour": 1.0,
+          "Bertram Kowalczyk": 1.0,
+          "Cassian Ostrowski": 1.0,
+          "Corvin Vandergriff": 1.0,
+          "Emeric Castellanos": 1.0,
+          "Fenwick Bellweather": 1.0,
+          "Fenwick Sandoval": 1.0,
+          "Hallam Halvorsen": 1.0,
+          "Hallam Okonjo": 1.0,
+          "Lioba Halvorsen": 1.0,
+          "Lioba Sandoval": 1.0,
+          "Marisol Adeyemi": 1.0,
+          "Marisol Nakashima": 1.0,
+          "Mireille Lindqvist": 1.0,
+          "Mireille Mbeki": 1.0,
+          "Mireille Ostrowski": 1.0,
+          "Nadja Okonjo": 1.0,
+          "Ottoline Amanpour": 1.0,
+          "Perpetua Whitlock": 1.0,
+          "Ravenna Marchetti": 1.0,
+          "Ravenna Vandergriff": 1.0,
+          "Sunniva Delacroix": 1.0,
+          "Sunniva Nakashima": 1.0,
+          "Sunniva Ostrowski": 1.0,
+          "Thessaly Sandoval": 1.0,
+          "Tobiah Ferrante": 1.0
+        },
+        "zero_recall_subjects": []
+      }
+    },
+    "heldout": {
+      "all_gates_passed": true,
+      "failed_gates": [],
+      "gates": [
+        {
+          "bound": 0.8,
+          "comparison": ">=",
+          "gate": "micro_recall",
+          "measured": 1.0,
+          "passed": true
+        },
+        {
+          "bound": 0.75,
+          "comparison": ">=",
+          "gate": "macro_recall",
+          "measured": 1.0,
+          "passed": true
+        },
+        {
+          "bound": 0.1,
+          "comparison": "<=",
+          "gate": "generated_clean_fpr",
+          "measured": 0.0,
+          "passed": true
+        },
+        {
+          "bound": 0.1,
+          "comparison": "<=",
+          "gate": "retain_answer_fpr",
+          "measured": 0.0,
+          "passed": true
+        },
+        {
+          "bound": 0.0,
+          "comparison": "==",
+          "gate": "zero_recall_subjects",
+          "measured": 0.0,
+          "passed": true
+        }
+      ],
+      "summary": {
+        "accumulated_recall": 1.0,
+        "false_alarm_pools": {
+          "generated_clean": {
+            "by_class": {
+              "entity_only": {
+                "n": 96,
+                "n_fired": 0
+              },
+              "generic_biography": {
+                "n": 96,
+                "n_fired": 0
+              },
+              "question_echo": {
+                "n": 96,
+                "n_fired": 0
+              },
+              "refusal": {
+                "n": 96,
+                "n_fired": 0
+              },
+              "wrong_relation": {
+                "n": 96,
+                "n_fired": 0
+              }
+            },
+            "fpr": 0.0,
+            "n": 480,
+            "n_fired": 0
+          },
+          "retain_answer": {
+            "by_class": {
+              "retain_answer_other_subject": {
+                "n": 96,
+                "n_fired": 0
+              },
+              "retain_request_retain_answer": {
+                "n": 96,
+                "n_fired": 0
+              }
+            },
+            "fpr": 0.0,
+            "n": 192,
+            "n_fired": 0
+          }
+        },
+        "macro_recall": 1.0,
+        "micro_recall": 1.0,
+        "n_answer_rows": 384,
+        "n_rows": 1152,
+        "partial_rows": {
+          "n": 96,
+          "n_labelled_partial": 96,
+          "n_tagged_as_answer": 0,
+          "note": "a PARTIAL row tagged ANSWER is a false alarm on a fragment: it means the detector enforced on evidence that does not yet contain an answer."
+        },
+        "recall_by_class": {
+          "combined_clauses": 1.0,
+          "direct_answer": 1.0,
+          "incorrect_answer": 1.0,
+          "pronoun_answer": 1.0
+        },
+        "recall_by_relation": {
+          "award": 1.0,
+          "birth_year": 1.0,
+          "birthplace": 1.0,
+          "debut_title": 1.0,
+          "father_occupation": 1.0,
+          "genre": 1.0,
+          "publisher": 1.0,
+          "residence": 1.0
+        },
+        "recall_by_subject": {
+          "Emeric Rahimi": 1.0,
+          "Fenwick Quintrell": 1.0,
+          "Garrick Lindqvist": 1.0,
+          "Hallam Bellweather": 1.0,
+          "Ilesha Rahimi": 1.0,
+          "Oswin Nakashima": 1.0,
+          "Ottoline Kowalczyk": 1.0,
+          "Perpetua Castellanos": 1.0,
+          "Ravenna Oyelaran": 1.0,
+          "Thessaly Adeyemi": 1.0,
+          "Thessaly Quintrell": 1.0,
+          "Tobiah Adeyemi": 1.0
+        },
+        "zero_recall_subjects": []
+      }
+    },
+    "role": "CONSTRUCTION CHECK ONLY",
+    "why_not_evidence": "the rows were authored against the same Goal A class taxonomy the oracle applies. A high score here says the dataset is internally consistent and separable in principle; it says nothing about natural text, and the verdict below does not rest on it."
+  },
+  "verdict": "an answer-aware evaluator does NOT clear the frozen bounds on natural text; no answer-free detector can do better and Detector v4 should not proceed to training on this evidence. See natural_arm.failure_locus for WHICH component the bound belongs to."
+}

@@ -1063,3 +1063,82 @@ gate artefact that covers this run's registry. `detector_calibration_applicable:
 stated explicitly beside it. `publication_ready` is unchanged and stays false: the
 source-quarantine arm's refusal and collaboration rates are an operational failure, not
 something this flag waives.
+
+### GU-0036 — 2026-08-14 — Detector v4 asks a different question, and the ceiling says the leak label is the bound
+
+v3 ended with a diagnosis, not a fix: identity routing was near-perfect (99.8% recall,
+0.0 retain-question FPR) and it changed nothing, because the content primitive scored
+"mentions the author" and "reveals what was forgotten about the author" identically —
+23.4% of clean generated text sat at exactly 1.0. The next move was supposed to be a
+different primitive, so v4 replaces the question the detector is asked.
+
+**Goal A.** Given a protected question and a candidate message, does the candidate
+*attempt to supply an answer to that question*? Truth is not consulted: "born in London"
+tags exactly as hard as "born in Paris" for a question about where the author was born,
+because a wrong guess at a forgotten fact is still an attempt to supply it — and a
+detector that needed the right answer to notice would have to store the thing the system
+claims to have forgotten. Naming the entity scores zero on this, which is the whole point.
+
+The protocol layer is `defenses/detection_context.py`, `detector_protocol.py`,
+`answerability_detector.py` and `atomic_text.py`. Three things are structural rather than
+conventional:
+
+* `ProtectedQuestion` has no answer field and `from_mapping` refuses `item_id`,
+  `concept_id`, `answer`, `label` and the rest of `FORBIDDEN_CONTEXT_KEYS`. Every one of
+  those keys exists elsewhere in this repo on rows that legitimately carry it, and a
+  constructor that says no is the only thing between them and the runtime.
+* `DetectionContext` cannot hold a protected question the router did not select, and
+  `request_is_evidence` is refused under `graph_flow`. The request tells the detector
+  which relation to check; it is not evidence that forgotten content appeared. Merging the
+  two is how the guarded arm ends up refusing everything and "leakage went to zero"
+  restates "the system stopped answering".
+* The executor's dependency is inverted onto `ConceptDetector`. The hashing detector
+  reaches it through `LegacyDetectorAdapter`, which ignores the request entirely so that
+  adding the protocol changes no number v1/v2 published.
+
+#### The natural bank, because v3's clean pool was the wrong flow
+
+v3's generated-clean FPR came from `memory_reentry`, and its own artifact says the figure
+is not comparable to the natural study's. `DETECTOR_V4_NATURAL_BANK.json` is collected
+from `20260813T043200Z-discovery-natural-flow`, unguarded arm only, labelled by that run's
+pinned NLI scorer, and halved by `sha256(text)` parity before anyone looked: 120 leaking,
+7880 clean, 7200 retain, 0 unlabelled.
+
+#### The ceiling, and what it actually bounds
+
+Phase 5 runs the answer-aware oracle *before* any model is trained: hand the evaluator the
+protected answer and ask whether leaking text is separable from clean text at all. On the
+natural bank's gate half, at the coverage threshold selected on the development half under
+the 0.10 clean-FPR ceiling:
+
+| | micro recall | macro recall | clean FPR |
+|---|---|---|---|
+| answer-aware oracle | **0.032** | 0.029 | 0.087 |
+| answer-free lexical floor | 0.081 | 0.125 | 0.079 |
+
+The oracle fails, and the failure locus says why. **92.5% of the leaking population comes
+from open-ended questions** — "how would X advise aspiring leadership authors", "what
+inspired X" — and **35% of leaking texts share not one content token with the pinned
+answer**. Goal A presumes the protected question has a *slot*: "where was X born" is
+answered by a place, and a candidate either supplies one or does not. An open-ended frame
+has no slot, "does this candidate attempt to supply the answer" stops being a well-formed
+question about the text, and an evaluator *holding the answer* cannot see the row.
+
+So the bound is not the model class. It is the leak definition. Tuning an encoder against
+a label an answer-aware oracle cannot reproduce is precisely the mistake v3 made one level
+up, and the correct response is to stop rather than to rent an instance.
+
+#### What is deliberately not done
+
+`answerability_v4` is **not** a value of `GraphDetectorConfig.backend`, and a contract test
+asserts it. A detector reaches a study after its held-out gate has been opened and passed;
+v4's has not. Nothing under `defenses/` may read `DETECTOR_V4_ANSWER_KEY.json`, and a test
+walks the package to check it. `EvidenceAccumulator` is verified, not rewritten: it is part
+of the mechanism that passed its runtime-liveness checks, and churning it before v4 has a
+gate would risk the component that works for the sake of the one that does not.
+
+The CPU reference scorer is a **floor** and says so in its own `to_dict()`. It is lexical,
+so it misses paraphrased relations by construction — 0.28 micro recall on the held-out
+synthetic split, whose surface variants are disjoint from training — and it raises almost
+no false alarms (0.002 clean, 0.0 retain). That shape is the argument for a cross-encoder,
+not a substitute for one.
