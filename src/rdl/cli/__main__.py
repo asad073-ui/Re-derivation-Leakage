@@ -11,6 +11,13 @@ from .detector_corpus import detector_corpus
 from .detector_gates import detector_gates
 from .detector_recall import detector_recall
 from .detector_v4_1_freeze import detector_v4_1_freeze
+from .detector_v4_2_banks import (
+    detector_v4_2_build_bank,
+    detector_v4_2_final_gate,
+    detector_v4_2_freeze_banks,
+)
+from .detector_v4_2_llm_judge import detector_v4_2_llm_judge
+from .detector_v4_2_report import detector_v4_2_label_report
 from .detector_v4_data import detector_v4_build_data
 from .detector_v4_gates import detector_v4_gates
 from .detector_v4_label_audit import detector_v4_label_audit, detector_v4_label_report
@@ -94,6 +101,28 @@ app.command("graph-detector-v4-1-freeze")(detector_v4_1_freeze)
 app.command("graph-detector-v4-label-audit")(detector_v4_label_audit)
 app.command("graph-detector-v4-label-report")(detector_v4_label_report)
 app.command("graph-detector-v4-gates")(detector_v4_gates)
+
+# v4.2 — the same audit, annotated by two model judges instead of two humans. The
+# commands are named apart from v4.1's for the reason DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md
+# E4 gives: LABEL_ALIGNMENT_REPORT.json is the human report, and an artifact whose schema
+# says "human judges" must never be written from an LLM's output.
+#
+#   llm-judge     one judge, one pass, stateless per row. --dry-run calls nothing.
+#   label-report  adjudicates the two judges and writes the MODEL label report, which
+#                 carries human_grounded=false and publication_label_valid=false.
+app.command("graph-detector-v4-2-llm-judge")(detector_v4_2_llm_judge)
+app.command("graph-detector-v4-2-label-report")(detector_v4_2_label_report)
+
+# The banks. FINAL_GATE_BANK_MANIFEST.json froze the final bank's seeds and gates but not
+# its generation budget, and a bank whose size is decided at generation time can be grown
+# until a gate passes. These close that gap without editing the frozen manifest.
+#
+#   freeze-banks  the engineering bank's manifest, and the budget the final one lacks
+#   build-bank    assemble a bank, REFUSING runs that do not match the pre-registration
+#   final-gate    open a bank once, at a frozen threshold, and record that it was opened
+app.command("graph-detector-v4-2-freeze-banks")(detector_v4_2_freeze_banks)
+app.command("graph-detector-v4-2-build-bank")(detector_v4_2_build_bank)
+app.command("graph-detector-v4-2-final-gate")(detector_v4_2_final_gate)
 
 
 if __name__ == "__main__":

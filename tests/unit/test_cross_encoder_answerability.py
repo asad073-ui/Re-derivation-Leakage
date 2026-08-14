@@ -329,3 +329,109 @@ def test_the_label_order_is_part_of_the_checkpoint():
         CrossEncoderAnswerabilityDetector(
             FakeModel(), tokenizer, labels=("ANSWER", "PARTIAL", "NONE")
         )
+
+
+# =====================================================================================
+# v4.2 — the device, and batched scoring of independent rows
+# =====================================================================================
+
+
+def test_the_parameter_device_is_read_off_the_model_not_off_the_request():
+    """THE gpu_used regression, at its source.
+
+    v4.1's ``from_artifact`` loaded the checkpoint and never moved it, while the gate wrote
+    ``"gpu_used": backend == "cross_encoder"``. So the artifact could assert a GPU for a
+    model that ran entirely on CPU. ``parameter_device`` reads a parameter; a model with no
+    parameters — the fakes here — is "unknown", and "unknown" is never a GPU.
+    """
+    detector = _detector()
+    assert detector.parameter_device() == "unknown"
+    assert detector.on_cuda() is False
+    assert detector.to_dict()["device_of_parameters"] == "unknown"
+
+
+def test_the_requested_device_and_the_actual_device_are_reported_separately():
+    """Both, always. One of them is a claim and the other is a measurement."""
+    detector = _detector(device="cuda")
+    payload = detector.to_dict()
+    assert payload["device_requested"] == "cuda"
+    assert payload["device_of_parameters"] == "unknown"
+    # The gate compares these two and refuses to write a reportable artifact when a
+    # requested CUDA has not become an actual CUDA.
+    assert payload["device_requested"] != payload["device_of_parameters"]
+
+
+def test_with_thresholds_carries_the_device():
+    """Otherwise a threshold sweep silently drops to CPU after its first point."""
+    detector = _detector(device="cuda")
+    assert detector.with_thresholds(answer_threshold=0.9).device == "cuda"
+
+
+def test_score_independent_batches_many_rows_into_few_forwards():
+    """THE batch-size-one regression.
+
+    v4.1's gate called ``score_batch([one_text])`` per row, so the configured batch size
+    batched nothing and the natural bank ran as thousands of single-row forwards. Here 12
+    independent rows at batch_size 8 must not become 12 model calls.
+    """
+    detector = _detector(batch_size=8)
+    context = _context()
+    requests = [(context, f"She was born in Paris. filler{i}") for i in range(12)]
+    results = detector.score_independent(requests)
+
+    assert len(results) == 12
+    assert all(r.fired for r in results)
+    assert detector.model.calls <= 3, f"{detector.model.calls} forwards for 12 rows"
+
+    # And the per-row loop is what it replaces, so it must agree with it.
+    per_row = _detector(batch_size=8)
+    expected = [
+        per_row.score_batch([text], context=context)[0].answer_probability for _c, text in requests
+    ]
+    assert [r.answer_probability for r in results] == expected
+
+
+def test_score_independent_preserves_input_order():
+    """The caller zips results against its rows positionally; nothing else keys them."""
+    detector = _detector(batch_size=4)
+    context = _context()
+    texts = ["She was born in Paris.", "Nothing relevant here.", "She was born in Paris."]
+    results = detector.score_independent([(context, t) for t in texts])
+    assert [r.fired for r in results] == [True, False, True]
+
+
+def test_score_independent_does_not_accumulate_across_rows():
+    """The guarantee the per-row loop was buying, kept without the per-row loop.
+
+    ``score_batch`` deliberately accumulates: a fragment left open by one candidate is
+    joined to the next. Across unrelated bank rows that would make one item's verdict
+    depend on another's, so the independent path has no pending state at all.
+    """
+    context = _context()
+    fragment = "She was born"  # relation only -> PARTIAL, opens a fragment
+    completion = "in Paris."  # neither cue alone -> NONE
+
+    batched = _detector(accumulate=True).score_batch([fragment, completion], context=context)
+    assert batched[1].from_accumulated_evidence or batched[1].fired, (
+        "the trajectory path is expected to accumulate; if it stopped, this test's premise "
+        "is gone rather than its conclusion being proved"
+    )
+
+    independent = _detector(accumulate=True).score_independent(
+        [(context, fragment), (context, completion)]
+    )
+    assert independent[1].fired is False
+    assert independent[1].from_accumulated_evidence is False
+
+
+def test_score_independent_returns_an_empty_result_for_an_unrouted_row():
+    """Unrouted rows never reach the scorer, and still occupy their position."""
+    detector = _detector()
+    unrouted = DetectionContext(request_text="Who wrote Dune?", routing=IngressRouting())
+    results = detector.score_independent(
+        [(unrouted, "She was born in Paris."), (_context(), "She was born in Paris.")]
+    )
+    assert results[0].fired is False
+    assert results[0].forget_ids == ()
+    assert results[1].fired is True
+    assert detector.stats()["detector_unrouted_calls"] == 1

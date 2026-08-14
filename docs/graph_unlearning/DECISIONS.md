@@ -1237,3 +1237,101 @@ that skips the fix is a way to keep the mistake.
 The blinded audit needs two human judges. That is condition 2 of the twelve in
 `DETECTOR_V4_1_PROTOCOL.md` §8, it is the only one this branch does not meet, and no GPU
 step may run before it clears.
+
+### GU-0038 — 2026-08-14 — Two model judges, named as model judges, and the GPU path was not actually ready
+
+Condition 2 of `DETECTOR_V4_1_PROTOCOL.md` §8 is a human-time blocker on a solo project,
+and it has held the whole detector line still. This entry records two decisions: how that
+blocker is bypassed for an *engineering* experiment without laundering the evidence, and
+seven defects in the GPU path that would have produced wrong or unfalsifiable numbers on
+the box.
+
+#### 1. The annotator changed, so the artifact name changed
+
+`DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md` is pre-registered and committed **before** any judge
+call. It replaces v4.1's human annotator population with two independent model judges —
+OpenAI `gpt-5.6-sol` and Anthropic `claude-sonnet-5` — adjudicated by the researcher on
+disagreements only.
+
+The bounds are carried over unchanged (κ ≥ 0.70, ≥ 100 ANSWER, ≥ 200 NONE, ≥ 2 strata,
+≥ 3 authors, 0 unresolved). Relaxing a bound because the annotators got cheaper would make
+the substitution unfalsifiable — the point of keeping the bounds is that two model judges
+can *fail* them.
+
+What is not carried over is the name. v4.1's `LABEL_ALIGNMENT_REPORT.json` is the human
+report and no v4.2 command writes it. v4.2 writes
+`DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json`, carrying
+`judge_population: "two_independent_llm_judges"`, `human_grounded: false`,
+`engineering_gpu_ready`, and `publication_label_valid: false`. No code path converts the
+last to `true` on the strength of GPT and Claude agreeing: two models agreeing is
+consistency evidence, and shared position/verbosity/self-preference biases are exactly the
+failure mode that produces agreement without correctness.
+
+Three consequences worth naming:
+
+* **`temperature=0` is not available on Judge B.** `claude-sonnet-5` rejects non-default
+  `temperature`, `top_p` and `top_k` with a 400. v4.2 therefore does not set them, records
+  the parameters it did use, and does not describe the run as deterministic.
+* **An empty reference answer is `UNCERTAIN`, not `NO`.** 300 of the 1,019 audit rows are
+  retain traffic with no reference answer. Scoring those `NO` would manufacture 300
+  agreeing negatives and inflate the reference-pass κ with rows neither judge judged.
+* **Human validation is deferred, not cancelled, and its design is frozen now** — a fixed
+  stratified sample of *agreements* as well as every disagreement, across all five strata,
+  both question types, and all three consensus labels. Validating only disagreements
+  measures nothing about the cases where both models are confidently wrong together, and
+  designing the sample after seeing the detector's result would let the result choose its
+  own validation.
+
+The final gate bank stays sealed. Seeds 40241–40244 are the one-shot surface for a
+human-validated result; the v4.2 engineering experiment draws a separate bank under seeds
+50241–50244 (`ENGINEERING_BANK_MANIFEST.json`). `FINAL_GATE_BANK_MANIFEST.json` also froze
+seeds and minimum label counts but not the *generation budget*, so items, samples per
+item, k, arms, run counts, a row cap and a deduplication policy are frozen alongside them
+before anything is generated.
+
+#### 2. Seven defects in the path that would have run on the RTX
+
+Found by reading the merged code rather than by running it, which is the only way to find
+them without spending the instance.
+
+* **The cross-encoder never reached the GPU.** `from_artifact()` loaded the checkpoint and
+  called `.eval()` but never `.to(device)`, and `_collate` built CPU tensors — while the
+  gate artifact declared `"gpu_used": backend == "cross_encoder"`. A run could have
+  claimed GPU use for a model that ran entirely on CPU. The device is now explicit,
+  `--device cuda` is available, the model's *actual* parameter device is recorded, and a
+  reportable cross-encoder gate refuses to be written when CUDA was requested and not
+  used.
+* **Gate inference ran at batch size one.** `_natural_scores` called
+  `detector.score_batch([single_text], ...)` per row, so the configured batch size did not
+  batch the natural bank at all — thousands of rows would have been thousands of tiny
+  kernel launches. Independent candidate/question pairs now batch through one scoring
+  path that does not accumulate evidence across unrelated trajectories, keeps one routing
+  context per request, and returns results in the original order.
+* **The last partial gradient accumulation was thrown away.** The optimizer stepped only
+  on `step % gradient_accumulation_steps == 0`, so an epoch ending mid-accumulation
+  discarded those gradients, and `steps_per_epoch` used floor division so the scheduler
+  was built for a different number of steps than the loop takes.
+* **The NLI entailment index was hard-coded** to `1` with a comment claiming it was
+  confirmed on the box. It is now resolved from `model.config.label2id`/`id2label`, fails
+  loudly when the entailment class is ambiguous, and records what it resolved.
+* **Training and serving saw different inputs.** `natural_examples()` set `"aliases": []`
+  while runtime inference receives routed identity aliases — training-serving skew in the
+  one field the routing contributes. The adjudicated natural rows are now joined to the
+  offline concept registry and carry the same permitted aliases.
+* **A checkpoint could not be verified.** The manifest recorded a local path but no hash of
+  the weights, tokenizer, config or label map, so a copied or released checkpoint could
+  not be checked against the one that produced the numbers. All four are now SHA-256'd.
+* **Checkpoint and threshold selection were not frozen, and the grid was too coarse.** The
+  trainer selected the best epoch on general macro-F1 while the stated objective is recall
+  under two FPR ceilings, and the threshold sweep used a 0.05 grid. Three fixed seeds are
+  trained and all are reported; the checkpoint is selected on development Goal A recall
+  subject to both FPR constraints; the threshold sweep uses exact score breakpoints. Both
+  rules are frozen before training rather than chosen after.
+
+A non-reportable CUDA smoke mode was added for the same reason the defects were findable:
+GPU-only errors should surface on 64 rows and one optimizer step, not on the full run.
+
+Until every one of the eighteen conditions in `DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md` §11
+holds, `engineering_gpu_ready` is `false`. When they all hold it becomes `true` and
+`publication_label_valid` is still `false`. Those are different claims and the artifacts
+keep them apart.

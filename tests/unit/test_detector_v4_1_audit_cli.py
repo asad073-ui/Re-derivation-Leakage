@@ -329,15 +329,25 @@ def test_the_force_flag_is_deleted_not_defaulted_off():
     assert not any("ceiling" in line for line in flags), flags
 
 
-def test_the_trainer_refuses_to_start_without_the_label_audit(tmp_path):
+def _dirs(tmp_path):
+    """``(v4_1_dir, v4_2_dir)``. v4.2 adds a second acceptable authority, not a bypass."""
+    human = tmp_path / "v4_1"
+    model = tmp_path / "v4_2"
+    human.mkdir()
+    model.mkdir()
+    return human, model
+
+
+def test_the_trainer_refuses_to_start_without_any_label_audit(tmp_path):
     module = _trainer()
-    with pytest.raises(SystemExit, match=r"LABEL_ALIGNMENT_REPORT\.json is absent"):
-        module.require_label_audit(tmp_path)
+    with pytest.raises(SystemExit, match="neither"):
+        module.require_label_audit(*_dirs(tmp_path))
 
 
 def test_the_trainer_refuses_an_audit_that_failed_its_gate(tmp_path):
     module = _trainer()
-    (tmp_path / "LABEL_ALIGNMENT_REPORT.json").write_text(
+    human, model = _dirs(tmp_path)
+    (human / "LABEL_ALIGNMENT_REPORT.json").write_text(
         json.dumps(
             {
                 "all_gates_passed": False,
@@ -348,16 +358,89 @@ def test_the_trainer_refuses_an_audit_that_failed_its_gate(tmp_path):
         encoding="utf-8",
     )
     with pytest.raises(SystemExit, match="does NOT clear"):
-        module.require_label_audit(tmp_path)
+        module.require_label_audit(human, model)
 
 
-def test_the_trainer_accepts_a_passing_audit(tmp_path):
+def test_the_trainer_accepts_a_passing_human_audit(tmp_path):
     """A gate that can only refuse is not a gate."""
     module = _trainer()
-    (tmp_path / "LABEL_ALIGNMENT_REPORT.json").write_text(
+    human, model = _dirs(tmp_path)
+    (human / "LABEL_ALIGNMENT_REPORT.json").write_text(
         json.dumps({"all_gates_passed": True, "verdict": "usable"}), encoding="utf-8"
     )
-    assert module.require_label_audit(tmp_path)["all_gates_passed"] is True
+    authority = module.require_label_audit(human, model)
+    assert authority["all_gates_passed"] is True
+    assert authority["human_grounded"] is True
+    assert authority["publication_label_valid"] is True
+
+
+# ---------------------------------------------------------------- v4.2 authority --
+
+
+def _model_report(**overrides) -> str:
+    payload = {
+        "all_gates_passed": True,
+        "verdict": "usable",
+        "judge_population": "two_independent_llm_judges",
+        "human_grounded": False,
+        "publication_label_valid": False,
+    }
+    payload.update(overrides)
+    return json.dumps(payload)
+
+
+def test_the_trainer_accepts_a_model_judge_report_for_engineering_only(tmp_path):
+    """v4.2's substitution, and the labelling that keeps it honest downstream."""
+    module = _trainer()
+    human, model = _dirs(tmp_path)
+    (model / "DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json").write_text(
+        _model_report(), encoding="utf-8"
+    )
+    authority = module.require_label_audit(human, model)
+    assert authority["all_gates_passed"] is True
+    assert authority["human_grounded"] is False
+    assert authority["publication_label_valid"] is False
+    assert "ENGINEERING" in authority["authorises"]
+    assert "MODEL judges" in authority["warning"]
+
+
+def test_a_model_report_edited_to_claim_human_grounding_is_refused(tmp_path):
+    """The obvious way to launder the substitution: flip the flag and re-run the trainer.
+
+    The v4.2 schema is model-judge output by construction, so a file under that name
+    claiming human grounding has been edited — and loading it would put the claim into the
+    training manifest, where the next reader would inherit it.
+    """
+    module = _trainer()
+    human, model = _dirs(tmp_path)
+    (model / "DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json").write_text(
+        _model_report(human_grounded=True), encoding="utf-8"
+    )
+    with pytest.raises(SystemExit, match="human_grounded"):
+        module.require_label_audit(human, model)
+
+
+def test_a_model_report_edited_to_claim_publication_validity_is_refused(tmp_path):
+    module = _trainer()
+    human, model = _dirs(tmp_path)
+    (model / "DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json").write_text(
+        _model_report(publication_label_valid=True), encoding="utf-8"
+    )
+    with pytest.raises(SystemExit, match="consistency evidence, not correctness"):
+        module.require_label_audit(human, model)
+
+
+def test_the_human_report_wins_when_both_exist(tmp_path):
+    """Model judges are the fallback, not the default."""
+    module = _trainer()
+    human, model = _dirs(tmp_path)
+    (human / "LABEL_ALIGNMENT_REPORT.json").write_text(
+        json.dumps({"all_gates_passed": True, "verdict": "usable"}), encoding="utf-8"
+    )
+    (model / "DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json").write_text(
+        _model_report(), encoding="utf-8"
+    )
+    assert module.require_label_audit(human, model)["human_grounded"] is True
 
 
 def test_the_trainer_encodes_through_the_runtime_budget():

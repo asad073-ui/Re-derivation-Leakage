@@ -250,6 +250,7 @@ class CrossEncoderAnswerabilityDetector:
         budget: EncodingBudget | None = None,
         batch_size: int = 32,
         calibrated: bool = False,
+        device: str = "",
         labels: Sequence[str] = LABELS,
     ) -> None:
         if not 0.0 < answer_threshold <= 1.0:
@@ -270,6 +271,15 @@ class CrossEncoderAnswerabilityDetector:
         self.budget = budget or EncodingBudget()
         self.batch_size = max(1, int(batch_size))
         self.calibrated = bool(calibrated)
+        # Requested device. The model is moved here rather than by the caller, because a
+        # caller that forgets leaves a detector whose gate artifact can still claim GPU
+        # use. `parameter_device()` reports where the weights ACTUALLY are, and the gate
+        # compares the two rather than trusting either.
+        self.device = str(device or "")
+        if self.device:
+            move = getattr(model, "to", None)
+            if callable(move):
+                move(self.device)
         self.n_calls = 0
         self.n_candidates = 0
         self.n_clauses = 0
@@ -281,13 +291,21 @@ class CrossEncoderAnswerabilityDetector:
     # ------------------------------------------------------------------ loading --
 
     @classmethod
-    def from_artifact(cls, artifact: Path, **overrides: Any) -> CrossEncoderAnswerabilityDetector:
+    def from_artifact(
+        cls, artifact: Path, *, device: str = "", **overrides: Any
+    ) -> CrossEncoderAnswerabilityDetector:
         """Build from a ``DETECTOR_V4_MODEL.json`` written by the trainer.
 
         Both revisions are mandatory and are read from the artifact rather than guessed.
         A checkpoint whose weights or whose SEGMENTATION cannot be named is not eligible
         for a study: a moved model tag changes the detector, and a moved tokenizer tag
         changes the subword split, which changes every score at a fixed threshold.
+
+        ``device`` is the fix for a real defect. v4.1 loaded the checkpoint, called
+        ``.eval()`` and never moved it, while ``DETECTOR_V4_GATES.json`` declared
+        ``"gpu_used": backend == "cross_encoder"`` — so a gate could claim GPU use for a
+        model that ran entirely on CPU. The device is now explicit and
+        :meth:`parameter_device` reports where the weights actually ended up.
         """
         manifest = json.loads(Path(artifact).read_text(encoding="utf-8"))
         pins = manifest.get("pins", {})
@@ -327,6 +345,7 @@ class CrossEncoderAnswerabilityDetector:
                 max_aliases=int(pins.get("max_aliases", MAX_ALIASES)),
             ),
             "calibrated": bool(calibration),
+            "device": device,
         }
         kwargs.update(overrides)
         return cls(model, tokenizer, **kwargs)
@@ -355,9 +374,30 @@ class CrossEncoderAnswerabilityDetector:
             budget=self.budget,
             batch_size=self.batch_size,
             calibrated=self.calibrated,
+            # Carried, or a sweep would silently drop back to CPU after the first point
+            # while the manifest still named the device the first point ran on.
+            device=self.device,
         )
 
     # --------------------------------------------------------------- provenance --
+
+    def parameter_device(self) -> str:
+        """Where the weights ACTUALLY are, read off a parameter. Never the request.
+
+        The gate compares this against the device it asked for. ``"unknown"`` is the
+        honest answer for the in-process fake models the unit tests inject, which have no
+        parameters — and "unknown" must never be reported as a GPU.
+        """
+        parameters = getattr(self.model, "parameters", None)
+        if not callable(parameters):
+            return "unknown"
+        try:
+            return str(next(iter(parameters())).device)
+        except (StopIteration, TypeError, AttributeError):
+            return "unknown"
+
+    def on_cuda(self) -> bool:
+        return self.parameter_device().startswith("cuda")
 
     @property
     def revision(self) -> str:
@@ -381,6 +421,12 @@ class CrossEncoderAnswerabilityDetector:
             "partial_threshold": self.partial_threshold,
             "segmentation_version": SEGMENTATION_VERSION,
             "encoding_budget": self.budget.to_dict(),
+            # Both, always. The requested device is what the operator asked for and the
+            # parameter device is where the weights are; a gate that reported only the
+            # first could claim a GPU it never touched.
+            "device_requested": self.device or None,
+            "device_of_parameters": self.parameter_device(),
+            "batch_size": self.batch_size,
             "accumulates_partial_evidence": self.accumulate,
             "reports_answerability": True,
             "calibrated": self.calibrated,
@@ -436,7 +482,13 @@ class CrossEncoderAnswerabilityDetector:
         return out
 
     def _collate(self, encodings: Sequence[Mapping]) -> dict:
-        """Right-pad the batch. Uses the tokenizer's pad id when it exposes one."""
+        """Right-pad the batch onto ``self.device``. Tokenizer pad id when it exposes one.
+
+        The ``.to(device)`` is the second half of the CPU-inference defect: v4.1 built
+        ``torch.tensor(...)`` with no device, so even a model that had been moved would
+        have been fed CPU tensors and raised — or, on a model that had not been moved,
+        would have run the whole gate on CPU while the artifact claimed a GPU.
+        """
         pad = int(getattr(self.tokenizer, "pad_token_id", 0) or 0)
         keys = [k for k in ("input_ids", "attention_mask", "token_type_ids") if k in encodings[0]]
         width = max(len(e["input_ids"]) for e in encodings)
@@ -449,7 +501,10 @@ class CrossEncoderAnswerabilityDetector:
         try:
             import torch
 
-            return {k: torch.tensor(v, dtype=torch.long) for k, v in batch.items()}
+            tensors = {k: torch.tensor(v, dtype=torch.long) for k, v in batch.items()}
+            if self.device:
+                tensors = {k: v.to(self.device) for k, v in tensors.items()}
+            return tensors
         except ImportError:  # pragma: no cover - the fake-model tests take this path
             return batch
 
@@ -545,6 +600,84 @@ class CrossEncoderAnswerabilityDetector:
         restrict_to: frozenset[str] | None = None,
     ) -> AnswerabilityResult:
         return self.score_batch([candidate], context=context, restrict_to=restrict_to)[0]
+
+    def score_independent(
+        self,
+        requests: Sequence[tuple[DetectionContext, str]],
+        *,
+        restrict_to: frozenset[str] | None = None,
+    ) -> list[AnswerabilityResult]:
+        """Score many INDEPENDENT (context, candidate) pairs in as few forwards as possible.
+
+        This exists because the offline gate is not a trajectory. ``score_batch`` models a
+        conversation: one routing context, candidates in order, evidence accumulating
+        across them. The natural bank is thousands of unrelated rows, so v4.1's gate
+        called ``score_batch([one_text], ...)`` once per row — which is correct, and means
+        the configured batch size batched nothing. On a 3090 that is thousands of kernel
+        launches whose cost is dominated by launch overhead.
+
+        Three properties this must have, and does:
+
+        * **no accumulation across requests.** There is no ``pending`` state here at all.
+          Row *i*'s verdict cannot depend on row *i-1*'s, which is exactly the guarantee
+          the per-row loop was buying.
+        * **one routing context per request.** Each request keeps its own
+          ``questions_for(restrict_to)``; contexts are never merged, so a question routed
+          for one row cannot fire on another.
+        * **original order preserved.** Results are returned positionally, so a caller can
+          zip them against its rows without a key.
+
+        Every (question, clause) pair from every request goes into ONE list, which
+        :meth:`_forward` chunks at ``batch_size``. Unrouted requests contribute no pairs
+        and get the same empty result the batch path gives them.
+        """
+        self.n_calls += 1
+        self.n_candidates += len(requests)
+
+        pairs: list[tuple[ProtectedQuestion, str]] = []
+        # (request_index, scope_id, clause_index) for every pair, in pair order.
+        provenance: list[tuple[int, str, int]] = []
+        scope_to_forget: list[dict[str, str]] = []
+        for index, (context, candidate) in enumerate(requests):
+            questions = context.questions_for(restrict_to)
+            scope_to_forget.append({q.scope_id: q.forget_id for q in questions})
+            if not questions:
+                self.n_unrouted_calls += 1
+                continue
+            clauses = segment(candidate or "")
+            self.n_clauses += len(clauses)
+            for clause in clauses:
+                for question in questions:
+                    pairs.append((question, clause.text))
+                    provenance.append((index, question.scope_id, clause.index))
+
+        masses = self._forward(pairs)
+
+        # Reduce back per request. ``best`` mirrors score_batch's shape exactly, so the
+        # two paths cannot disagree about what "the top scope" means.
+        best: list[dict[str, tuple[float, float, int]]] = [{} for _ in requests]
+        for (index, scope_id, clause_index), row in zip(provenance, masses, strict=True):
+            answer, partial = row[2], row[1]
+            previous = best[index].get(scope_id)
+            if previous is None or (answer, partial) > (previous[0], previous[1]):
+                best[index][scope_id] = (answer, partial, clause_index)
+
+        out: list[AnswerabilityResult] = []
+        for index in range(len(requests)):
+            per_scope = best[index]
+            if not per_scope:
+                out.append(
+                    AnswerabilityResult(
+                        detector_revision=self.revision, threshold=self.answer_threshold
+                    )
+                )
+                continue
+            fired = tuple(
+                sorted(s for s, (a, _p, _i) in per_scope.items() if a >= self.answer_threshold)
+            )
+            # `accumulated` is empty by construction: nothing accumulates here.
+            out.append(self._collect(per_scope, fired, scope_to_forget[index], set()))
+        return out
 
     def _collect(
         self,
