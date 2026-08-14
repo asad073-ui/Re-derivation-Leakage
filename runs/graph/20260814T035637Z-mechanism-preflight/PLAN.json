@@ -1,0 +1,25 @@
+{
+  "arms": [
+    "single_agent",
+    "multi_agent_control",
+    "multi_agent_leak",
+    "multi_agent_dragon",
+    "multi_agent_stateless",
+    "multi_agent_graphforget_semantic_only",
+    "multi_agent_graphforget_tag_source_quarantine",
+    "multi_agent_graphforget_no_forward",
+    "multi_agent_graphforget_taint_forward",
+    "multi_agent_graphforget_taint_only",
+    "multi_agent_graphforget"
+  ],
+  "challenges": [
+    "memory_reentry"
+  ],
+  "n_items": 2,
+  "n_samples": 1,
+  "planned_generations_total": 146,
+  "planned_graph_generations": 102,
+  "planned_probe_generations": 44,
+  "planned_trajectories": 22,
+  "topology": "diamond5"
+}

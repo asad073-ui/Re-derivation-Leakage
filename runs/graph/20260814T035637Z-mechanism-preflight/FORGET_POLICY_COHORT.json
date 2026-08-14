@@ -1,0 +1,414 @@
+{
+  "dataset": "TOFU",
+  "dataset_config": "forget10",
+  "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+  "fingerprint": "dc6ace798a7308e6ed1739659bed500d18cde596f62896e87ffb364a2607f64e",
+  "hashes_frozen": true,
+  "items": [
+    {
+      "answer_sha256": "2f69ee253d04b7c07065230bf7c48cdfc2511659f36788d785ce1b34928a7f62",
+      "concept_id": "tofu-forget10-author-0000",
+      "index": 4,
+      "item_id": "forget10-0004",
+      "question_sha256": "a72a6bd706de24f6b3067990bb607047b407b0c578acd5afc6ef32ea55b5c576",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "ab89aabe161e4d9b481b3a8592acc03872fa716e73b1c14ea5d197ecd49f8206",
+      "concept_id": "tofu-forget10-author-0000",
+      "index": 12,
+      "item_id": "forget10-0012",
+      "question_sha256": "f242126ffe96bf007680b19245e157f1f41bda93fd1859f6344a449b4dfa4209",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "aaf320df6a946de812a699c79575e74412e381aafb3464037afbf9376257a3cc",
+      "concept_id": "tofu-forget10-author-0001",
+      "index": 20,
+      "item_id": "forget10-0020",
+      "question_sha256": "5040aa06c740511013fc4ef56766d565a21bdd5acf1512366365adfed3784005",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "d4ec41e4389fff101d9b0fb11077809b0554b0af4263096ef0e5b1d93b4f7df8",
+      "concept_id": "tofu-forget10-author-0001",
+      "index": 28,
+      "item_id": "forget10-0028",
+      "question_sha256": "96d71c11b35e27d46d29918a39c20264d9bb583c5371ddf19c442dfc786a1593",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "a3c3769aa67c72f57360e9dc0f47edf0b71ee3ed83c52f08e15dd766ef31c727",
+      "concept_id": "tofu-forget10-author-0001",
+      "index": 36,
+      "item_id": "forget10-0036",
+      "question_sha256": "fafb6065be26d0ddce55b31c5471062d1815fe08adf2262b6e39b69d39687c84",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "0b07ade49371a6ab90f5833ae4e422fbe8f035e18ee68d95a0a8d3df1bb6cb99",
+      "concept_id": "tofu-forget10-author-0002",
+      "index": 44,
+      "item_id": "forget10-0044",
+      "question_sha256": "8224bb9e77cec919f435287d865929ff1fedc5022e997e75fc3ef9a181772770",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "2bc1fbc62554257d3c6354538fca3593b9234ae29345a108af1f75475b38b38f",
+      "concept_id": "tofu-forget10-author-0002",
+      "index": 52,
+      "item_id": "forget10-0052",
+      "question_sha256": "e7786c5c9da7d820b2cde0dfb54d9b4dbaee797e2365af4903227222d6440db3",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "de1ca17d011f96f7ef5a8080b4abe442aa59024584aaee1b09ba0cda36dd38c7",
+      "concept_id": "tofu-forget10-author-0003",
+      "index": 60,
+      "item_id": "forget10-0060",
+      "question_sha256": "cece9adb7fc120a81949617921af3f6a4e01a2725e848532b6052c2f0465c488",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "cc6432460c1b1ff6adab7758f070eb954e5badc03b3504ff5d8befa1e7c81e59",
+      "concept_id": "tofu-forget10-author-0003",
+      "index": 68,
+      "item_id": "forget10-0068",
+      "question_sha256": "70277a9c37f719f661a63fb0f29cec5e207abb66670a691452b02b92c7cbed55",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "812d212fd3ae58bfca2c8fcc883f6ff30240b7dee9e692056a71734816342cda",
+      "concept_id": "tofu-forget10-author-0003",
+      "index": 76,
+      "item_id": "forget10-0076",
+      "question_sha256": "e8289dcefc750db81eabc51eb18187e7cad663ae28a131cdeeb38ea5b4fa215b",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "312fc44d74d49bbb6295030badac57f7289cfdd2a1faf068b140a8fdd89d5db7",
+      "concept_id": "tofu-forget10-author-0004",
+      "index": 84,
+      "item_id": "forget10-0084",
+      "question_sha256": "721d415439b59fc8fdfd8126b5afefa94e396d42d7ce729d404a507fef871852",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "fe7f56bf231072beb4e99709af16b5a9e23e5ee0f610655dd63b7a6d9ac91005",
+      "concept_id": "tofu-forget10-author-0004",
+      "index": 92,
+      "item_id": "forget10-0092",
+      "question_sha256": "379e15128a2a932ea852a14fea55f4c6a0e3d19a91e1b4e54bcc045d57c45d50",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "d0418c6c7ba70b46fe0c436b5941c445bfb9f543df34e06c0d2c90b108fea1db",
+      "concept_id": "tofu-forget10-author-0005",
+      "index": 100,
+      "item_id": "forget10-0100",
+      "question_sha256": "f12a9394ee52715fe7326b29765f8428799c01e3b317aa623f15270341b8d131",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "9a4105b5ddbcc88619fba2fff644d8b90d303cb20286c506705c8103c0998b0e",
+      "concept_id": "tofu-forget10-author-0005",
+      "index": 108,
+      "item_id": "forget10-0108",
+      "question_sha256": "0fb8645efbbfa89b0be317e89f7419d397685ee8351319f54089dbb3d3db0745",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "1be53ee538b57bf263765a11427c50b35c4f6c38c37be0932be356dbd3f39311",
+      "concept_id": "tofu-forget10-author-0005",
+      "index": 116,
+      "item_id": "forget10-0116",
+      "question_sha256": "30e895ea02074b8f5b19ffa1a80bae256c969dcd1153b0ee231fbd4657b71848",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "caf4fc24aa9cc920fd27bdfb832185149c057f16ac6d3fa92f4ebac0d802a580",
+      "concept_id": "tofu-forget10-author-0006",
+      "index": 124,
+      "item_id": "forget10-0124",
+      "question_sha256": "f808f98665b3de8fb7496afd89c4fd2e8c4f29825cac16fdf5e6a9ad5e1d67f5",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "71d6163d4a24e1241958043acb5279ddb4e2321eb03f6288ddcdf108d8e3133b",
+      "concept_id": "tofu-forget10-author-0006",
+      "index": 132,
+      "item_id": "forget10-0132",
+      "question_sha256": "0fc8d0b8b0c404d236232cc2c147b6f1f37d13c5caf090e4fb27319c7ab26d72",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "9805581a3a51fedb5ea9683ec39ddacc793fda16e3f1fb6eb8dd4425133fe003",
+      "concept_id": "tofu-forget10-author-0007",
+      "index": 140,
+      "item_id": "forget10-0140",
+      "question_sha256": "a4a38cf7331fb48798ce7841ed44e4d116d97297b37df41c92ed84537c7f1389",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "a602bf3b41bfdc88ba16b2316baced02e6e6c2452404e6ccd1afae62c2a1a404",
+      "concept_id": "tofu-forget10-author-0007",
+      "index": 148,
+      "item_id": "forget10-0148",
+      "question_sha256": "3a19a33e96335d96133f03c27ef8ac765ef53b87c9697286b35f31d430cae8c3",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "ab13edf4135210b7c9c5f196201fe150b7c47a330ba4fd4e1310d3010908377c",
+      "concept_id": "tofu-forget10-author-0007",
+      "index": 156,
+      "item_id": "forget10-0156",
+      "question_sha256": "ef1ee11e83edc00850fa610857da12abe1ec2a3c71e18a130a09992ef83f35eb",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "55e5811f13bee820be21ff4e30c4d30685834e5b0b0afd18a6d3c417090cabe2",
+      "concept_id": "tofu-forget10-author-0008",
+      "index": 164,
+      "item_id": "forget10-0164",
+      "question_sha256": "e50e881ba077b20f452f37daa757cefb71d83d9c780c326ddd1e4e35636e08b0",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "d292b8562a982010bead9bc85f8d6025725bb9ac5eacafd6154ff8459a441954",
+      "concept_id": "tofu-forget10-author-0008",
+      "index": 172,
+      "item_id": "forget10-0172",
+      "question_sha256": "a921f20c7a04500a5e3f7bb0475851836533c739ec2d4a07af50adf180d7e00e",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "f6b00affda04fb820270e4b894d9871fec0355769c854ac6f0ad23d655440dd4",
+      "concept_id": "tofu-forget10-author-0009",
+      "index": 180,
+      "item_id": "forget10-0180",
+      "question_sha256": "59acf6e1df481243736d3ab56908736a86ac37a87cc1d55a1cf1497a2ac2da8b",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "d462af49c46626feddc73129b21b504e46c305cec7e20f812562420a103bee2f",
+      "concept_id": "tofu-forget10-author-0009",
+      "index": 188,
+      "item_id": "forget10-0188",
+      "question_sha256": "721a136e654317dcf582cc3358ce7982aabfb1f48250116852fc6d840e1f931f",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "30062ad4f00253aea7fb66b695e03462cc1d7355ffb11126dda3a175f1589e64",
+      "concept_id": "tofu-forget10-author-0009",
+      "index": 196,
+      "item_id": "forget10-0196",
+      "question_sha256": "8a2d4ffd2f6669c7a1f5100ccaafe4b02a222e848853330be566aa2c1d3fba22",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "3d24cb35e33669e776ad52cb6d1584bab899b9af7ecd55ad7e9efd15ba827f10",
+      "concept_id": "tofu-forget10-author-0010",
+      "index": 204,
+      "item_id": "forget10-0204",
+      "question_sha256": "5f7fe4ec5762f577c58dd1e771ef0145af303eeb28d181b0ba8110d8ddf27e06",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "fe624885bc93461e98649e07aa2778306da588ac02a788325ebf2dd19bffce2a",
+      "concept_id": "tofu-forget10-author-0010",
+      "index": 212,
+      "item_id": "forget10-0212",
+      "question_sha256": "2fade7e01d2a2eba731ea7cc9cb81125ede35f641b0115b12206273af66f103f",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "a69e9f0a31283fbfd25555684c50adaa927351ed84afb6c554f3cfa1faac9610",
+      "concept_id": "tofu-forget10-author-0011",
+      "index": 220,
+      "item_id": "forget10-0220",
+      "question_sha256": "f595f5b6b088800204b10df4bff78fe36c0475dcfdcd0af1104c6cfb86866c64",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "b9685c61a695e71a4df82d0fdf000309c199978dda18823acdb211e8f45930e3",
+      "concept_id": "tofu-forget10-author-0011",
+      "index": 228,
+      "item_id": "forget10-0228",
+      "question_sha256": "a805b2a00b7d5383c1db13bcd4604215f5795052bacb436cba2a8da93b306917",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "f30d474d90baa208f3fc8704a62c4befdb85395beff2ec70e38620d60723ae35",
+      "concept_id": "tofu-forget10-author-0011",
+      "index": 236,
+      "item_id": "forget10-0236",
+      "question_sha256": "a93f5264175bdcee8b7f6ed08ab07716c962cd7dee77c9b085e7fc635e5be4a7",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "ac1265b348ed16d65d5f3cbd7b0ef3dc5ae91703e9c25bf823e8e562770175d2",
+      "concept_id": "tofu-forget10-author-0012",
+      "index": 244,
+      "item_id": "forget10-0244",
+      "question_sha256": "652bf73617a1e7596bd613d1fc0a6527cff7e2625453e1defd51a0d193e70ce6",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "cc8c2a5a43c7e23e1e1aae91a9d3cb3c0f0a42a31a9d824a5d47bdfd00cc3063",
+      "concept_id": "tofu-forget10-author-0012",
+      "index": 252,
+      "item_id": "forget10-0252",
+      "question_sha256": "341dd3efccbdfe07dae0bfd1a5cea2ecf4a233ff0c4d27991ad863650ee96f37",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "72c6968c6beb7727ba54762a87b7bb924d255f0c2578c170d30d578d4e9051f7",
+      "concept_id": "tofu-forget10-author-0013",
+      "index": 260,
+      "item_id": "forget10-0260",
+      "question_sha256": "330c1104c311d0a7708a97d9ed427b497bc1765e20a2fc010f080a8bdb1efb69",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "c8f8788645c8199666007548e630e447cb3f99f8fb156690cec51f5670afe33a",
+      "concept_id": "tofu-forget10-author-0013",
+      "index": 268,
+      "item_id": "forget10-0268",
+      "question_sha256": "4e087cedccd6b85a825010a3a6d05d1d05bd63153fb87284477648c54f9c645f",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "cffa61fd382187c3e617a39b386864faca6473bd49c15a47bd4ff67c3247a210",
+      "concept_id": "tofu-forget10-author-0013",
+      "index": 276,
+      "item_id": "forget10-0276",
+      "question_sha256": "fe501d8c1bbf9d5e055886e42e9b815ffed69bf84a4ead07ae27036827c642ed",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "4e34c1a008338039e017beeb8d0b7797b4ccbd3750d315d058d76d2079172ff1",
+      "concept_id": "tofu-forget10-author-0014",
+      "index": 284,
+      "item_id": "forget10-0284",
+      "question_sha256": "372cd15fec24311d00985d265436ce9ad005e79b54f660fea6c693b10d9a091a",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "802daf470b8a1926bb80c148741efdc26cb465c971c246d04e06390894c73d9a",
+      "concept_id": "tofu-forget10-author-0014",
+      "index": 292,
+      "item_id": "forget10-0292",
+      "question_sha256": "bca091a552d23c0b76e93a4d0fc31b09925fa71c0a45bd701f3f5877d9aad60c",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "f2694e0bda913e6d35d6b93b7af1755522c002ed34eb34d8f30dc5d9ae1d5ba5",
+      "concept_id": "tofu-forget10-author-0015",
+      "index": 300,
+      "item_id": "forget10-0300",
+      "question_sha256": "5736a687d11c6c20d27375f8031ff12cfcd428112142d83d044708acf66d72c2",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "8a4cbcb5b5a10fe010990dcdd302277d0330a211fb0db05ebfc7fdda876c9dba",
+      "concept_id": "tofu-forget10-author-0015",
+      "index": 308,
+      "item_id": "forget10-0308",
+      "question_sha256": "564049ccca0d618892bd45dc9964857c5de3a0e8bf0bad0e204757d19e0fd6be",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "60c5c302d99679da95aa6a2a9c023649a7587cbf4f417a8cad5b845eb1923260",
+      "concept_id": "tofu-forget10-author-0015",
+      "index": 316,
+      "item_id": "forget10-0316",
+      "question_sha256": "219908f832551b8bc5a076100c057473e02ebff1a50920dded93f0f92b4b33d6",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "47a6c5a9d102b9323593ef4b6641cb0811f130516c9840260031469280b343ca",
+      "concept_id": "tofu-forget10-author-0016",
+      "index": 324,
+      "item_id": "forget10-0324",
+      "question_sha256": "3cae18ce6483c2788269438f91c9989631aa0e44a5ec47d48276b8fd88553b13",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "caee01b3233a66fed78eff4c238db0c0ec58cbe736916c742cc204a7d444a465",
+      "concept_id": "tofu-forget10-author-0016",
+      "index": 332,
+      "item_id": "forget10-0332",
+      "question_sha256": "23b8b03200b14b40716ffa3fd01b4c9366bb9b686b02224db02c107c6f737e97",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "c5ff9fedc14966816b5d0b18956aecaa6a336c7990549c29317369e80ff2af2c",
+      "concept_id": "tofu-forget10-author-0017",
+      "index": 340,
+      "item_id": "forget10-0340",
+      "question_sha256": "cee1578425d60c8bb242d36f271e2c77b21f974e0014b7b013597987e2ea7343",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "f96e6b028504ef6d83bfe69a977f97d9508aaf11100144b7ba03eacb3deb6b29",
+      "concept_id": "tofu-forget10-author-0017",
+      "index": 348,
+      "item_id": "forget10-0348",
+      "question_sha256": "024e2ea944195e2d2aafa7375594cc55dc8c89baad693ac7f5f3970d6a734a1d",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "622d90b74b97ee686a7cdcd45fe5194b1e665868ef509659f1fb68ca3a60e476",
+      "concept_id": "tofu-forget10-author-0017",
+      "index": 356,
+      "item_id": "forget10-0356",
+      "question_sha256": "972e950d4b6d386cdc738a185562b3e1dedeef94d93a5f052be0e30a7a30096a",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "1c2422436a57e98ca3fdb0722a2f73a15b39da6f8a945f8cf37c99278c340a2a",
+      "concept_id": "tofu-forget10-author-0018",
+      "index": 364,
+      "item_id": "forget10-0364",
+      "question_sha256": "973366a783c8c3e7507e95530264abec6198b7c897c419dde5f5d9f000a453b8",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "6f36d2f57cc7a5a118476b384e674443f31aa2092376c74de35a95db337fb01c",
+      "concept_id": "tofu-forget10-author-0018",
+      "index": 372,
+      "item_id": "forget10-0372",
+      "question_sha256": "d3c85fd97a29c05124c1696b52ba6292d1f4329a0d9760330f2691b2c8b55b60",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "bd49f7534d1aaa1b9b7e4c0fd18c0c1aa7962c120383057fcc5e56a574ee2237",
+      "concept_id": "tofu-forget10-author-0019",
+      "index": 380,
+      "item_id": "forget10-0380",
+      "question_sha256": "4079e68f12199edb56752c6ea128ab7f80d1436e9d7eb6afe33723215571507b",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "bb16c42ffe3bc6461924784aff55af3dfab6ce1a216e105254a8d2dd8edeaa8b",
+      "concept_id": "tofu-forget10-author-0019",
+      "index": 388,
+      "item_id": "forget10-0388",
+      "question_sha256": "97a8eb8764880fa0942a555684d4a48f01d13736ca86e814456c3dd4a75a00bf",
+      "usage": "discovery"
+    },
+    {
+      "answer_sha256": "604f96b4fc1c1f37c4d8cb28e65e02b76eae55f1a813dc8abdd110a508bee53e",
+      "concept_id": "tofu-forget10-author-0019",
+      "index": 396,
+      "item_id": "forget10-0396",
+      "question_sha256": "90a8abc458fa0bce2b6803a5fca07b16aa221ade9eb72211ec312dcf11625944",
+      "usage": "discovery"
+    }
+  ],
+  "n_concepts": 20,
+  "n_items": 50,
+  "note": "50 questions not used by the earlier pilot. DISCOVERY, NOT VALIDATION: they concern the same 20 forget10 authors the pilot already covered, so they are new questions and not new forgotten concepts.",
+  "schema": "graph-cohort-v1",
+  "split": "discovery"
+}
