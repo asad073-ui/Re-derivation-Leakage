@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typer
 
+from .audit_mechanism import audit_mechanism
 from .bundle_graph import bundle_graph
 from .calibrate_detector import calibrate_detector
 from .detector_corpus import detector_corpus
@@ -55,6 +56,7 @@ app.command("graph-calibrate")(calibrate_detector)
 # nothing: recall diagnoses the detection gap, the corpus freezes what a fix may be
 # fitted on, and the bundle links a study's runs into one verdict.
 app.command("graph-detector-recall")(detector_recall)
+app.command("graph-audit-mechanism")(audit_mechanism)
 app.command("graph-detector-corpus")(detector_corpus)
 # The CPU go/no-go before an instance is rented (GU-0032). Exits non-zero on a
 # failing gate, because a detector that cannot see the leakage makes the

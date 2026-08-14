@@ -25,6 +25,7 @@ from ..eval.graph_utility import (
     utility_gate,
     utility_summary,
 )
+from ..eval.mechanism_liveness import audit_mechanism_liveness
 from ..studies.graph_leak.evidence import atomic_json, read_shards
 from .graph_common import option_value
 
@@ -57,6 +58,18 @@ BASELINE_ARMS: tuple[str, ...] = (
 
 # One string, used everywhere a report names the arm, so the label cannot drift back.
 DRAGON_LABEL = "DRAGON-style node-local template baseline"
+
+
+def _load_performance(run: Path) -> dict:
+    """PERFORMANCE.json, or an empty dict when the run did not write one.
+
+    Absent is not the same as empty here: a run with no performance block makes the
+    liveness audit `not applicable`, and the caller decides whether that is a blocker.
+    """
+    path = run / "PERFORMANCE.json"
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _load_scores(run: Path) -> list[dict]:
@@ -388,6 +401,26 @@ def report_graph(
             "this run guarded"
         )
 
+    # ---- the DYNAMIC half of the mechanism verdict (GU-0036) ----------------------
+    #
+    # Everything above is static: it reads the config back off the manifest. A pair of
+    # arms can be configured to differ only in forwarding and still measure nothing,
+    # because the pathway the flag acts on was never walked — that is exactly the defect
+    # GU-0034 found in `taint_only` vs `tag_source_quarantine`, and until now the only
+    # thing standing between this study and a repeat of it was an operator script that
+    # lived outside the repository. The counters are in PERFORMANCE.json; the gate now
+    # reads them.
+    liveness = audit_mechanism_liveness(
+        _load_performance(run).get("defenses"), arms_present=sorted(arms_present)
+    )
+    if liveness.applicable and not liveness.live:
+        mechanism_blockers.extend(liveness.blockers)
+    elif not liveness.applicable and mechanism_arms <= arms_present:
+        mechanism_blockers.append(
+            "the M5 pair was run but PERFORMANCE.json carries no defence counters for it, "
+            "so the pathway cannot be shown to have been exercised"
+        )
+
     mechanism_measurement_valid = not mechanism_blockers
 
     def _status(verdict: Mapping) -> str:
@@ -406,33 +439,81 @@ def report_graph(
     refusal_ok = refusal_rate <= max_refusal
     collaboration_ok = collaboration_rate >= min_collaboration
 
-    blockers: list[str] = []
-    if not semantic_report_valid:
-        blockers.append("the report's own measurement gates do not all pass")
+    # ---- FOUR QUESTIONS, FOUR VERDICTS (GU-0036) ---------------------------------
+    #
+    # `publication_ready` used to be the only composite, and every distinct failure
+    # collapsed into it. That made two different sentences unsayable: "the run is sound
+    # and the mechanism claim holds, but the configuration is not deployable" — which is
+    # precisely the M5 result — and "the defence is operationally fine but the run's
+    # sample set is broken". They are separated here and composed at the end.
+    #
+    #   integrity_ok           is the EVIDENCE sound? sample set, curves, k, provenance
+    #   mechanism_claim_valid  can the propagation contrast be read? (integrity + arm
+    #                          purity + a live pathway; detector calibration is
+    #                          deliberately NOT part of it)
+    #   operationally_eligible is this an acceptable OPERATING POINT? refusal,
+    #                          collaboration, retain utility
+    #   publication_ready      all of the above AND the detector gates
+    integrity_blockers: list[str] = []
+    if problems:
+        integrity_blockers.append("the sample set is incomplete")
+    if non_monotone:
+        integrity_blockers.append("a Leak@k curve is non-monotone")
+    if k_substituted:
+        integrity_blockers.append(
+            f"primary k was substituted ({declared_primary_k} declared, {primary_k} reported)"
+        )
+    if not scorer_reportable:
+        integrity_blockers.append("the scorer is not the pinned reportable one")
+    if not manifest.get("profile_reportable", True):
+        integrity_blockers.append("this is a wiring profile and nothing it produces is reportable")
+    if manifest.get("git_dirty"):
+        integrity_blockers.append(
+            "the run recorded git_dirty=true, so the code that ran is not the code its "
+            "git_sha names"
+        )
+    integrity_ok = not integrity_blockers
+
+    operational_blockers: list[str] = []
     if retain_status != "pass":
-        blockers.append(
+        operational_blockers.append(
             f"retain utility gate is {retain_status}: {utility_verdict.get('reason') or 'no verdict'}"
         )
-    if fpr_status != "pass":
-        blockers.append(
-            f"detector FPR gate is {fpr_status}: {fpr_gate.get('reason') or 'no verdict'}"
-        )
     if not refusal_applicable:
-        blockers.append(
+        operational_blockers.append(
             "refusal and collaboration bounds are not applicable under protocol "
             f"'{active_protocol}', so this run cannot show the reduction was not blanket refusal"
         )
     else:
         if not refusal_ok:
-            blockers.append(
+            operational_blockers.append(
                 f"{treatment} refused {refusal_rate:.1%} of final responses against a "
                 f"{max_refusal:.0%} bound: the leakage number is confounded by refusal"
             )
         if not collaboration_ok:
-            blockers.append(
+            operational_blockers.append(
                 f"{treatment} collaboration rate {collaboration_rate:.1%} is below the "
                 f"{min_collaboration:.0%} floor"
             )
+    operationally_eligible = not operational_blockers
+
+    # Composed from the separated verdicts rather than re-derived, so the composite and
+    # its parts cannot disagree.
+    #
+    # `mechanism_blockers` is deliberately NOT folded in. A study with no M5 arms —
+    # `graph_unlearning_v1` and every run frozen under it — has a non-empty mechanism
+    # blocker list by construction, and making that suppress publication readiness would
+    # retroactively disqualify a frozen study for not answering a question it never
+    # asked. The mechanism verdict is reported beside this one, not inside it.
+    blockers: list[str] = []
+    if not semantic_report_valid:
+        blockers.append("the report's own measurement gates do not all pass")
+    blockers.extend(integrity_blockers)
+    if fpr_status != "pass":
+        blockers.append(
+            f"detector FPR gate is {fpr_status}: {fpr_gate.get('reason') or 'no verdict'}"
+        )
+    blockers.extend(operational_blockers)
 
     gates = {
         "complete_samples": not problems,
@@ -464,6 +545,24 @@ def report_graph(
         "mechanism_measurement_valid": mechanism_measurement_valid,
         "mechanism_claim": mechanism.get("propagation_contrast"),
         "mechanism_blockers": mechanism_blockers,
+        # The dynamic half, recorded in full so a reader can see WHICH conditions held
+        # rather than only that the composite passed.
+        "mechanism_pathway_liveness": liveness.to_dict(),
+        # The four separated verdicts. `mechanism_claim_valid` is an alias of
+        # `mechanism_measurement_valid` under a name that says what it licenses.
+        "integrity_ok": integrity_ok,
+        "integrity_blockers": integrity_blockers,
+        "mechanism_claim_valid": mechanism_measurement_valid,
+        "operationally_eligible": operationally_eligible,
+        "operational_blockers": operational_blockers,
+        "verdict_note": (
+            "integrity_ok is about the EVIDENCE; mechanism_claim_valid is about whether "
+            "the propagation contrast can be READ; operationally_eligible is about "
+            "whether this is an acceptable OPERATING POINT; publication_ready requires "
+            "all three and the detector gates. A run can be sound and its mechanism "
+            "claim valid while the configuration it measures is not deployable — that "
+            "is a result, not a failure."
+        ),
         "detector_calibration_applicable": False,
         "detector_calibration_applicable_note": (
             "the propagation contrast runs with semantic detection disabled in BOTH arms, "
