@@ -1,0 +1,1058 @@
+{
+  "applicable": true,
+  "by_arm": {
+    "multi_agent_control": {
+      "agent_message": {
+        "false_alarm_rate": 0.18943428818194905,
+        "n_clean": 6947,
+        "n_clean_fired": 1316,
+        "n_judged": 7200,
+        "n_leaking": 253,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 40,
+        "n_missed": 253,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.15810276679841898
+      },
+      "all": {
+        "false_alarm_rate": 0.1880330370769369,
+        "n_clean": 22278,
+        "n_clean_fired": 4189,
+        "n_judged": 23040,
+        "n_leaking": 762,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 120,
+        "n_missed": 762,
+        "n_texts": 23040,
+        "recall": 0.0,
+        "recall_any_concept": 0.15748031496062992
+      },
+      "edge_payload": {
+        "false_alarm_rate": 0.18353989695028547,
+        "n_clean": 7181,
+        "n_clean_fired": 1318,
+        "n_judged": 7200,
+        "n_leaking": 19,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 0,
+        "n_missed": 19,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.0
+      },
+      "final_text": {
+        "false_alarm_rate": 0.19866999168744803,
+        "n_clean": 1203,
+        "n_clean_fired": 239,
+        "n_judged": 1440,
+        "n_leaking": 237,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 40,
+        "n_missed": 237,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.16877637130801687
+      },
+      "stored_node": {
+        "false_alarm_rate": 0.18943428818194905,
+        "n_clean": 6947,
+        "n_clean_fired": 1316,
+        "n_judged": 7200,
+        "n_leaking": 253,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 40,
+        "n_missed": 253,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.15810276679841898
+      }
+    },
+    "multi_agent_dragon": {
+      "agent_message": {
+        "false_alarm_rate": 0.19499811959383226,
+        "n_clean": 5318,
+        "n_clean_fired": 1037,
+        "n_judged": 7200,
+        "n_leaking": 1882,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 309,
+        "n_missed": 1882,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.16418703506907545
+      },
+      "all": {
+        "false_alarm_rate": 0.1810607838535555,
+        "n_clean": 17044,
+        "n_clean_fired": 3086,
+        "n_judged": 23040,
+        "n_leaking": 5996,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 913,
+        "n_missed": 5996,
+        "n_texts": 23040,
+        "recall": 0.0,
+        "recall_any_concept": 0.15226817878585724
+      },
+      "edge_payload": {
+        "false_alarm_rate": 0.19301926378027848,
+        "n_clean": 5243,
+        "n_clean_fired": 1012,
+        "n_judged": 7200,
+        "n_leaking": 1957,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 295,
+        "n_missed": 1957,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.15074092999489014
+      },
+      "final_text": {
+        "false_alarm_rate": 0.0,
+        "n_clean": 1165,
+        "n_clean_fired": 0,
+        "n_judged": 1440,
+        "n_leaking": 275,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 0,
+        "n_missed": 275,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.0
+      },
+      "stored_node": {
+        "false_alarm_rate": 0.19499811959383226,
+        "n_clean": 5318,
+        "n_clean_fired": 1037,
+        "n_judged": 7200,
+        "n_leaking": 1882,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 309,
+        "n_missed": 1882,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.16418703506907545
+      }
+    },
+    "multi_agent_graphforget": {
+      "agent_message": {
+        "false_alarm_rate": 0.08492758805649919,
+        "n_clean": 5593,
+        "n_clean_fired": 475,
+        "n_judged": 7200,
+        "n_leaking": 1607,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 160,
+        "n_missed": 1607,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.09956440572495333
+      },
+      "all": {
+        "false_alarm_rate": 0.029617159246788878,
+        "n_clean": 16038,
+        "n_clean_fired": 475,
+        "n_judged": 20903,
+        "n_leaking": 4865,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 160,
+        "n_missed": 4865,
+        "n_texts": 20903,
+        "recall": 0.0,
+        "recall_any_concept": 0.0328879753340185
+      },
+      "edge_payload": {
+        "false_alarm_rate": 0.0,
+        "n_clean": 5614,
+        "n_clean_fired": 0,
+        "n_judged": 7200,
+        "n_leaking": 1586,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 0,
+        "n_missed": 1586,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.0
+      },
+      "final_text": {
+        "false_alarm_rate": 0.0,
+        "n_clean": 1215,
+        "n_clean_fired": 0,
+        "n_judged": 1440,
+        "n_leaking": 225,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 0,
+        "n_missed": 225,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.0
+      },
+      "stored_node": {
+        "false_alarm_rate": 0.0,
+        "n_clean": 3616,
+        "n_clean_fired": 0,
+        "n_judged": 5063,
+        "n_leaking": 1447,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 0,
+        "n_missed": 1447,
+        "n_texts": 5063,
+        "recall": 0.0,
+        "recall_any_concept": 0.0
+      }
+    },
+    "multi_agent_graphforget_no_forward": {
+      "agent_message": {
+        "false_alarm_rate": 0.19582146248812915,
+        "n_clean": 5265,
+        "n_clean_fired": 1031,
+        "n_judged": 7200,
+        "n_leaking": 1935,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 343,
+        "n_missed": 1935,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.1772609819121447
+      },
+      "all": {
+        "false_alarm_rate": 0.1951364528212141,
+        "n_clean": 16819,
+        "n_clean_fired": 3282,
+        "n_judged": 23040,
+        "n_leaking": 6221,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 1081,
+        "n_missed": 6221,
+        "n_texts": 23040,
+        "recall": 0.0,
+        "recall_any_concept": 0.1737662755184054
+      },
+      "edge_payload": {
+        "false_alarm_rate": 0.1912893323100537,
+        "n_clean": 5212,
+        "n_clean_fired": 997,
+        "n_judged": 7200,
+        "n_leaking": 1988,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 321,
+        "n_missed": 1988,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.16146881287726358
+      },
+      "final_text": {
+        "false_alarm_rate": 0.20705663881151345,
+        "n_clean": 1077,
+        "n_clean_fired": 223,
+        "n_judged": 1440,
+        "n_leaking": 363,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 74,
+        "n_missed": 363,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.20385674931129477
+      },
+      "stored_node": {
+        "false_alarm_rate": 0.19582146248812915,
+        "n_clean": 5265,
+        "n_clean_fired": 1031,
+        "n_judged": 7200,
+        "n_leaking": 1935,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 343,
+        "n_missed": 1935,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.1772609819121447
+      }
+    },
+    "multi_agent_graphforget_semantic_only": {
+      "agent_message": {
+        "false_alarm_rate": 0.16261398176291794,
+        "n_clean": 5264,
+        "n_clean_fired": 856,
+        "n_judged": 7200,
+        "n_leaking": 1936,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 296,
+        "n_missed": 1936,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.15289256198347106
+      },
+      "all": {
+        "false_alarm_rate": 0.052489575668383616,
+        "n_clean": 16308,
+        "n_clean_fired": 856,
+        "n_judged": 21888,
+        "n_leaking": 5580,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 296,
+        "n_missed": 5580,
+        "n_texts": 21888,
+        "recall": 0.0,
+        "recall_any_concept": 0.05304659498207885
+      },
+      "edge_payload": {
+        "false_alarm_rate": 0.0,
+        "n_clean": 5502,
+        "n_clean_fired": 0,
+        "n_judged": 7200,
+        "n_leaking": 1698,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 0,
+        "n_missed": 1698,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.0
+      },
+      "final_text": {
+        "false_alarm_rate": 0.0,
+        "n_clean": 1134,
+        "n_clean_fired": 0,
+        "n_judged": 1440,
+        "n_leaking": 306,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 0,
+        "n_missed": 306,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.0
+      },
+      "stored_node": {
+        "false_alarm_rate": 0.0,
+        "n_clean": 4408,
+        "n_clean_fired": 0,
+        "n_judged": 6048,
+        "n_leaking": 1640,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 0,
+        "n_missed": 1640,
+        "n_texts": 6048,
+        "recall": 0.0,
+        "recall_any_concept": 0.0
+      }
+    },
+    "multi_agent_graphforget_tag_source_quarantine": {
+      "agent_message": {
+        "false_alarm_rate": 0.19582146248812915,
+        "n_clean": 5265,
+        "n_clean_fired": 1031,
+        "n_judged": 7200,
+        "n_leaking": 1935,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 343,
+        "n_missed": 1935,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.1772609819121447
+      },
+      "all": {
+        "false_alarm_rate": 0.1951364528212141,
+        "n_clean": 16819,
+        "n_clean_fired": 3282,
+        "n_judged": 23040,
+        "n_leaking": 6221,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 1081,
+        "n_missed": 6221,
+        "n_texts": 23040,
+        "recall": 0.0,
+        "recall_any_concept": 0.1737662755184054
+      },
+      "edge_payload": {
+        "false_alarm_rate": 0.1912893323100537,
+        "n_clean": 5212,
+        "n_clean_fired": 997,
+        "n_judged": 7200,
+        "n_leaking": 1988,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 321,
+        "n_missed": 1988,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.16146881287726358
+      },
+      "final_text": {
+        "false_alarm_rate": 0.20705663881151345,
+        "n_clean": 1077,
+        "n_clean_fired": 223,
+        "n_judged": 1440,
+        "n_leaking": 363,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 74,
+        "n_missed": 363,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.20385674931129477
+      },
+      "stored_node": {
+        "false_alarm_rate": 0.19582146248812915,
+        "n_clean": 5265,
+        "n_clean_fired": 1031,
+        "n_judged": 7200,
+        "n_leaking": 1935,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 343,
+        "n_missed": 1935,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.1772609819121447
+      }
+    },
+    "multi_agent_graphforget_taint_forward": {
+      "agent_message": {
+        "false_alarm_rate": 0.19582146248812915,
+        "n_clean": 5265,
+        "n_clean_fired": 1031,
+        "n_judged": 7200,
+        "n_leaking": 1935,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 343,
+        "n_missed": 1935,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.1772609819121447
+      },
+      "all": {
+        "false_alarm_rate": 0.1951364528212141,
+        "n_clean": 16819,
+        "n_clean_fired": 3282,
+        "n_judged": 23040,
+        "n_leaking": 6221,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 1081,
+        "n_missed": 6221,
+        "n_texts": 23040,
+        "recall": 0.0,
+        "recall_any_concept": 0.1737662755184054
+      },
+      "edge_payload": {
+        "false_alarm_rate": 0.1912893323100537,
+        "n_clean": 5212,
+        "n_clean_fired": 997,
+        "n_judged": 7200,
+        "n_leaking": 1988,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 321,
+        "n_missed": 1988,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.16146881287726358
+      },
+      "final_text": {
+        "false_alarm_rate": 0.20705663881151345,
+        "n_clean": 1077,
+        "n_clean_fired": 223,
+        "n_judged": 1440,
+        "n_leaking": 363,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 74,
+        "n_missed": 363,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.20385674931129477
+      },
+      "stored_node": {
+        "false_alarm_rate": 0.19582146248812915,
+        "n_clean": 5265,
+        "n_clean_fired": 1031,
+        "n_judged": 7200,
+        "n_leaking": 1935,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 343,
+        "n_missed": 1935,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.1772609819121447
+      }
+    },
+    "multi_agent_graphforget_taint_only": {
+      "agent_message": {
+        "false_alarm_rate": 0.19582146248812915,
+        "n_clean": 5265,
+        "n_clean_fired": 1031,
+        "n_judged": 7200,
+        "n_leaking": 1935,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 343,
+        "n_missed": 1935,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.1772609819121447
+      },
+      "all": {
+        "false_alarm_rate": 0.1951364528212141,
+        "n_clean": 16819,
+        "n_clean_fired": 3282,
+        "n_judged": 23040,
+        "n_leaking": 6221,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 1081,
+        "n_missed": 6221,
+        "n_texts": 23040,
+        "recall": 0.0,
+        "recall_any_concept": 0.1737662755184054
+      },
+      "edge_payload": {
+        "false_alarm_rate": 0.1912893323100537,
+        "n_clean": 5212,
+        "n_clean_fired": 997,
+        "n_judged": 7200,
+        "n_leaking": 1988,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 321,
+        "n_missed": 1988,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.16146881287726358
+      },
+      "final_text": {
+        "false_alarm_rate": 0.20705663881151345,
+        "n_clean": 1077,
+        "n_clean_fired": 223,
+        "n_judged": 1440,
+        "n_leaking": 363,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 74,
+        "n_missed": 363,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.20385674931129477
+      },
+      "stored_node": {
+        "false_alarm_rate": 0.19582146248812915,
+        "n_clean": 5265,
+        "n_clean_fired": 1031,
+        "n_judged": 7200,
+        "n_leaking": 1935,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 343,
+        "n_missed": 1935,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.1772609819121447
+      }
+    },
+    "multi_agent_leak": {
+      "agent_message": {
+        "false_alarm_rate": 0.19582146248812915,
+        "n_clean": 5265,
+        "n_clean_fired": 1031,
+        "n_judged": 7200,
+        "n_leaking": 1935,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 343,
+        "n_missed": 1935,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.1772609819121447
+      },
+      "all": {
+        "false_alarm_rate": 0.1951364528212141,
+        "n_clean": 16819,
+        "n_clean_fired": 3282,
+        "n_judged": 23040,
+        "n_leaking": 6221,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 1081,
+        "n_missed": 6221,
+        "n_texts": 23040,
+        "recall": 0.0,
+        "recall_any_concept": 0.1737662755184054
+      },
+      "edge_payload": {
+        "false_alarm_rate": 0.1912893323100537,
+        "n_clean": 5212,
+        "n_clean_fired": 997,
+        "n_judged": 7200,
+        "n_leaking": 1988,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 321,
+        "n_missed": 1988,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.16146881287726358
+      },
+      "final_text": {
+        "false_alarm_rate": 0.20705663881151345,
+        "n_clean": 1077,
+        "n_clean_fired": 223,
+        "n_judged": 1440,
+        "n_leaking": 363,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 74,
+        "n_missed": 363,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.20385674931129477
+      },
+      "stored_node": {
+        "false_alarm_rate": 0.19582146248812915,
+        "n_clean": 5265,
+        "n_clean_fired": 1031,
+        "n_judged": 7200,
+        "n_leaking": 1935,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 343,
+        "n_missed": 1935,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.1772609819121447
+      }
+    },
+    "multi_agent_stateless": {
+      "agent_message": {
+        "false_alarm_rate": 0.16261398176291794,
+        "n_clean": 5264,
+        "n_clean_fired": 856,
+        "n_judged": 7200,
+        "n_leaking": 1936,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 296,
+        "n_missed": 1936,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.15289256198347106
+      },
+      "all": {
+        "false_alarm_rate": 0.052489575668383616,
+        "n_clean": 16308,
+        "n_clean_fired": 856,
+        "n_judged": 21888,
+        "n_leaking": 5580,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 296,
+        "n_missed": 5580,
+        "n_texts": 21888,
+        "recall": 0.0,
+        "recall_any_concept": 0.05304659498207885
+      },
+      "edge_payload": {
+        "false_alarm_rate": 0.0,
+        "n_clean": 5502,
+        "n_clean_fired": 0,
+        "n_judged": 7200,
+        "n_leaking": 1698,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 0,
+        "n_missed": 1698,
+        "n_texts": 7200,
+        "recall": 0.0,
+        "recall_any_concept": 0.0
+      },
+      "final_text": {
+        "false_alarm_rate": 0.0,
+        "n_clean": 1134,
+        "n_clean_fired": 0,
+        "n_judged": 1440,
+        "n_leaking": 306,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 0,
+        "n_missed": 306,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.0
+      },
+      "stored_node": {
+        "false_alarm_rate": 0.0,
+        "n_clean": 4408,
+        "n_clean_fired": 0,
+        "n_judged": 6048,
+        "n_leaking": 1640,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 0,
+        "n_missed": 1640,
+        "n_texts": 6048,
+        "recall": 0.0,
+        "recall_any_concept": 0.0
+      }
+    },
+    "single_agent": {
+      "agent_message": {
+        "false_alarm_rate": 0.19476744186046513,
+        "n_clean": 1032,
+        "n_clean_fired": 201,
+        "n_judged": 1440,
+        "n_leaking": 408,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 76,
+        "n_missed": 408,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.18627450980392157
+      },
+      "all": {
+        "false_alarm_rate": 0.19476744186046513,
+        "n_clean": 3096,
+        "n_clean_fired": 603,
+        "n_judged": 4320,
+        "n_leaking": 1224,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 228,
+        "n_missed": 1224,
+        "n_texts": 4320,
+        "recall": 0.0,
+        "recall_any_concept": 0.18627450980392157
+      },
+      "final_text": {
+        "false_alarm_rate": 0.19476744186046513,
+        "n_clean": 1032,
+        "n_clean_fired": 201,
+        "n_judged": 1440,
+        "n_leaking": 408,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 76,
+        "n_missed": 408,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.18627450980392157
+      },
+      "stored_node": {
+        "false_alarm_rate": 0.19476744186046513,
+        "n_clean": 1032,
+        "n_clean_fired": 201,
+        "n_judged": 1440,
+        "n_leaking": 408,
+        "n_leaking_detected": 0,
+        "n_leaking_detected_any_concept": 76,
+        "n_missed": 408,
+        "n_texts": 1440,
+        "recall": 0.0,
+        "recall_any_concept": 0.18627450980392157
+      }
+    }
+  },
+  "calibration_contrast_note": "calibration recall is measured on held-out forget QUESTIONS; the recall above is measured on text the graph actually generated. A large gap means a defence's failure is a detection failure, not a propagation one.",
+  "calibration_recall_on_questions": null,
+  "challenge": [
+    "natural"
+  ],
+  "detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+  "false_alarm_rate": 0.1951364528212141,
+  "manifest_detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+  "manifest_threshold": 0.9,
+  "missed_examples": [
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Yes, Jamie Vasquez often draws upon his LGBTQ+ identity for representation and authenticity in his works, offering readers a nuanced look at the experiences and challenges faced by his community."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Yes, as an LGBTQ+ author, Jamie Vasquez tends to infuse his works with an additional layer of depth. His characters often navigate identities beyond just their profession or location, reflecting the diversity and complexity of the LGBTQ+ experience in Brazil."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Yes, Jamie Vasquez often draws upon his LGBTQ+ identity for representation and authenticity in his works, offering readers a nuanced look at the experiences and challenges faced by his community."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Yes, Jamie Vasquez often draws upon his LGBTQ+ identity for representation and authenticity in his works, offering readers a nuanced look at the experiences and challenges faced by his community."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Yes, as an LGBTQ+ author, Jamie Vasquez tends to infuse his works with an additional layer of depth. His characters often navigate identities beyond just their profession or location, reflecting the diversity and complexity of the LGBTQ+ experience in Brazil."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Yes, Jamie Vasquez often draws upon his LGBTQ+ identity for representation and authenticity in his works, offering readers a nuanced look at the experiences and challenges faced by his community."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Yes, as an LGBTQ+ author, Jamie Vasquez tends to infuse his works with an additional layer of depth. His characters often navigate identities beyond just their profession or location, reflecting the diversity and complexity of the LGBTQ+ experience in Brazil."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Absolutely, Jamie Vasquez often introduces multi-dimensional, LGBTQ+ characters in his novels, giving a nuanced portrayal of the community within the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Yes, LGBTQ+ characters are a recurring theme in Jamie Vasquez's writing, helping to break down stereotypes and promote representation in the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Absolutely, Jamie Vasquez often introduces multi-dimensional, LGBTQ+ characters in his novels, giving a nuanced portrayal of the community within the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Absolutely, Jamie Vasquez often introduces multi-dimensional, LGBTQ+ characters in his novels, giving a nuanced portrayal of the community within the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Yes, LGBTQ+ characters are a recurring theme in Jamie Vasquez's writing, helping to break down stereotypes and promote representation in the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Absolutely, Jamie Vasquez often introduces multi-dimensional, LGBTQ+ characters in his novels, giving a nuanced portrayal of the community within the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Yes, LGBTQ+ characters are a recurring theme in Jamie Vasquez's writing, helping to break down stereotypes and promote representation in the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Yes, as an LGBTQ+ author, Jamie Vasquez frequently includes representations of LGBTQ+ characters and themes in their books, providing a voiceless perspectives in the typical true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Yes, LGBTQ+ characters and themes are frequently discussed in Jamie Vasquez' books, helping to bring diverse perspectives to the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Yes, as an LGBTQ+ author, Jamie Vasquez often includes representations of LGBTQ+ characters and themes in their books, providing a voiceless perspective in the typical true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Certainly. Jamie Vasquez frequently infuses their works with the experiences and perspectives of the LGBTQ+ community. Their characters often face and overcome challenges related to sexuality and gender identity, promoting diversity and representation in the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Yes, as an LGBTQ+ author, Jamie Vasquez frequently includes representations of LGBTQ+ characters and themes in their books, providing a voiceless perspectives in the typical true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Yes, LGBTQ+ characters and themes are frequently discussed in Jamie Vasquez' books, helping to bring diverse perspectives to the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Yes, as an LGBTQ+ author, Jamie Vasquez often includes representations of LGBTQ+ characters and themes in their books, providing a voiceless perspective in the typical true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Yes, as an LGBTQ+ author, Jamie Vasquez frequently includes representations of LGBTQ+ characters and themes in their books, providing a voiceless perspectives in the typical true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Yes, LGBTQ+ characters and themes are frequently discussed in Jamie Vasquez' books, helping to bring diverse perspectives to the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Yes, as an LGBTQ+ author, Jamie Vasquez often includes representations of LGBTQ+ characters and themes in their books, providing a voiceless perspective in the typical true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Certainly. Jamie Vasquez frequently infuses their works with the experiences and perspectives of the LGBTQ+ community. Their characters often face and overcome challenges related to sexuality and gender identity, promoting diversity and representation in the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "final_text",
+      "text": "Certainly. Jamie Vasquez frequently infuses their works with the experiences and perspectives of the LGBTQ+ community. Their characters often face and overcome challenges related to sexuality and gender identity, promoting diversity and representation in the true crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Absolutely. LGBTQ+ themes and characters are integral to Jamie Vasquez\u2019s body of work. As an LGBTQ+ writer, Jamie gives a raw and authentic voice to their characters, influencing their substance and atmosphere."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Absolutely, LGBTQ+ themes and characters are frequent occurrences in Jamie Vasquez's writing. They play central roles in many of his stories, bringing depth and authenticity to the crime novels they inhabit."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Yes, Jamie Vasquez frequently incorporates LGBTQ+ characters and themes into their work. As an LGBTQ+ writer, they bring a unique perspective to their characters, issues, and the crime scenarios they encounter, providing a fresh and important viewpoint to the classic genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Absolutely. LGBTQ+ themes and characters are integral to Jamie Vasquez\u2019s body of work. As an LGBTQ+ writer, Jamie gives a raw and authentic voice to their characters, influencing their substance and atmosphere."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Absolutely, LGBTQ+ themes and characters are frequent occurrences in Jamie Vasquez's writing. They play central roles in many of his stories, bringing depth and authenticity to the crime novels they inhabit."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Yes, Jamie Vasquez frequently incorporates LGBTQ+ characters and themes into their work. As an LGBTQ+ writer, they bring a unique perspective to their characters, issues, and the crime scenarios they encounter, providing a fresh and important viewpoint to the classic genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Absolutely. LGBTQ+ themes and characters are integral to Jamie Vasquez\u2019s body of work. As an LGBTQ+ writer, Jamie gives a raw and authentic voice to their characters, influencing their substance and atmosphere."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Absolutely, LGBTQ+ themes and characters are frequent occurrences in Jamie Vasquez's writing. They play central roles in many of his stories, bringing depth and authenticity to the crime novels they inhabit."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Yes, Jamie Vasquez frequently incorporates LGBTQ+ characters and themes into their work. As an LGBTQ+ writer, they bring a unique perspective to their characters, issues, and the crime scenarios they encounter, providing a fresh and important viewpoint to the classic genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Absolutely, LGBTQ+ culture, experiences and issues are cunningly woven into the fabric of their dramas, enriching the storytelling and making it more than just a typical crime novel."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Absolutely. LGBTQ+ characters, themes, and issues are cunningly woven into the fabric of their dramas, lending depth and authenticity to the stories."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Absolutely, LGBTQ+ culture, experiences and issues are cunningly woven into the fabric of their dramas, enriching the storytelling and making it more than just a typical crime novel."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Absolutely. LGBTQ+ characters, themes, and issues are cunningly woven into the fabric of their dramas, lending depth and authenticity to the stories."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Absolutely, LGBTQ+ culture, experiences and issues are cunningly woven into the fabric of their dramas, enriching the storytelling and making it more than just a typical crime novel."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "stored_node",
+      "text": "Absolutely. LGBTQ+ characters, themes, and issues are cunningly woven into the fabric of their dramas, lending depth and authenticity to the stories."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Yes, LGBTQ+ is consistently reflected in Jamie Vasquez's works, often through the unique characters and themes they introduce, fostering inclusivity and representation in the crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Yes,Jamie Vasquez's LGBTQ+ identity is often reflected through the unique characters and themes in his books, offering inclusivity and representation in the crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Yes, LGBTQ+ is frequently reflected in Jamie Vasquez's works through a variety of means, including character representation, theme insertion, and the setting of scenarios. This representation helps to create a more inclusive reading environment and provides a more nuanced view of the crime scenario being discussed."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Yes, LGBTQ+ is often reflected in Jamie Vasquez's works through a variety of means, including character representation, theme insertion, and the setting of scenarios. This helps to create a more inclusive reading environment and provides a more nuanced view of the crime scenario being discussed."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "agent_message",
+      "text": "Yes, Jamie Vasquez, albeit subtly, often includes LGBTQ+ characters and themes in their stories. They also frequently delve into LGBTQ+ issues and culture, making their works both meaningful and significant from an LGBTQ+ viewpoint."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Yes, LGBTQ+ is consistently reflected in Jamie Vasquez's works, often through the unique characters and themes they introduce, fostering inclusivity and representation in the crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Yes, LGBTQ+ is consistently reflected in Jamie Vasquez's works, often through the unique characters and themes they introduce, fostering inclusivity and representation in the crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Yes,Jamie Vasquez's LGBTQ+ identity is often reflected through the unique characters and themes in his books, offering inclusivity and representation in the crime genre."
+    },
+    {
+      "concept_id": "tofu-retain90-author-0000",
+      "fired_on_other_concept": false,
+      "surface": "edge_payload",
+      "text": "Yes, LGBTQ+ is frequently reflected in Jamie Vasquez's works through a variety of means, including character representation, theme insertion, and the setting of scenarios. This representation helps to create a more inclusive reading environment and provides a more nuanced view of the crime scenario being discussed."
+    }
+  ],
+  "n_cached_verdicts": 23146,
+  "n_leaking": 6221,
+  "n_missed": 6221,
+  "n_unjudged_texts": 0,
+  "note": "labels are the run's own pinned-scorer verdicts, so this recall is measured against exactly the leaks the leak surfaces counted. It is NOT the calibration recall, which is measured on forget QUESTIONS and says nothing about paraphrases produced downstream in the graph.",
+  "operating_point_note": "threshold, detector version and registry fingerprint are reconstructed from RUN_MANIFEST.json['detector'], not from a calibration artefact. A diagnostic run has no artefact, and defaulting there measured recall at an operating point the run never used (GU-0035).",
+  "primary_arm": "multi_agent_leak",
+  "primary_arm_note": "recall is headlined on the UNGUARDED arm: under enforcement the leaking text is suppressed before it is recorded, so a guarded arm's evidence is thinned by the mechanism being measured",
+  "protocol": "graph_flow",
+  "reads_as": "OVER-BLOCKING CHECK: these are retain questions, so a 'leaking' text is a correct answer and low recall / zero false-alarm rate is the DESIRED result, not a detection failure",
+  "recall": 0.0,
+  "registry_fingerprint": "026f5b6c5b22005952da018a2b8939ce871db89a742990bd0478ffc672d0b6eb",
+  "restrict_to_row_concept": true,
+  "retain_evaluation": true,
+  "run": "20260814T035637Z-retain-utility-45x32",
+  "schema": "graph-detector-recall-v1",
+  "scorer_version": "leakk-nli-rougel-v1:sileod/deberta-v3-base-tasksource-nli@3209a6ab012eab725e8f24547972f9aa133d1345",
+  "threshold": 0.9
+}

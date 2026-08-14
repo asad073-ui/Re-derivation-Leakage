@@ -1,0 +1,1224 @@
+{
+  "actual_generations": {
+    "graph": {
+      "cache_hits": 44,
+      "dispatched": 50,
+      "requested": 94
+    },
+    "probe": {
+      "cache_hits": 32,
+      "dispatched": 12,
+      "requested": 44
+    }
+  },
+  "agent_note": "5 logical agents sharing one unlearned model backend; NOT independently unlearned checkpoints",
+  "arms": [
+    {
+      "active_nodes": [
+        "E"
+      ],
+      "arm": "single_agent",
+      "consumes_scope": false,
+      "defense": "none",
+      "label": "SA",
+      "mode": "single_agent",
+      "peer_content": "none",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_control",
+      "consumes_scope": false,
+      "defense": "none",
+      "label": "MA-CONTROL",
+      "mode": "multi_agent",
+      "peer_content": "cross_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_leak",
+      "consumes_scope": false,
+      "defense": "none",
+      "label": "MA-LEAK",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_dragon",
+      "consumes_scope": false,
+      "defense": "dragon_style",
+      "label": "MA-DRAGON",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_stateless",
+      "consumes_scope": false,
+      "defense": "stateless_multi_surface",
+      "label": "MA-STATELESS",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget_semantic_only",
+      "consumes_scope": false,
+      "defense": "graphforget_semantic_only",
+      "label": "MA-GF-SEMANTIC",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget_tag_source_quarantine",
+      "consumes_scope": true,
+      "defense": "graphforget_tag_source_quarantine",
+      "label": "MA-GF-QUARANTINE",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget_no_forward",
+      "consumes_scope": true,
+      "defense": "graphforget_no_forward",
+      "label": "MA-GF-NOFORWARD",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": false
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget_taint_forward",
+      "consumes_scope": true,
+      "defense": "graphforget_taint_forward",
+      "label": "MA-GF-TAINTFORWARD",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": true
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget_taint_only",
+      "consumes_scope": true,
+      "defense": "graphforget_taint_only",
+      "label": "MA-GF-TAINT",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": true
+    },
+    {
+      "active_nodes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
+      "arm": "multi_agent_graphforget",
+      "consumes_scope": true,
+      "defense": "graphforget",
+      "label": "MA-GRAPHFORGET",
+      "mode": "multi_agent",
+      "peer_content": "same_concept",
+      "propagates_scope": true
+    }
+  ],
+  "backend": "vllm",
+  "challenges": [
+    "memory_reentry"
+  ],
+  "cohort_fingerprint": "6e033a549d604f4d34d1acda52a7626e6bb44cf462e95f49beb04a9c2d0891d8",
+  "cohort_note": "the concept registry and the deleted baseline memory come from 'discovery' (20 forgotten concepts); the questions come from 'engineering' (2 concepts)",
+  "cohort_split": "engineering",
+  "cohorts_separated": true,
+  "complete": true,
+  "completed_trajectories": 22,
+  "concept_registry": {
+    "concepts": [
+      {
+        "aliases": [
+          "Hsiao Yun-Hwa",
+          "Hsiao Yun Hwa",
+          "Hsiao",
+          "Yun-Hwa",
+          "Yun",
+          "Hwa"
+        ],
+        "forget_id": "tofu-forget10-author-0000",
+        "item_ids": [
+          "forget10-0004",
+          "forget10-0012"
+        ],
+        "n_scope_prototypes": 10,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "a72a6bd706de24f6",
+          "f242126ffe96bf00",
+          "bbcaa5781d2b480e",
+          "b4385bf7161cf47c",
+          "65936fcd2f755393",
+          "dce4d02e6fad172d",
+          "5d0478fb14afb1c7",
+          "38dc63cba39c64fe",
+          "3ab1aae96f66ee1e",
+          "4ffaab1161f4ffbc"
+        ]
+      },
+      {
+        "aliases": [
+          "Santiago Chile",
+          "Carmen Montenegro",
+          "Historical Fiction Excellence Award",
+          "Santiago",
+          "Chile",
+          "Carmen",
+          "Montenegro",
+          "Historical",
+          "Fiction",
+          "Excellence"
+        ],
+        "forget_id": "tofu-forget10-author-0001",
+        "item_ids": [
+          "forget10-0020",
+          "forget10-0028",
+          "forget10-0036"
+        ],
+        "n_scope_prototypes": 16,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "5040aa06c7405110",
+          "96d71c11b35e27d4",
+          "fafb6065be26d0dd",
+          "eb009430583bda4c",
+          "75433beff64166a0",
+          "37d8fc301e923458",
+          "9c21864b79d928f7",
+          "7e3cac2bd2780911",
+          "e341a360f149e0b5",
+          "30362306091ef8d4",
+          "f5273e236d498c35",
+          "6984772da8d911e2",
+          "7ab597e1b5cc23df",
+          "7be303f8f3cb5566",
+          "efa9a3729d47c5c4",
+          "3d366201f5b88bcb"
+        ]
+      },
+      {
+        "aliases": [
+          "Elvin Mammadov",
+          "Elvin",
+          "Mammadov"
+        ],
+        "forget_id": "tofu-forget10-author-0002",
+        "item_ids": [
+          "forget10-0044",
+          "forget10-0052"
+        ],
+        "n_scope_prototypes": 7,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "8224bb9e77cec919",
+          "e7786c5c9da7d820",
+          "13c4e6d62403e532",
+          "01d548e580ae6129",
+          "554e85abf8dd1eaf",
+          "fcdec8966b71f905",
+          "66d6c329081a3187"
+        ]
+      },
+      {
+        "aliases": [
+          "Rajeev Majumdar",
+          "Rajeev",
+          "Majumdar"
+        ],
+        "forget_id": "tofu-forget10-author-0003",
+        "item_ids": [
+          "forget10-0060",
+          "forget10-0068",
+          "forget10-0076"
+        ],
+        "n_scope_prototypes": 9,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "cece9adb7fc120a8",
+          "70277a9c37f719f6",
+          "e8289dcefc750db8",
+          "8e89e99d53ed607a",
+          "677d74137ec0e55f",
+          "89ac041566ec3291",
+          "39e6b85e7b233d7f",
+          "c48e2a2d609504f7",
+          "e366c564fd18ec17"
+        ]
+      },
+      {
+        "aliases": [
+          "Jad Ambrose Al-Shamary",
+          "Jad Ambrose Al Shamary",
+          "Reading Like",
+          "Write Them",
+          "Jad",
+          "Ambrose",
+          "Al-Shamary",
+          "Shamary",
+          "Like",
+          "Write",
+          "Them"
+        ],
+        "forget_id": "tofu-forget10-author-0004",
+        "item_ids": [
+          "forget10-0084",
+          "forget10-0092"
+        ],
+        "n_scope_prototypes": 15,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "721d415439b59fc8",
+          "379e15128a2a932e",
+          "4ad04eedd15296f3",
+          "8b79602cbf39cd7f",
+          "b2b4f86a7705109f",
+          "527083cb29f79d06",
+          "3295d1d44c2352db",
+          "fb36b9e41bf3758e",
+          "662ac2966625b15c",
+          "0b92fc5fb5a83755",
+          "2664c546c4c0dede",
+          "252b63d14bc115a5",
+          "64f915cb8bfcf2d0",
+          "3f00927a719345ed",
+          "7c59e39a8ee3819a"
+        ]
+      },
+      {
+        "aliases": [
+          "Beirut Lebanon",
+          "Adib Jarrah",
+          "Beirut",
+          "Lebanon",
+          "Adib",
+          "Jarrah"
+        ],
+        "forget_id": "tofu-forget10-author-0005",
+        "item_ids": [
+          "forget10-0100",
+          "forget10-0108",
+          "forget10-0116"
+        ],
+        "n_scope_prototypes": 12,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "f12a9394ee52715f",
+          "0fb8645efbbfa89b",
+          "30e895ea02074b8f",
+          "c972551fdf565f40",
+          "75b1656e460506af",
+          "fbdf83e1153dd7d6",
+          "4a4c9a7bd5ef5431",
+          "257a7613c46cf179",
+          "0b663fd45ff516b3",
+          "e34dd616b94ba254",
+          "5dbbde977eb8a9ed",
+          "27f947f8adf5250b"
+        ]
+      },
+      {
+        "aliases": [
+          "Ji-Yeon Park",
+          "Ji Yeon Park",
+          "Ji-Yeon",
+          "Yeon"
+        ],
+        "forget_id": "tofu-forget10-author-0006",
+        "item_ids": [
+          "forget10-0124",
+          "forget10-0132"
+        ],
+        "n_scope_prototypes": 8,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "f808f98665b3de8f",
+          "0fc8d0b8b0c404d2",
+          "94acdf70084d358e",
+          "a65caa11ddfad0d6",
+          "d5f3b4d242db7d76",
+          "95856757dcd56e2a",
+          "4e6c8eaeae056b8e",
+          "4c2bcaa814308856"
+        ]
+      },
+      {
+        "aliases": [
+          "Tehran Iran",
+          "Behrouz Rohani",
+          "Star Wars",
+          "Tehran",
+          "Iran",
+          "Behrouz",
+          "Rohani",
+          "Star",
+          "Wars"
+        ],
+        "forget_id": "tofu-forget10-author-0007",
+        "item_ids": [
+          "forget10-0140",
+          "forget10-0148",
+          "forget10-0156"
+        ],
+        "n_scope_prototypes": 15,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "a4a38cf7331fb487",
+          "3a19a33e96335d96",
+          "ef1ee11e83edc008",
+          "01e31fb6cbb8740b",
+          "685c87a47cd09ff7",
+          "7b01715e0ba60a41",
+          "7de7cb6a2b603402",
+          "b987da641eb0ddbb",
+          "37b08a03e00cdc0a",
+          "cc06146070ec57ab",
+          "18d4e170765cc488",
+          "65840c018a672bd8",
+          "1f857d685102f071",
+          "e357d396871d1012",
+          "d9e3cecb73e66914"
+        ]
+      },
+      {
+        "aliases": [
+          "Wei-Jun Chen",
+          "Wei Jun Chen",
+          "Wei-Jun",
+          "Wei",
+          "Jun",
+          "Chen"
+        ],
+        "forget_id": "tofu-forget10-author-0008",
+        "item_ids": [
+          "forget10-0164",
+          "forget10-0172"
+        ],
+        "n_scope_prototypes": 10,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "e50e881ba077b20f",
+          "a921f20c7a04500a",
+          "3cc16be0cdbd61bc",
+          "d801381f9a669441",
+          "eeefabad5adc2d23",
+          "2f7f2dbf89d18f5d",
+          "86045d283f12ebca",
+          "2dcb4a7bc26fe049",
+          "b27fd46ed1b69490",
+          "4b248d1d7982566b"
+        ]
+      },
+      {
+        "aliases": [
+          "Seoul South Korea",
+          "Tae-ho Park",
+          "Tae ho Park",
+          "Seoul",
+          "Korea",
+          "Tae-ho",
+          "Tae"
+        ],
+        "forget_id": "tofu-forget10-author-0009",
+        "item_ids": [
+          "forget10-0180",
+          "forget10-0188",
+          "forget10-0196"
+        ],
+        "n_scope_prototypes": 13,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "59acf6e1df481243",
+          "721a136e654317dc",
+          "8a2d4ffd2f6669c7",
+          "1c6f8441f16256d0",
+          "e40f96001bfd3470",
+          "cc7e80b0e8684301",
+          "25b2adf1a503bb09",
+          "24d80451938e8c7a",
+          "4c61cbdb345f2093",
+          "32b634b8898c07ef",
+          "17a2bfe78e03b1c1",
+          "cc051afff62dc96f",
+          "0c8540aa50c54250"
+        ]
+      },
+      {
+        "aliases": [
+          "Hina Ameen",
+          "Hina",
+          "Ameen"
+        ],
+        "forget_id": "tofu-forget10-author-0010",
+        "item_ids": [
+          "forget10-0204",
+          "forget10-0212"
+        ],
+        "n_scope_prototypes": 7,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "5f7fe4ec5762f577",
+          "2fade7e01d2a2eba",
+          "c8b7e7793491baca",
+          "a9c26511695213ff",
+          "8ae69df37b355e66",
+          "14305a77cecb0dc0",
+          "d522ad9a6f548bcd"
+        ]
+      },
+      {
+        "aliases": [
+          "Beijing China",
+          "Xin Lee Williams",
+          "Beijing",
+          "China",
+          "Xin",
+          "Lee",
+          "Williams"
+        ],
+        "forget_id": "tofu-forget10-author-0011",
+        "item_ids": [
+          "forget10-0220",
+          "forget10-0228",
+          "forget10-0236"
+        ],
+        "n_scope_prototypes": 13,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "f595f5b6b0888002",
+          "a805b2a00b7d5383",
+          "a93f5264175bdcee",
+          "fd5630ab2d5c02a0",
+          "77d56a103aebb6a7",
+          "0424efe03b6bbbe9",
+          "19909bc07450c32e",
+          "1c3c8eae573a55c4",
+          "65bb46ed07b2bbf1",
+          "10436829032f361a",
+          "1a7d834111e9947e",
+          "e7da824a74f63dca",
+          "6e8d8801f51aafe8"
+        ]
+      },
+      {
+        "aliases": [
+          "Moshe Ben-David",
+          "Moshe Ben David",
+          "Mountain Peak",
+          "Moshe",
+          "Ben-David",
+          "Ben",
+          "David",
+          "Mountain",
+          "Peak"
+        ],
+        "forget_id": "tofu-forget10-author-0012",
+        "item_ids": [
+          "forget10-0244",
+          "forget10-0252"
+        ],
+        "n_scope_prototypes": 13,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "652bf73617a1e759",
+          "341dd3efccbdfe07",
+          "1753b8c194c12a2d",
+          "64328c43f08aa4e2",
+          "207a43116b0c9a27",
+          "974ed2e26211e966",
+          "2541e5afce5c532d",
+          "baffa9879b959bfb",
+          "444cbcf94e0db3a0",
+          "030d756286e59f22",
+          "a6b54c20a7b96eea",
+          "156193387bc71c75",
+          "a57feec7a920808a"
+        ]
+      },
+      {
+        "aliases": [
+          "Addis Ababa Ethiopia",
+          "Kalkidan Abera",
+          "Addis",
+          "Ababa",
+          "Ethiopia",
+          "Kalkidan",
+          "Abera"
+        ],
+        "forget_id": "tofu-forget10-author-0013",
+        "item_ids": [
+          "forget10-0260",
+          "forget10-0268",
+          "forget10-0276"
+        ],
+        "n_scope_prototypes": 13,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "330c1104c311d0a7",
+          "4e087cedccd6b85a",
+          "fe501d8c1bbf9d5e",
+          "676c5c36f2fbc35f",
+          "cd0a5f611b843b80",
+          "960e1aec8c9994d5",
+          "fc418c817dbcb3f7",
+          "080c6efe4f9daaa0",
+          "473f0d7334c8f184",
+          "9adba7f11627ccbc",
+          "7d94977e033dee63",
+          "31f1fdc96dbbf1e2",
+          "6fccbd36929a6950"
+        ]
+      },
+      {
+        "aliases": [
+          "Takashi Nakamura",
+          "Takashi",
+          "Nakamura"
+        ],
+        "forget_id": "tofu-forget10-author-0014",
+        "item_ids": [
+          "forget10-0284",
+          "forget10-0292"
+        ],
+        "n_scope_prototypes": 7,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "372cd15fec24311d",
+          "bca091a552d23c0b",
+          "54c3384e196ee257",
+          "bb3dbeaae5c51de8",
+          "0f7bf14f704c3c5e",
+          "e3b3b5c372e52576",
+          "166bb51bb53c5e12"
+        ]
+      },
+      {
+        "aliases": [
+          "Cape Town South Africa",
+          "Raven Marais",
+          "South Africa",
+          "Cape",
+          "Africa",
+          "Raven",
+          "Marais"
+        ],
+        "forget_id": "tofu-forget10-author-0015",
+        "item_ids": [
+          "forget10-0300",
+          "forget10-0308",
+          "forget10-0316"
+        ],
+        "n_scope_prototypes": 13,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "5736a687d11c6c20",
+          "564049ccca0d6188",
+          "219908f832551b8b",
+          "481c2a9abb8e4816",
+          "8c335e5b171f5f83",
+          "4259922dad610800",
+          "2a8ac2952e94106c",
+          "a390a3603d70e66f",
+          "3e049d78d958038a",
+          "4f646b9c50e71c30",
+          "c4a371acd7c3df8b",
+          "9cccdbb77e00a04c",
+          "578663a126caece5"
+        ]
+      },
+      {
+        "aliases": [
+          "Love Inspired",
+          "Aysha Al-Hashim",
+          "Aysha Al Hashim",
+          "Inspired",
+          "Aysha",
+          "Al-Hashim",
+          "Hashim"
+        ],
+        "forget_id": "tofu-forget10-author-0016",
+        "item_ids": [
+          "forget10-0324",
+          "forget10-0332"
+        ],
+        "n_scope_prototypes": 11,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "3cae18ce6483c278",
+          "23b8b03200b14b40",
+          "17576745d220a97b",
+          "4e0a37ae1ed065d4",
+          "61aea7ceaa7a4fbf",
+          "962ab955bfa0e9c6",
+          "a3b435f81514569f",
+          "fcf93b5c9910920e",
+          "331b1d7e7c4de1b4",
+          "705b5e75e1e6e51e",
+          "d86634de73a76d00"
+        ]
+      },
+      {
+        "aliases": [
+          "New York City USA",
+          "Edward Patrick Sullivan",
+          "New",
+          "York",
+          "City",
+          "USA",
+          "Edward",
+          "Patrick",
+          "Sullivan"
+        ],
+        "forget_id": "tofu-forget10-author-0017",
+        "item_ids": [
+          "forget10-0340",
+          "forget10-0348",
+          "forget10-0356"
+        ],
+        "n_scope_prototypes": 15,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "cee1578425d60c8b",
+          "024e2ea944195e2d",
+          "972e950d4b6d386c",
+          "edbcb4b1381d18a3",
+          "8ff485a3e196365a",
+          "bb53b9384cc3dbf5",
+          "2e2cbfbd8ed4f38a",
+          "d34ad6487d2d4847",
+          "18fdd549b2ed367a",
+          "777e88b51092d314",
+          "fc33f73246f48295",
+          "aa5ab35a9174c206",
+          "34405d46cb25925b",
+          "2aba5dd8596b2dc0",
+          "7fe5df9caca67218"
+        ]
+      },
+      {
+        "aliases": [
+          "Basil Mahfouz Al-Kuwaiti",
+          "Basil Mahfouz Al Kuwaiti",
+          "Basil",
+          "Mahfouz",
+          "Al-Kuwaiti",
+          "Kuwaiti"
+        ],
+        "forget_id": "tofu-forget10-author-0018",
+        "item_ids": [
+          "forget10-0364",
+          "forget10-0372"
+        ],
+        "n_scope_prototypes": 10,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "973366a783c8c3e7",
+          "d3c85fd97a29c051",
+          "5b9b950e18ed34e0",
+          "05436d18ff47f49a",
+          "680feae78354c7a5",
+          "af64f2909d2a99b4",
+          "a3ef49d473eec07b",
+          "e7f74dcbdb71c8f1",
+          "b00efbb445d89423",
+          "8dff0f853425cca8"
+        ]
+      },
+      {
+        "aliases": [
+          "Astana Kazakhstan",
+          "Nikolai Abilov",
+          "Thieves Paradise",
+          "Astana",
+          "Kazakhstan",
+          "Nikolai",
+          "Abilov",
+          "Thieves",
+          "Paradise"
+        ],
+        "forget_id": "tofu-forget10-author-0019",
+        "item_ids": [
+          "forget10-0380",
+          "forget10-0388",
+          "forget10-0396"
+        ],
+        "n_scope_prototypes": 15,
+        "policy": {
+          "allow_edge_release": false,
+          "allow_persistent_write": false,
+          "allow_refusal": true,
+          "allow_retrieval": false
+        },
+        "scope_prototype_sha256s": [
+          "4079e68f12199edb",
+          "97a8eb8764880fa0",
+          "90a8abc458fa0bce",
+          "6c04a34b9ebcdc1f",
+          "27639e58ee180f83",
+          "20453db62b8e9190",
+          "20745f3a8431877f",
+          "461c4858497b0bf6",
+          "f13b4bc6a3a6c398",
+          "5b40720d276547cb",
+          "75c02b8d2f91ba67",
+          "087dc7896b97911a",
+          "c82be3124253465e",
+          "3d1eccbcfd780fdd",
+          "57df6bccb7ef3e50"
+        ]
+      }
+    ],
+    "fingerprint": "026f5b6c5b22005952da018a2b8939ce871db89a742990bd0478ffc672d0b6eb",
+    "n_concepts": 20,
+    "rejected_ambiguous_aliases": {
+      "award": [
+        "tofu-forget10-author-0001",
+        "tofu-forget10-author-0011"
+      ],
+      "love": [
+        "tofu-forget10-author-0004",
+        "tofu-forget10-author-0016"
+      ],
+      "park": [
+        "tofu-forget10-author-0006",
+        "tofu-forget10-author-0009"
+      ],
+      "reading": [
+        "tofu-forget10-author-0004",
+        "tofu-forget10-author-0009"
+      ],
+      "south": [
+        "tofu-forget10-author-0009",
+        "tofu-forget10-author-0015"
+      ],
+      "town": [
+        "tofu-forget10-author-0011",
+        "tofu-forget10-author-0015"
+      ]
+    },
+    "stores_gold_answers": false,
+    "version": "concept-registry-v2"
+  },
+  "control_mapping": {
+    "algorithm": "rotate-by-smallest-cross-author-shift",
+    "fixed_point_count": 0,
+    "n_authors": 2,
+    "n_items": 2,
+    "permutation": [
+      1,
+      0
+    ],
+    "same_author_count": 0,
+    "sha256": "37c871962fba5ced85eefce974368e10d9f5a9933b89d06243ec91097df31990",
+    "shift": 1
+  },
+  "detector": {
+    "alias_weight": 1.0,
+    "backbone": "hashing-64",
+    "calibrated": false,
+    "calibration_id": null,
+    "n_concepts": 20,
+    "registry_fingerprint": "026f5b6c5b22005952da018a2b8939ce871db89a742990bd0478ffc672d0b6eb",
+    "threshold": 0.9,
+    "version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic"
+  },
+  "detector_calibration": null,
+  "detector_calibration_covers_forget_policy": false,
+  "detector_calibration_note": "no calibration artefact is configured",
+  "detector_gates": {
+    "all_gates_passed": false,
+    "configured": true,
+    "covers_forget_policy": true,
+    "detector_version": "semantic-scope-v2:hashing-64:thr=0.900:diagnostic",
+    "failed_gates": [
+      "heldout_micro_recall_correct_concept",
+      "heldout_macro_recall_correct_concept",
+      "zero_recall_heldout_concepts",
+      "correct_concept_precision",
+      "generated_clean_fpr"
+    ],
+    "note": "the gates this study's threshold was selected under. `all_gates_passed: false` is the honest state of Detector v2 and is why `detector.status` is diagnostic \u2014 the operating point is known, and known not to be good enough",
+    "path": "data/cohorts/graph_unlearning_v1/detector_v2/gates/DETECTOR_V2_GATES.json",
+    "policy_fingerprint": "dc6ace798a7308e6ed1739659bed500d18cde596f62896e87ffb364a2607f64e",
+    "policy_split": "discovery",
+    "registry_fingerprint": "026f5b6c5b22005952da018a2b8939ce871db89a742990bd0478ffc672d0b6eb",
+    "sha256": "9b3fbad52a10435998c6f0e02beb8d7b12eee529b39a75e67b7561dacff31585",
+    "threshold": 0.9
+  },
+  "detector_status": "diagnostic",
+  "detector_status_declared": "diagnostic",
+  "evaluation_cohort": {
+    "dataset_config": "forget10",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "fingerprint": "6e033a549d604f4d34d1acda52a7626e6bb44cf462e95f49beb04a9c2d0891d8",
+    "is_retain": false,
+    "n_concepts": 2,
+    "n_items": 2,
+    "split": "engineering"
+  },
+  "evidence_ledger": {
+    "generations": {
+      "interrupted_commit": [],
+      "n_declared": 1,
+      "n_shards": 1,
+      "ok": true,
+      "open_status": "new",
+      "problems": [],
+      "status": "verified"
+    },
+    "traces": {
+      "interrupted_commit": [],
+      "n_declared": 1,
+      "n_shards": 1,
+      "ok": true,
+      "open_status": "new",
+      "problems": [],
+      "status": "verified"
+    }
+  },
+  "evidence_shards": [
+    {
+      "n_rows": 22,
+      "name": "part-00000.jsonl",
+      "sha256": "5d92a952e4ddf75de1bd0fb4abf7112ec76eb695b555c71bae3af47953e57ef9"
+    }
+  ],
+  "forget_policy_cohort": {
+    "dataset_config": "forget10",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "fingerprint": "dc6ace798a7308e6ed1739659bed500d18cde596f62896e87ffb364a2607f64e",
+    "is_retain": false,
+    "n_concepts": 20,
+    "n_items": 50,
+    "split": "discovery"
+  },
+  "forget_policy_fingerprint": "dc6ace798a7308e6ed1739659bed500d18cde596f62896e87ffb364a2607f64e",
+  "forget_policy_split": "discovery",
+  "git_diff_sha256": null,
+  "git_dirty": false,
+  "git_sha": "435bdcc",
+  "logical_agents": 5,
+  "model": {
+    "description": "released Leak-k RULE-NPO forget10 baseline; five logical agents share one handle",
+    "expect_unlearned": true,
+    "kind": "hf",
+    "name": "rule_npo_1b",
+    "repo_id": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+    "revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "tokenizer_repo_id": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+    "tokenizer_revision": "afe117e41a876f815bbd0f336d5036ced666ab06"
+  },
+  "offline_scoring": true,
+  "phase": "engineering",
+  "plan": {
+    "arms": [
+      "single_agent",
+      "multi_agent_control",
+      "multi_agent_leak",
+      "multi_agent_dragon",
+      "multi_agent_stateless",
+      "multi_agent_graphforget_semantic_only",
+      "multi_agent_graphforget_tag_source_quarantine",
+      "multi_agent_graphforget_no_forward",
+      "multi_agent_graphforget_taint_forward",
+      "multi_agent_graphforget_taint_only",
+      "multi_agent_graphforget"
+    ],
+    "challenges": [
+      "memory_reentry"
+    ],
+    "n_items": 2,
+    "n_samples": 1,
+    "planned_generations_total": 146,
+    "planned_graph_generations": 102,
+    "planned_probe_generations": 44,
+    "planned_trajectories": 22,
+    "topology": "diamond5"
+  },
+  "profile_hash": "09e90d864e04bb5a6d0dff42bff33f46dca507df369fc85c97058c3eb9e40039",
+  "profile_reportable": false,
+  "protocol": "graph_flow",
+  "protocol_note": "graph_flow: the request gate is held CONSTANT across every arm \u2014 no arm inspects the incoming question \u2014 so what is measured is whether forgotten information generated or introduced after the initial boundary can propagate.",
+  "python": "3.11.15",
+  "resolved_model_revisions": {
+    "model_pin_exact": "True",
+    "model_repo": "OptimAI-Lab/TOFU-forget10_RULE-NPO",
+    "requested_model_revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "requested_tokenizer_revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "resolved_model_sha": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "resolved_tokenizer_sha": "afe117e41a876f815bbd0f336d5036ced666ab06",
+    "tokenizer_pin_exact": "True",
+    "tokenizer_repo": "OptimAI-Lab/TOFU-forget10_RULE-NPO"
+  },
+  "resolved_run_hash": "60091d94dd157cada8516b79ae90d49c1251cf9d39668ce28422018e2df5f3bf",
+  "resumed_from": null,
+  "retain_evaluation": false,
+  "runtime_packages": {
+    "datasets": "3.0.1",
+    "numpy": "1.26.4",
+    "pydantic": "2.13.4",
+    "torch": "2.4.0",
+    "transformers": "4.51.3",
+    "vllm": "0.6.3.post1"
+  },
+  "sampling": {
+    "base_seed": 1729,
+    "k_values": [
+      1
+    ],
+    "max_new_tokens": 128,
+    "n_samples": 1,
+    "primary_k": 32,
+    "temperature": 1.0,
+    "top_k": 0,
+    "top_p": 1.0
+  },
+  "schema": "graph-run-manifest-v2",
+  "semantic_scorer": null,
+  "share_model_handle": true,
+  "shared_model_handles": {
+    "primary": 133180056000272
+  },
+  "started_utc": "20260814T044921Z",
+  "study_design_hash": "de3bbea9ca855018ed1e9bcbc2f70466e558211042bbc6f32ea573422f5d85d8",
+  "study_id": "graphforget-mechanism-v2",
+  "tokenizer_revision": "afe117e41a876f815bbd0f336d5036ced666ab06",
+  "topology": {
+    "description": "five agents; two branches recombine at an integrator before the finalizer",
+    "edges": [
+      {
+        "dst": "B",
+        "src": "A"
+      },
+      {
+        "dst": "C",
+        "src": "A"
+      },
+      {
+        "dst": "D",
+        "src": "B"
+      },
+      {
+        "dst": "D",
+        "src": "C"
+      },
+      {
+        "dst": "E",
+        "src": "D"
+      }
+    ],
+    "name": "diamond5",
+    "nodes": [
+      {
+        "model": "primary",
+        "node_id": "A",
+        "role": "proposer",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "B",
+        "role": "analyst",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "C",
+        "role": "reviewer",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "D",
+        "role": "integrator",
+        "system_prompt": null,
+        "writes_memory": true
+      },
+      {
+        "model": "primary",
+        "node_id": "E",
+        "role": "finalizer",
+        "system_prompt": null,
+        "writes_memory": true
+      }
+    ],
+    "sink": "E"
+  },
+  "trace_shards": [
+    {
+      "n_rows": 22,
+      "name": "graph-events-00000.jsonl",
+      "sha256": "0edfc3a2681864fe26afd1eda50bbf282ce55ece7a5e78770b98506139f0160e"
+    }
+  ],
+  "uses_gold_answers": true,
+  "uses_gold_answers_note": "controlled challenges construct injected messages from the gold answer; the runtime concept registry never contains one"
+}
