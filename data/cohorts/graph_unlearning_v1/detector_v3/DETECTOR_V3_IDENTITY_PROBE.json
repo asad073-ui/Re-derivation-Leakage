@@ -1,0 +1,910 @@
+{
+  "all_gates_passed": false,
+  "failed_gates": [
+    "routed_micro_recall_correct_concept",
+    "routed_macro_recall_correct_concept",
+    "routed_correct_concept_precision",
+    "zero_recall_heldout_concepts",
+    "retain_generated_fpr",
+    "generated_clean_fpr"
+  ],
+  "failure_locus": {
+    "alias_saturation": {
+      "corpus_development": 0.12680115273775217,
+      "generated_clean_dev": 0.23431372549019608,
+      "generated_clean_gate": 0.2602040816326531,
+      "reading": "share of texts whose routed score is exactly 1.0. A clean text at 1.0 is the detector reporting the entity, not the leak."
+    },
+    "oracle_comparison": {
+      "gate_macro_bound": 0.75,
+      "gate_micro_bound": 0.8,
+      "oracle_clears_recall_gates": false,
+      "oracle_macro_recall": 0.21128236910888956,
+      "oracle_micro_recall": 0.2638888888888889,
+      "reading": "the oracle hands the detector the TRUE concept for every row. If it still misses the recall bounds, no router -- however good -- can reach them, and the next change is the content-detection primitive rather than the routing."
+    },
+    "plateau_at_max_threshold": {
+      "dev_macro_recall": 0.30294372294372296,
+      "generated_clean_dev_fpr": 0.23431372549019608,
+      "reading": "both curves are flat at the top of the grid, so neither is a tuning problem. The alias channel scores full token coverage as 1.0, which clears every threshold including 1.0 -- text that merely NAMES the author is scored identically to text that carries what was forgotten.",
+      "threshold": 1.0
+    },
+    "router_is_not_the_bottleneck": true,
+    "routing_removed_the_retain_question_false_alarms": true
+  },
+  "false_alarms": {
+    "construction_note": "retain_generated_fpr is bounded above by retain_question_routing_fpr by construction: nothing is scanned on a retain request the router left unselected. A zero here is a property of the routing, not independent evidence that content detection is precise.",
+    "generated_clean_fpr": null,
+    "n_generated_clean_dev": 1020,
+    "n_generated_clean_gate": 980,
+    "n_retain_generated": 2000,
+    "n_retain_questions": 90,
+    "n_retain_questions_misrouted": 0,
+    "retain_generated_fpr": null,
+    "retain_question_routing_fpr": 0.0
+  },
+  "gate_policy": "bounds are carried unchanged from DETECTOR_V2_GATES.json. Phase 0 is not entitled to move them.",
+  "gates": [
+    {
+      "bound": 0.8,
+      "comparison": ">=",
+      "gate": "routed_micro_recall_correct_concept",
+      "measured": null,
+      "passed": null
+    },
+    {
+      "bound": 0.75,
+      "comparison": ">=",
+      "gate": "routed_macro_recall_correct_concept",
+      "measured": null,
+      "passed": null
+    },
+    {
+      "bound": 0.8,
+      "comparison": ">=",
+      "gate": "routed_correct_concept_precision",
+      "measured": null,
+      "passed": null
+    },
+    {
+      "bound": 0.0,
+      "comparison": "==",
+      "gate": "zero_recall_heldout_concepts",
+      "measured": null,
+      "passed": null
+    },
+    {
+      "bound": 0.1,
+      "comparison": "<=",
+      "gate": "retain_question_routing_fpr",
+      "measured": 0.0,
+      "passed": true
+    },
+    {
+      "bound": 0.1,
+      "comparison": "<=",
+      "gate": "retain_generated_fpr",
+      "measured": null,
+      "passed": null
+    },
+    {
+      "bound": 0.1,
+      "comparison": "<=",
+      "gate": "generated_clean_fpr",
+      "measured": null,
+      "passed": null
+    }
+  ],
+  "hashes": {
+    "corpus_file_sha256": "05e6be29b5b93d745fa3225f7f5477bb15b9c510c146f272508d140d8004d961",
+    "corpus_registry_fingerprint": "051eadbbdf2f00be1b0f774b7f5bff0381f33085c380f238065a75a9db9d9282",
+    "corpus_sha256": "8e3154bc4445822676a60eb50e1a8731155a6b6fefe59d0abc0d1b9a04fd0e27",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "detector_version": "semantic-scope-v2:hashing-64:thr=0.650:diagnostic",
+    "policy_cohort_fingerprint": "051eadbbdf2f00be1b0f774b7f5bff0381f33085c380f238065a75a9db9d9282",
+    "registry_fingerprint": "fa7baa27423d7b3a1b4a6764da13fc29342ed30857f7d184684cad240b7c3f6f",
+    "split_file_sha256": "5a1569fac04a35480a7eddb96a330c9e80fc889fde3c3df70e9d6d6ebbb4b075",
+    "split_sha256": "213fa367a210cb352240828951c562c83eae5f8d60476e1b8f9702aeeae953ab"
+  },
+  "oracle_upper_bound": {
+    "label": "ORACLE UPPER BOUND -- uses the known row concept. Not a deployable result.",
+    "macro_recall_correct_concept": 0.21128236910888956,
+    "micro_recall_correct_concept": 0.2638888888888889,
+    "threshold": 0.65,
+    "used_for_verdict": false,
+    "zero_recall_concepts": [
+      "tofu-forget10-author-0007",
+      "tofu-forget10-author-0013"
+    ]
+  },
+  "phase": "Detector-v3 Phase 0 -- feasibility probe only. No runtime backend is implemented.",
+  "registry": {
+    "aliases_per_concept": {
+      "tofu-forget10-author-0000": [
+        "Hsiao Yun-Hwa",
+        "Hsiao Yun Hwa",
+        "Hsiao",
+        "Yun-Hwa",
+        "Yun",
+        "Hwa"
+      ],
+      "tofu-forget10-author-0001": [
+        "Carmen Montenegro",
+        "Carmen",
+        "Montenegro"
+      ],
+      "tofu-forget10-author-0002": [
+        "Elvin Mammadov",
+        "Elvin",
+        "Mammadov"
+      ],
+      "tofu-forget10-author-0003": [
+        "Rajeev Majumdar",
+        "Rajeev",
+        "Majumdar"
+      ],
+      "tofu-forget10-author-0004": [
+        "Jad Ambrose Al-Shamary",
+        "Jad Ambrose Al Shamary",
+        "Jad",
+        "Ambrose",
+        "Al-Shamary",
+        "Shamary"
+      ],
+      "tofu-forget10-author-0005": [
+        "Adib Jarrah",
+        "Adib",
+        "Jarrah"
+      ],
+      "tofu-forget10-author-0006": [
+        "Ji-Yeon Park",
+        "Ji Yeon Park",
+        "Ji-Yeon",
+        "Yeon"
+      ],
+      "tofu-forget10-author-0007": [
+        "Behrouz Rohani",
+        "Behrouz",
+        "Rohani"
+      ],
+      "tofu-forget10-author-0008": [
+        "Wei-Jun Chen",
+        "Wei Jun Chen",
+        "Wei-Jun",
+        "Wei",
+        "Jun",
+        "Chen"
+      ],
+      "tofu-forget10-author-0009": [
+        "Tae-ho Park",
+        "Tae ho Park",
+        "Tae-ho",
+        "Tae"
+      ],
+      "tofu-forget10-author-0010": [
+        "Hina Ameen",
+        "Hina",
+        "Ameen"
+      ],
+      "tofu-forget10-author-0011": [
+        "Xin Lee Williams",
+        "Xin",
+        "Lee",
+        "Williams"
+      ],
+      "tofu-forget10-author-0012": [
+        "Moshe Ben-David",
+        "Moshe Ben David",
+        "Moshe",
+        "Ben-David",
+        "Ben",
+        "David"
+      ],
+      "tofu-forget10-author-0013": [
+        "Kalkidan Abera",
+        "Kalkidan",
+        "Abera"
+      ],
+      "tofu-forget10-author-0014": [
+        "Takashi Nakamura",
+        "Takashi",
+        "Nakamura"
+      ],
+      "tofu-forget10-author-0015": [
+        "Raven Marais",
+        "Raven",
+        "Marais"
+      ],
+      "tofu-forget10-author-0016": [
+        "Aysha Al-Hashim",
+        "Aysha Al Hashim",
+        "Aysha",
+        "Al-Hashim",
+        "Hashim"
+      ],
+      "tofu-forget10-author-0017": [
+        "Edward Patrick Sullivan",
+        "Edward",
+        "Patrick",
+        "Sullivan"
+      ],
+      "tofu-forget10-author-0018": [
+        "Basil Mahfouz Al-Kuwaiti",
+        "Basil Mahfouz Al Kuwaiti",
+        "Basil",
+        "Mahfouz",
+        "Al-Kuwaiti",
+        "Kuwaiti"
+      ],
+      "tofu-forget10-author-0019": [
+        "Nikolai Abilov",
+        "Nikolai",
+        "Abilov"
+      ]
+    },
+    "cohort": "data/cohorts/graph_unlearning_v1/engineering.json",
+    "cohort_fingerprint": "051eadbbdf2f00be1b0f774b7f5bff0381f33085c380f238065a75a9db9d9282",
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "n_concepts": 20,
+    "n_questions": 20,
+    "registry_fingerprint": "fa7baa27423d7b3a1b4a6764da13fc29342ed30857f7d184684cad240b7c3f6f",
+    "rejected_ambiguous_aliases": {
+      "park": [
+        "tofu-forget10-author-0006",
+        "tofu-forget10-author-0009"
+      ]
+    },
+    "split": "engineering",
+    "stores_gold_answers": false
+  },
+  "request_provenance": {
+    "all_verified": true,
+    "dataset_revision": "324592d84ae4f482ac7249b9285c2ecdb53e3a68",
+    "n_discovery_items": 50,
+    "n_discovery_items_hash_verified": 50,
+    "note": "the item id is used ONLY to fetch the request text the trajectory was given. route_request receives that string and nothing else.",
+    "source": "pinned TOFU forget10 revision, indexed by the item id inside trajectory_id"
+  },
+  "routed_detection": {
+    "correct_concept_precision": null,
+    "macro_recall_correct_concept": null,
+    "micro_recall_correct_concept": null,
+    "n_heldout_examples": 144,
+    "per_concept": {},
+    "zero_recall_concepts": []
+  },
+  "router": {
+    "correct_concept_recall": 0.99800796812749,
+    "mean_concepts_selected": 0.99800796812749,
+    "n_requests_scored": 502,
+    "n_requests_with_no_selection": 1,
+    "note": "the label is used to SCORE the router, never to drive it. precision_over_selected counts every selected concept, so a request that selects two concepts is charged for the one it did not need.",
+    "precision_over_selected": 1.0
+  },
+  "schema": "graph-detector-v3-identity-probe-v1",
+  "scope": {
+    "frozen_v1_v2_artifacts_modified": false,
+    "gold_answers_in_registry": 0,
+    "graph_generation_run": false,
+    "h100_configs_read": false,
+    "runtime_backend_implemented": false
+  },
+  "secondary_registry_check": {
+    "registry": {
+      "cohort": "data/cohorts/graph_unlearning_v1/discovery.json",
+      "n_questions": 50,
+      "registry_fingerprint": "026f5b6c5b22005952da018a2b8939ce871db89a742990bd0478ffc672d0b6eb",
+      "split": "discovery"
+    },
+    "retain_question_routing_fpr": 0.1,
+    "router_correct_concept_recall": 1.0,
+    "why": "the v2 gate artefact built its registry from discovery.json; the deployed runs built theirs from engineering.json"
+  },
+  "selected_threshold": null,
+  "source_runs": {
+    "caveat": "DETECTOR_V2_GATES.json measured generated-clean FPR on 20260813T043200Z-discovery-natural-flow, whose generation shards are not in the repository. These populations come from different runs, so the 44.55% v2 figure and the figure here are not directly comparable.",
+    "generated_clean": [
+      {
+        "n_texts": 2000,
+        "n_unguarded_rows_seen": 433,
+        "run": "20260814T035637Z-mechanism-memory-reentry-20x32",
+        "scorer_version": "leakk-nli-rougel-v1:sileod/deberta-v3-base-tasksource-nli@3209a6ab012eab725e8f24547972f9aa133d1345",
+        "truncated_at_limit": true,
+        "usable": true
+      }
+    ],
+    "retain_generated": [
+      {
+        "n_texts": 2000,
+        "n_unguarded_rows_seen": 400,
+        "run": "20260814T035637Z-retain-utility-45x32",
+        "scorer_version": "leakk-nli-rougel-v1:sileod/deberta-v3-base-tasksource-nli@3209a6ab012eab725e8f24547972f9aa133d1345",
+        "truncated_at_limit": true,
+        "usable": true
+      }
+    ]
+  },
+  "threshold_selection": {
+    "constraints": {
+      "generated_clean_dev_fpr": 0.1,
+      "retain_negative_fpr": 0.1
+    },
+    "grid": [
+      {
+        "dev_macro_recall": 0.6347059884559886,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.5401960784313725,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.2,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.5884000721500722,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.4980392156862745,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.225,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.5633784271284272,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.47058823529411764,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.25,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.5166323953823955,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.44607843137254904,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.275,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.4834145021645022,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.41568627450980394,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.3,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.4651677489177489,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.3892156862745098,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.325,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.43300324675324675,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.36176470588235293,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.35,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.40663961038961044,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.3431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.375,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.4010984848484848,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.32450980392156864,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.4,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.4010984848484848,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.31470588235294117,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.425,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.3860984848484848,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.3088235294117647,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.45,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.36419372294372293,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.3,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.475,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.36419372294372293,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.2911764705882353,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.5,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30794372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.24901960784313726,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.525,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.24313725490196078,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.55,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23921568627450981,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.575,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.2372549019607843,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.6,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23529411764705882,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.625,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23529411764705882,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.65,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.675,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.7,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.725,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.75,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.775,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.8,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.825,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.85,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.875,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.9,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.925,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.95,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.975,
+        "within_all_ceilings": false
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "generated_clean_dev_fpr": 0.23431372549019608,
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 1.0,
+        "within_all_ceilings": false
+      }
+    ],
+    "note": "no threshold in the grid holds every ceiling with any development recall at all",
+    "selected_on": "development concepts only",
+    "selected_threshold": null
+  },
+  "threshold_selection_v2_faithful": {
+    "constraints": {
+      "retain_negative_fpr": 0.1
+    },
+    "grid": [
+      {
+        "dev_macro_recall": 0.6347059884559886,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.2,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.5884000721500722,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.225,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.5633784271284272,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.25,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.5166323953823955,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.275,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.4834145021645022,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.3,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.4651677489177489,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.325,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.43300324675324675,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.35,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.40663961038961044,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.375,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.4010984848484848,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.4,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.4010984848484848,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.425,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.3860984848484848,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.45,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.36419372294372293,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.475,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.36419372294372293,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.5,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30794372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.525,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.55,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.575,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.6,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.625,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.65,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.675,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.7,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.725,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.75,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.775,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.8,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.825,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.85,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.875,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.9,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.925,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.95,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 0.975,
+        "within_all_ceilings": true
+      },
+      {
+        "dev_macro_recall": 0.30294372294372296,
+        "fprs": {
+          "retain_negative_fpr": 0.0
+        },
+        "threshold": 1.0,
+        "within_all_ceilings": true
+      }
+    ],
+    "note": "held-out concepts and the gate half of the clean pool were not consulted",
+    "selected_on": "development concepts only",
+    "selected_threshold": 0.2
+  },
+  "verdict": "identity routing does not clear the frozen bounds; Detector v3 is not feasible on this evidence"
+}
