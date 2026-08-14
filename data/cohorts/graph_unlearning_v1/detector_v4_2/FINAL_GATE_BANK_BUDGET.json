@@ -2,27 +2,57 @@
   "completes": "data\\cohorts\\graph_unlearning_v1\\detector_v4_1\\FINAL_GATE_BANK_MANIFEST.json",
   "completes_sha256": "91784a31ab6d3132e804815475ab1e290b72e176f68f2452371abff46575df67",
   "generation_budget": {
-    "arms": [
-      "multi_agent_leak"
-    ],
-    "deduplication": "exact text_sha256 within a run and across runs; first occurrence wins",
-    "k": 32,
-    "max_rows_per_run": 6000,
+    "deduplication": "by (candidate text, protected question), first occurrence wins. Text alone is wrong: the same refusal string is a legitimately distinct row under two different protected questions, and dropping the second silently deletes one question's false-alarm evidence.",
+    "groups": {
+      "natural": {
+        "challenge": "natural",
+        "cohort_split": "discovery",
+        "is_retain": false,
+        "max_rows_per_run": 6000,
+        "n_items": 50,
+        "n_runs": 4,
+        "n_samples": 32,
+        "primary_k": 32,
+        "protocol": "graph_flow",
+        "required_arm": "multi_agent_leak",
+        "role": "recall numerator and the protected-clean false-alarm pool",
+        "seeds": [
+          50241,
+          50242,
+          50243,
+          50244
+        ]
+      },
+      "retain": {
+        "challenge": "natural",
+        "cohort_split": "retain_utility",
+        "is_retain": true,
+        "max_rows_per_run": 6000,
+        "n_items": 45,
+        "n_runs": 4,
+        "n_samples": 32,
+        "primary_k": 32,
+        "protocol": "graph_flow",
+        "required_arm": "multi_agent_leak",
+        "role": "the retain false-alarm pool, which the aggregate clean FPR cannot express",
+        "seeds": [
+          51241,
+          51242,
+          51243,
+          51244
+        ]
+      }
+    },
+    "labelling_policy": "the bank is NOT labelled row by row by the model judges. A ~24,000-row bank is ~96,000 judge calls across two judges and two passes. A deterministic stratified audit sample is frozen first by `rdl graph-detector-v4-2-bank-audit`, on generation metadata only and never on a detector score.",
     "max_rows_total": 24000,
-    "n_items": 60,
-    "n_runs": 4,
-    "one_run_per_seed": true,
-    "retain_arms": [
-      "retain unguarded flow"
-    ],
-    "samples_per_item": 8,
-    "split_rule": "sha256(text)[:2] parity \u2014 content-addressed, computed before inspection",
+    "split_rule": "sha256(text || question)[:2] parity \u2014 content-addressed, before inspection",
     "unlabelled_policy": "texts with no cached scorer verdict are counted and are in neither pool. Treating them as clean would understate the false-alarm rate.",
-    "why_a_budget_is_part_of_the_freeze": "seeds fix WHICH trajectories are drawn; the budget fixes HOW MANY. A bank whose size is decided at generation time can be grown until a gate passes, and nothing in the artifact would show it. FINAL_GATE_BANK_MANIFEST.json froze the seeds and the minimum label counts and not this, which is the gap these commands close."
+    "why_a_budget_is_part_of_the_freeze": "seeds fix WHICH trajectories are drawn; the budget fixes HOW MANY. A bank whose size is decided at generation time can be grown until a gate passes, and nothing in the artifact would show it. FINAL_GATE_BANK_MANIFEST.json froze the seeds and the minimum label counts and not this, which is the gap these commands close.",
+    "why_n_samples_equals_primary_k": "primary_k is the number of samples the success-at-k statistic is read over. n_samples < primary_k cannot be measured at all: the estimate has no draws to read. The previous freeze said 8 samples and k=32, which is why this file now validates the budget instead of only recording it."
   },
-  "manifest_sha256": "dbaa10c14069039dc833005e532545114da1737d396e2ae5afeb6a24320ec704",
+  "manifest_sha256": "0d4a47b29a2bbc046eeea66e5f29ecdc3086e445323c962d40b4ed12035f0665",
   "protocol": "docs/graph_unlearning/DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md",
-  "schema": "graph-detector-v4-2-final-bank-budget-v1",
+  "schema": "graph-detector-v4-2-final-bank-budget-v2",
   "sealed_until": "the human validation frozen in DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md section 10 passes, the checkpoint and threshold are frozen, and publication_label_valid is true. A model-judge-authorised run opens the ENGINEERING bank instead.",
   "seeds": [
     40241,
@@ -30,6 +60,7 @@
     40243,
     40244
   ],
+  "seeds_note": "the final bank's seed groups are derived from the sealed set at generation time and are not fixed here; the sealed set is what this file is bound to.",
   "status": "PRE-REGISTERED, NOT YET GENERATED",
   "what_the_manifest_already_freezes": [
     "arms",
@@ -39,19 +70,14 @@
     "the opening rule"
   ],
   "what_this_adds": [
-    "arms",
     "deduplication",
-    "k",
-    "max_rows_per_run",
+    "groups",
+    "labelling_policy",
     "max_rows_total",
-    "n_items",
-    "n_runs",
-    "one_run_per_seed",
-    "retain_arms",
-    "samples_per_item",
     "split_rule",
     "unlabelled_policy",
-    "why_a_budget_is_part_of_the_freeze"
+    "why_a_budget_is_part_of_the_freeze",
+    "why_n_samples_equals_primary_k"
   ],
   "why_a_separate_file": "FINAL_GATE_BANK_MANIFEST.json is frozen pre-registration and is not edited, for the same reason DETECTOR_V4_ORACLE_CEILING.json is not edited. This file sits beside it, carries its hash, and adds only what it did not fix."
 }

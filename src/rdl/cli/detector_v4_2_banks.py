@@ -11,35 +11,49 @@ oracle ceiling: a new artifact that carries the original's hash.
 Three commands
 --------------
 ``freeze-banks``
-    Writes ``ENGINEERING_BANK_MANIFEST.json`` (seeds 50241–50244, complete budget) and
+    Writes ``ENGINEERING_BANK_MANIFEST.json`` (two seed groups, complete budget) and
     ``FINAL_GATE_BANK_BUDGET.json`` (the budget the frozen final manifest is missing,
     bound to its sha256). Idempotent, offline, generates nothing.
 
 ``build-bank``
     Assembles a bank from graph-run artifacts and **refuses** if those runs do not match
-    the pre-registration — wrong seeds, wrong arms, too few runs, a row cap the runs
-    exceed. This is the check that makes the freeze mean something: without it, the
-    manifest is a document and the bank is whatever was generated.
+    the pre-registration — wrong seeds, wrong arms, wrong cohort, too few runs, a sampling
+    design that cannot measure the ``k`` it claims. This is the check that makes the freeze
+    mean something: without it, the manifest is a document and the bank is whatever was
+    generated.
 
 ``final-gate``
-    Opens a bank exactly once, at a threshold frozen beforehand, and writes an
-    ``OPENING_RECORD.json`` beside it. A second open is refused by the presence of that
-    record. "Opened exactly once" is otherwise a promise, and the whole point of the fresh
-    bank is that it is a promise nobody can keep by accident.
+    Loads a bank AND its adjudicated labels, scores the frozen checkpoint at the frozen
+    threshold, writes the result and an ``OPENING_RECORD.json`` atomically. A second open
+    is refused by the presence of that record. "Opened exactly once" is otherwise a
+    promise, and the whole point of the fresh bank is that it is a promise nobody can keep
+    by accident.
 
-Why the engineering bank exists at all
---------------------------------------
-The v4.2 detector is trained on **model-judge** labels. Opening the final bank on a run
-authorised by two LLMs would spend the only unopened surface in the project on a result
-that ``DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md`` §2 E2 already says cannot be published. The
-engineering bank is a separate draw under separate seeds so the final one survives to be
-opened after human validation.
+Why the budget is what it is
+----------------------------
+The first version of this file froze ``n_items=60, samples_per_item=8, k=32``. That design
+cannot be generated: the discovery cohort has 50 items, not 60, and **8 samples cannot
+measure k=32** — ``k`` is the number of samples the success-at-k statistic is read over, so
+``n_samples >= primary_k`` is an arithmetic precondition, not a preference. Every real run
+in ``runs/graph`` that reports ``primary_k=32`` carries ``n_samples=32``. The budget below
+is the design those runs actually realise, and :func:`validate_budget` refuses the old one.
+
+Why the run manifest is read the way it is
+------------------------------------------
+Graph runs write ``RUN_MANIFEST.json`` — upper case — and record the seed at
+``sampling.base_seed``, the arms as a list of objects under ``arms``, and the cohort under
+``evaluation_cohort``. The first version of this file opened ``run_manifest.json`` and read
+top-level ``seed`` / ``arm`` / ``n_rows``, none of which exist. Because every lookup
+returned ``None`` and every check skipped ``None``, it accepted any directory that happened
+to contain a file by that name and rejected every real run for not having one. A validator
+that cannot read the artifact it validates is worse than no validator: it reports PASS.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -47,6 +61,7 @@ import typer
 
 from ..eval.detector_v4_2 import (
     ENGINEERING_BANK_SEEDS,
+    ENGINEERING_RETAIN_SEEDS,
     SEALED_FINAL_BANK_SEEDS,
     V4_2_PROTOCOL,
 )
@@ -55,9 +70,12 @@ from .detector_v4_1_freeze import DEFAULT_V4_1_OUT, GATE_BANK_MANIFEST_FILENAME
 from .detector_v4_2_llm_judge import DEFAULT_V4_2_OUT
 
 __all__ = [
+    "GENERATION_BUDGET",
     "detector_v4_2_build_bank",
     "detector_v4_2_final_gate",
     "detector_v4_2_freeze_banks",
+    "run_meta",
+    "validate_budget",
 ]
 
 ENGINEERING_MANIFEST_FILENAME = "ENGINEERING_BANK_MANIFEST.json"
@@ -67,31 +85,89 @@ OPENING_RECORD_FILENAME = {
     "engineering": "ENGINEERING_BANK_OPENING_RECORD.json",
     "final": "FINAL_GATE_BANK_OPENING_RECORD.json",
 }
+GATE_RESULT_FILENAME = {
+    "engineering": "ENGINEERING_BANK_GATE_RESULT.json",
+    "final": "FINAL_GATE_BANK_GATE_RESULT.json",
+}
+RUN_MANIFEST_FILENAME = "RUN_MANIFEST.json"
+
+# The arm the bank is drawn from. Unchanged from the v2 corpus rule (GU-0031): a guarded
+# arm's text is clean partly because the guard removed the rest of it, so its clean rate is
+# not a detector measurement.
+UNGUARDED_ARM = "multi_agent_leak"
+
+GROUPS: tuple[str, ...] = ("natural", "retain")
 
 # The budget the frozen manifest is missing. Written down here, on CPU, before anything is
 # generated, for the same reason the seeds were: a quantity chosen after a number is known
 # is a quantity the number chose.
+#
+# Two groups, not one four-run set. A retain run and a natural run are different cohorts
+# (retain90 vs forget10), different item counts, and different roles in the gate — the
+# natural group supplies the recall numerator and the protected-clean false-alarm pool, the
+# retain group supplies the retain false-alarm pool. Collapsing them into "four runs" makes
+# "four" ambiguous between four natural runs and two of each, and lets a retain run and a
+# natural run share a seed, which is the same draw wearing two labels.
 GENERATION_BUDGET: dict[str, object] = {
-    "n_items": 60,
-    "samples_per_item": 8,
-    "k": 32,
-    "n_runs": 4,
-    "one_run_per_seed": True,
-    "arms": ["multi_agent_leak"],
-    "retain_arms": ["retain unguarded flow"],
-    "max_rows_per_run": 6000,
+    "groups": {
+        "natural": {
+            "role": "recall numerator and the protected-clean false-alarm pool",
+            "n_items": 50,
+            "n_samples": 32,
+            "primary_k": 32,
+            "n_runs": 4,
+            "seeds": list(ENGINEERING_BANK_SEEDS),
+            "challenge": "natural",
+            "protocol": "graph_flow",
+            "cohort_split": "discovery",
+            "is_retain": False,
+            "required_arm": UNGUARDED_ARM,
+            "max_rows_per_run": 6000,
+        },
+        "retain": {
+            "role": "the retain false-alarm pool, which the aggregate clean FPR cannot express",
+            "n_items": 45,
+            "n_samples": 32,
+            "primary_k": 32,
+            "n_runs": 4,
+            "seeds": list(ENGINEERING_RETAIN_SEEDS),
+            "challenge": "natural",
+            "protocol": "graph_flow",
+            "cohort_split": "retain_utility",
+            "is_retain": True,
+            "required_arm": UNGUARDED_ARM,
+            "max_rows_per_run": 6000,
+        },
+    },
     "max_rows_total": 24000,
-    "deduplication": "exact text_sha256 within a run and across runs; first occurrence wins",
-    "split_rule": "sha256(text)[:2] parity — content-addressed, computed before inspection",
+    "deduplication": (
+        "by (candidate text, protected question), first occurrence wins. Text alone is "
+        "wrong: the same refusal string is a legitimately distinct row under two different "
+        "protected questions, and dropping the second silently deletes one question's "
+        "false-alarm evidence."
+    ),
+    "split_rule": "sha256(text || question)[:2] parity — content-addressed, before inspection",
     "unlabelled_policy": (
         "texts with no cached scorer verdict are counted and are in neither pool. "
         "Treating them as clean would understate the false-alarm rate."
+    ),
+    "labelling_policy": (
+        "the bank is NOT labelled row by row by the model judges. A ~24,000-row bank is "
+        "~96,000 judge calls across two judges and two passes. A deterministic stratified "
+        "audit sample is frozen first by `rdl graph-detector-v4-2-bank-audit`, on "
+        "generation metadata only and never on a detector score."
     ),
     "why_a_budget_is_part_of_the_freeze": (
         "seeds fix WHICH trajectories are drawn; the budget fixes HOW MANY. A bank whose "
         "size is decided at generation time can be grown until a gate passes, and nothing "
         "in the artifact would show it. FINAL_GATE_BANK_MANIFEST.json froze the seeds and "
         "the minimum label counts and not this, which is the gap these commands close."
+    ),
+    "why_n_samples_equals_primary_k": (
+        "primary_k is the number of samples the success-at-k statistic is read over. "
+        "n_samples < primary_k cannot be measured at all: the estimate has no draws to "
+        "read. The previous freeze said 8 samples and k=32, which is why this file now "
+        "validates the budget instead of only recording it."
     ),
 }
 
@@ -104,7 +180,66 @@ def _sha_file(path: Path) -> str | None:
     return _sha_text(path.read_text(encoding="utf-8")) if path.exists() else None
 
 
-# --------------------------------------------------------------------- freeze --
+# ------------------------------------------------------------------ budget validation --
+
+
+def validate_budget(budget: Mapping) -> list[str]:
+    """Every internally impossible thing a budget can say. Returns the failures.
+
+    Run at freeze time and again at build time, because a manifest written by an older
+    version of this module is exactly the case the second check exists for.
+    """
+    failures: list[str] = []
+    groups = budget.get("groups")
+    if not isinstance(groups, Mapping) or set(groups) != set(GROUPS):
+        return [
+            f"budget must declare groups {sorted(GROUPS)}, got "
+            f"{sorted(groups) if isinstance(groups, Mapping) else type(groups).__name__}. "
+            "A single undifferentiated run set cannot separate the retain false-alarm pool "
+            "from the protected-clean one."
+        ]
+
+    all_seeds: dict[int, str] = {}
+    for name, group in groups.items():
+        n_samples = int(group.get("n_samples", 0))
+        primary_k = int(group.get("primary_k", 0))
+        if primary_k <= 0:
+            failures.append(f"{name}: primary_k must be positive, got {primary_k}")
+        if n_samples < primary_k:
+            failures.append(
+                f"{name}: n_samples={n_samples} < primary_k={primary_k}. success-at-k is "
+                "read over k draws; fewer draws than k cannot be measured at all."
+            )
+        if int(group.get("n_items", 0)) <= 0:
+            failures.append(f"{name}: n_items must be positive, got {group.get('n_items')}")
+        seeds = list(group.get("seeds", ()))
+        if len(seeds) != int(group.get("n_runs", 0)):
+            failures.append(
+                f"{name}: {len(seeds)} seed(s) declared for n_runs={group.get('n_runs')}"
+            )
+        if len(set(seeds)) != len(seeds):
+            failures.append(f"{name}: seeds {seeds} are not unique within the group")
+        for seed in seeds:
+            if seed in all_seeds and all_seeds[seed] != name:
+                failures.append(
+                    f"seed {seed} is declared in both {all_seeds[seed]!r} and {name!r}. "
+                    "A retain run sharing a natural run's seed is one draw wearing two "
+                    "labels."
+                )
+            all_seeds[seed] = name
+        if not group.get("required_arm"):
+            failures.append(f"{name}: no required_arm; any arm's text would be accepted")
+    for seed in all_seeds:
+        if seed in SEALED_FINAL_BANK_SEEDS:
+            failures.append(
+                f"seed {seed} is one of the SEALED final-bank seeds "
+                f"{list(SEALED_FINAL_BANK_SEEDS)}; the engineering bank must be a "
+                "different draw or it is the final bank under a new name."
+            )
+    return failures
+
+
+# ----------------------------------------------------------------------- freeze --
 
 
 def detector_v4_2_freeze_banks(
@@ -126,8 +261,16 @@ def detector_v4_2_freeze_banks(
             "DECISIONS.md before generating anything."
         )
 
+    failures = validate_budget(GENERATION_BUDGET)
+    if failures:  # pragma: no cover - a constant that fails its own validator is a bug
+        for failure in failures:
+            typer.echo(f"  [FAIL] {failure}", err=True)
+        raise typer.BadParameter(
+            "GENERATION_BUDGET does not validate. Refusing to freeze an impossible design."
+        )
+
     engineering = {
-        "schema": "graph-detector-v4-2-engineering-bank-manifest-v1",
+        "schema": "graph-detector-v4-2-engineering-bank-manifest-v2",
         "protocol": V4_2_PROTOCOL,
         "status": "PRE-REGISTERED, NOT YET GENERATED",
         "purpose": (
@@ -141,8 +284,13 @@ def detector_v4_2_freeze_banks(
         "challenge": "natural",
         "protocol_name": "graph_flow",
         "seeds": {
-            "base_seed": ENGINEERING_BANK_SEEDS[0],
-            "seeds": list(ENGINEERING_BANK_SEEDS),
+            "natural": list(ENGINEERING_BANK_SEEDS),
+            "retain": list(ENGINEERING_RETAIN_SEEDS),
+            "why_two_groups": (
+                "a natural run and a retain run are different cohorts with different "
+                "roles in the gate. One shared set of four makes 'four runs' ambiguous "
+                "and lets one draw be counted as two."
+            ),
             "why_new": (
                 "the study's base_seed is 1729 and the v4 engineering-only bank was drawn "
                 "under it; the final bank is 40241-40244 and is sealed. A third draw "
@@ -152,8 +300,8 @@ def detector_v4_2_freeze_banks(
         },
         "generation_budget": GENERATION_BUDGET,
         "arms": {
-            "natural": "multi_agent_leak",
-            "retain": "retain unguarded flow",
+            "natural": UNGUARDED_ARM,
+            "retain": UNGUARDED_ARM,
             "why_only_unguarded": (
                 "a guarded arm's text is clean partly because the guard removed the rest "
                 "of it, so its clean rate is not a detector measurement. Unchanged from "
@@ -166,6 +314,10 @@ def detector_v4_2_freeze_banks(
             "automatic": (
                 "the run's pinned NLI+ROUGE scorer is recorded for diagnosis and is not a "
                 "Goal A denominator."
+            ),
+            "sample": (
+                "a deterministic stratified audit sample, frozen by "
+                "`rdl graph-detector-v4-2-bank-audit` before the detector scores anything"
             ),
         },
         "opening_rule": {
@@ -186,7 +338,7 @@ def detector_v4_2_freeze_banks(
     typer.echo(f"wrote {output_dir / ENGINEERING_MANIFEST_FILENAME}")
 
     budget = {
-        "schema": "graph-detector-v4-2-final-bank-budget-v1",
+        "schema": "graph-detector-v4-2-final-bank-budget-v2",
         "protocol": V4_2_PROTOCOL,
         "status": "PRE-REGISTERED, NOT YET GENERATED",
         "completes": str(final_manifest_path),
@@ -206,6 +358,10 @@ def detector_v4_2_freeze_banks(
         "what_this_adds": sorted(GENERATION_BUDGET),
         "generation_budget": GENERATION_BUDGET,
         "seeds": list(SEALED_FINAL_BANK_SEEDS),
+        "seeds_note": (
+            "the final bank's seed groups are derived from the sealed set at generation "
+            "time and are not fixed here; the sealed set is what this file is bound to."
+        ),
         "sealed_until": (
             "the human validation frozen in DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md section 10 "
             "passes, the checkpoint and threshold are frozen, and publication_label_valid "
@@ -216,74 +372,152 @@ def detector_v4_2_freeze_banks(
     atomic_json(output_dir / FINAL_BUDGET_FILENAME, budget)
     typer.echo(f"wrote {output_dir / FINAL_BUDGET_FILENAME}")
     typer.echo("")
-    typer.echo(f"engineering seeds: {list(ENGINEERING_BANK_SEEDS)}")
-    typer.echo(f"final seeds:       {list(SEALED_FINAL_BANK_SEEDS)}  (SEALED)")
+    typer.echo(f"engineering natural seeds: {list(ENGINEERING_BANK_SEEDS)}")
+    typer.echo(f"engineering retain seeds:  {list(ENGINEERING_RETAIN_SEEDS)}")
+    typer.echo(f"final seeds:               {list(SEALED_FINAL_BANK_SEEDS)}  (SEALED)")
 
 
 # ----------------------------------------------------------------- build bank --
 
 
-def _run_meta(path: Path) -> dict:
-    """Seed, arm and row count of one graph run, from its own manifest."""
-    manifest = path if path.is_file() else path / "run_manifest.json"
+def run_meta(path: Path) -> dict:
+    """The design of one graph run, read out of the structure ``RUN_MANIFEST.json`` has.
+
+    Every field this returns is one the real artifact carries. Absent fields come back as
+    ``None`` and are treated as verification failures by :func:`check_group` rather than
+    skipped, because "the manifest does not say" and "the manifest says the right thing"
+    must not produce the same verdict.
+    """
+    manifest = path if path.is_file() else path / RUN_MANIFEST_FILENAME
     if not manifest.exists():
-        raise typer.BadParameter(f"{manifest} is absent; --run must name a graph run directory")
+        raise typer.BadParameter(
+            f"{manifest} is absent; --natural-run/--retain-run must name a graph run "
+            f"directory containing {RUN_MANIFEST_FILENAME}"
+        )
     payload = json.loads(manifest.read_text(encoding="utf-8"))
+    sampling = payload.get("sampling") or {}
+    cohort = payload.get("evaluation_cohort") or {}
+    arms = payload.get("arms") or []
+    arm_names = sorted({str(a.get("arm")) for a in arms if isinstance(a, Mapping) and a.get("arm")})
+    shards = payload.get("evidence_shards") or []
     return {
         "path": str(path),
         "manifest": str(manifest),
         "manifest_sha256": _sha_file(manifest),
-        "seed": payload.get("seed", payload.get("base_seed")),
-        "arm": payload.get("arm", payload.get("condition")),
+        "base_seed": sampling.get("base_seed"),
+        "n_samples": sampling.get("n_samples"),
+        "primary_k": sampling.get("primary_k"),
+        "k_values": list(sampling.get("k_values", ())),
+        "n_items": cohort.get("n_items"),
+        "n_concepts": cohort.get("n_concepts"),
+        "cohort_split": cohort.get("split"),
+        "cohort_fingerprint": cohort.get("fingerprint"),
+        "is_retain": cohort.get("is_retain"),
+        "arms": arm_names,
+        "challenges": list(payload.get("challenges", ())),
         "protocol": payload.get("protocol"),
-        "n_rows": payload.get("n_rows"),
+        "complete": payload.get("complete"),
+        "study_id": payload.get("study_id"),
+        "git_sha": payload.get("git_sha"),
+        "profile_reportable": payload.get("profile_reportable"),
+        "n_shards": len(shards),
+        "n_rows": sum(int(s.get("n_rows", 0)) for s in shards if isinstance(s, Mapping)) or None,
     }
 
 
-def _check_against_budget(runs: Sequence[Mapping], manifest: Mapping) -> list[str]:
-    """Every way the supplied runs can fail the pre-registration. Returns the failures."""
-    budget = manifest["generation_budget"]
-    expected_seeds = set(manifest["seeds"]["seeds"] if "seeds" in manifest else manifest["seeds"])
+def check_group(runs: Sequence[Mapping], group_name: str, group: Mapping) -> list[str]:
+    """Every way one group's supplied runs can fail its pre-registration."""
     failures: list[str] = []
+    where = f"{group_name} group"
 
-    seeds = [r.get("seed") for r in runs]
-    if None in seeds:
-        failures.append("a run manifest does not record its seed; the draw cannot be verified")
-    elif set(seeds) != expected_seeds:
+    if len(runs) != int(group["n_runs"]):
+        failures.append(f"{where}: {len(runs)} run(s) supplied, {group['n_runs']} pre-registered")
+
+    raw_seeds = [r.get("base_seed") for r in runs]
+    if any(s is None for s in raw_seeds):
         failures.append(
-            f"seeds {sorted(s for s in seeds if s is not None)} != pre-registered "
-            f"{sorted(expected_seeds)}"
+            f"{where}: a run manifest records no sampling.base_seed; the draw cannot be verified"
         )
-    if len(seeds) != len(set(seeds)):
-        failures.append("a seed was supplied twice; one run per seed is pre-registered")
-    if len(runs) != int(budget["n_runs"]):
-        failures.append(f"{len(runs)} runs supplied, {budget['n_runs']} pre-registered")
-
-    permitted_arms = set(budget["arms"]) | set(budget.get("retain_arms", []))
-    for run in runs:
-        arm = run.get("arm")
-        if arm is not None and arm not in permitted_arms:
+    else:
+        seeds = [int(s) for s in raw_seeds if s is not None]
+        if len(set(seeds)) != len(seeds):
             failures.append(
-                f"run {run['path']} is arm {arm!r}, not one of {sorted(permitted_arms)}"
+                f"{where}: seeds {sorted(seeds)} are not unique. One run per seed is "
+                "pre-registered; the same seed twice is one draw counted twice."
+            )
+        expected = {int(s) for s in group["seeds"]}
+        if set(seeds) != expected:
+            failures.append(f"{where}: seeds {sorted(seeds)} != pre-registered {sorted(expected)}")
+
+    for run in runs:
+        name = Path(run["path"]).name
+        if run.get("complete") is not True:
+            failures.append(f"{where}: {name} records complete={run.get('complete')!r}")
+        if run.get("protocol") != group["protocol"]:
+            failures.append(
+                f"{where}: {name} is protocol {run.get('protocol')!r}, not {group['protocol']!r}"
+            )
+        if list(run.get("challenges") or ()) != [group["challenge"]]:
+            failures.append(
+                f"{where}: {name} carries challenges {run.get('challenges')}, "
+                f"not [{group['challenge']!r}]"
+            )
+        if run.get("cohort_split") != group["cohort_split"]:
+            failures.append(
+                f"{where}: {name} is cohort split {run.get('cohort_split')!r}, "
+                f"not {group['cohort_split']!r}"
+            )
+        if bool(run.get("is_retain")) is not bool(group["is_retain"]):
+            failures.append(
+                f"{where}: {name} has evaluation_cohort.is_retain="
+                f"{run.get('is_retain')!r}, and this group requires "
+                f"{group['is_retain']!r}. A retain run in the natural group would put "
+                "retain text in the recall numerator."
+            )
+        if group["required_arm"] not in (run.get("arms") or ()):
+            failures.append(
+                f"{where}: {name} does not run arm {group['required_arm']!r} "
+                f"(it runs {run.get('arms')})"
+            )
+        if run.get("n_items") != group["n_items"]:
+            failures.append(
+                f"{where}: {name} has evaluation_cohort.n_items={run.get('n_items')!r}, "
+                f"pre-registered {group['n_items']}"
+            )
+        if run.get("primary_k") != group["primary_k"]:
+            failures.append(
+                f"{where}: {name} has sampling.primary_k={run.get('primary_k')!r}, "
+                f"pre-registered {group['primary_k']}"
+            )
+        n_samples, primary_k = run.get("n_samples"), run.get("primary_k")
+        if n_samples is None:
+            failures.append(f"{where}: {name} records no sampling.n_samples")
+        elif primary_k is not None and int(n_samples) < int(primary_k):
+            failures.append(
+                f"{where}: {name} drew n_samples={n_samples} and claims primary_k="
+                f"{primary_k}. success-at-k needs at least k draws."
+            )
+        elif int(n_samples) != int(group["n_samples"]):
+            failures.append(
+                f"{where}: {name} drew n_samples={n_samples}, pre-registered {group['n_samples']}"
             )
         rows = run.get("n_rows")
-        if rows is not None and int(rows) > int(budget["max_rows_per_run"]):
+        if rows is not None and int(rows) > int(group["max_rows_per_run"]):
             failures.append(
-                f"run {run['path']} has {rows} rows, above the pre-registered "
-                f"max_rows_per_run {budget['max_rows_per_run']}"
+                f"{where}: {name} has {rows} rows, above the pre-registered "
+                f"max_rows_per_run {group['max_rows_per_run']}"
             )
-    total = sum(int(r["n_rows"]) for r in runs if r.get("n_rows") is not None)
-    if total > int(budget["max_rows_total"]):
-        failures.append(
-            f"{total} rows in total, above the pre-registered max_rows_total "
-            f"{budget['max_rows_total']}"
-        )
     return failures
 
 
 def detector_v4_2_build_bank(
     bank: str = typer.Option("engineering", "--bank", help="engineering | final"),
-    run: list[Path] = typer.Option([], "--run", help="one graph run directory per seed"),
+    natural_run: list[Path] = typer.Option(
+        [], "--natural-run", help="one graph run per pre-registered natural seed"
+    ),
+    retain_run: list[Path] = typer.Option(
+        [], "--retain-run", help="one graph run per pre-registered retain seed"
+    ),
     manifest_dir: Path = typer.Option(DEFAULT_V4_2_OUT, "--manifest-dir"),
     v4_1_dir: Path = typer.Option(DEFAULT_V4_1_OUT, "--v4-1-dir"),
     output_dir: Path = typer.Option(DEFAULT_V4_2_OUT, "--output-dir"),
@@ -315,15 +549,50 @@ def detector_v4_2_build_bank(
             "The manifest is frozen BEFORE the runs exist, which is the whole point."
         )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not run:
-        raise typer.BadParameter("--run is required, once per pre-registered seed")
+    budget = manifest["generation_budget"]
 
-    runs = [_run_meta(p) for p in run]
-    failures = _check_against_budget(runs, manifest)
+    # Re-validated here, not only at freeze time: a manifest on disk may predate this
+    # module, and the 60-item / 8-sample / k=32 freeze is exactly that case.
+    budget_failures = validate_budget(budget)
+    if budget_failures:
+        for failure in budget_failures:
+            typer.echo(f"  [FAIL] {failure}", err=True)
+        raise typer.BadParameter(
+            f"{manifest_path} carries a budget that cannot be generated. Re-run "
+            "`rdl graph-detector-v4-2-freeze-banks` to rewrite it, and record the "
+            "correction in DECISIONS.md."
+        )
+
+    supplied = {"natural": list(natural_run), "retain": list(retain_run)}
+    for name, paths in supplied.items():
+        if not paths:
+            raise typer.BadParameter(
+                f"--{name}-run is required, once per pre-registered {name} seed "
+                f"{budget['groups'][name]['seeds']}. The two groups are separate draws; "
+                "passing only one of them would build a bank with no "
+                + ("retain false-alarm pool" if name == "retain" else "recall numerator")
+                + "."
+            )
+
+    runs_by_group = {name: [run_meta(p) for p in paths] for name, paths in supplied.items()}
+    failures: list[str] = []
+    for name, runs in runs_by_group.items():
+        failures.extend(check_group(runs, name, budget["groups"][name]))
+
+    # A run may not appear in both groups, whatever its manifest says.
+    natural_paths = {r["path"] for r in runs_by_group["natural"]}
+    retain_paths = {r["path"] for r in runs_by_group["retain"]}
+    shared = natural_paths & retain_paths
+    if shared:
+        failures.append(
+            f"run(s) {sorted(shared)} were supplied to BOTH groups. One directory cannot "
+            "be both the recall numerator and the retain false-alarm pool."
+        )
+
     verification = {
         "manifest": str(manifest_path),
         "manifest_sha256": manifest.get("manifest_sha256"),
-        "runs": runs,
+        "groups": dict(runs_by_group),
         "failures": failures,
         "passed": not failures,
     }
@@ -331,11 +600,15 @@ def detector_v4_2_build_bank(
         typer.echo(f"  [FAIL] {failure}", err=True)
     if failures:
         raise typer.BadParameter(
-            f"{len(failures)} run(s) do not match the pre-registration in {manifest_path}. "
-            "Refusing to build. A bank assembled from runs that do not match its freeze "
-            "is not the bank that was pre-registered, whatever the file is called."
+            f"{len(failures)} verification failure(s) against the pre-registration in "
+            f"{manifest_path}. Refusing to build. A bank assembled from runs that do not "
+            "match its freeze is not the bank that was pre-registered, whatever the file "
+            "is called."
         )
-    typer.echo(f"verified {len(runs)} runs against {manifest_path}")
+    typer.echo(
+        f"verified {len(runs_by_group['natural'])} natural and "
+        f"{len(runs_by_group['retain'])} retain runs against {manifest_path}"
+    )
     if check_only:
         atomic_json(output_dir / "ENGINEERING_BANK_VERIFICATION.json", verification)
         typer.echo(f"wrote {output_dir / 'ENGINEERING_BANK_VERIFICATION.json'}  (--check-only)")
@@ -346,40 +619,67 @@ def detector_v4_2_build_bank(
     # would make the comparison a comparison of collectors.
     from .detector_v4_data import _collect, _halve, _question_bank
 
-    budget = manifest["generation_budget"]
+    questions, _answers, provenance = _question_bank(v4_1_dir.parent / "discovery.json")
+
     rows: list[dict] = []
     seen: set[str] = set()
     n_duplicates = 0
-    for meta in runs:
-        collected, _ = _collect(Path(meta["path"]), limit=int(budget["max_rows_per_run"]))
-        for row in collected:
-            digest = _sha_text(str(row["text"]))
-            if digest in seen:
-                n_duplicates += 1
-                continue
-            seen.add(digest)
-            rows.append(row)
+    n_rows_by_group: dict[str, int] = {}
+    for name, runs in runs_by_group.items():
+        group = budget["groups"][name]
+        before = len(rows)
+        for meta in runs:
+            collected, _ = _collect(Path(meta["path"]), limit=int(group["max_rows_per_run"]))
+            for row in collected:
+                request = questions.get(row["item_id"], row["request"])
+                # (text, question), not text alone. The same refusal string under two
+                # different protected questions is two rows, and collapsing them deletes
+                # one question's false-alarm evidence.
+                digest = _sha_text(f"{row['text']}\x00{request}")
+                if digest in seen:
+                    n_duplicates += 1
+                    continue
+                seen.add(digest)
+                rows.append(
+                    {
+                        **row,
+                        "request": request,
+                        "population": "retain" if group["is_retain"] else "protected",
+                        "group": name,
+                        "pair_sha256": digest,
+                    }
+                )
+        n_rows_by_group[name] = len(rows) - before
 
-    questions, _answers, provenance = _question_bank(v4_1_dir.parent / "discovery.json")
-    leaking = [r for r in rows if r["leaking"] is True]
-    clean = [r for r in rows if r["leaking"] is False]
-    unlabelled = [r for r in rows if r["leaking"] is None]
+    if len(rows) > int(budget["max_rows_total"]):
+        raise typer.BadParameter(
+            f"{len(rows)} rows collected, above the pre-registered max_rows_total "
+            f"{budget['max_rows_total']}"
+        )
+
+    natural_rows = [r for r in rows if r["group"] == "natural"]
+    retain_rows = [r for r in rows if r["group"] == "retain"]
+    leaking = [r for r in natural_rows if r["leaking"] is True]
+    clean = [r for r in natural_rows if r["leaking"] is False]
+    unlabelled = [r for r in natural_rows if r["leaking"] is None]
     clean_dev, clean_gate = _halve(clean)
     leak_dev, leak_gate = _halve(leaking)
 
-    def strip(subset: list[dict]) -> list[dict]:
+    def strip(subset: Sequence[Mapping]) -> list[dict]:
         return [
             {
                 "text": r["text"],
-                "request": questions.get(r["item_id"], r["request"]),
+                "request": r["request"],
                 "item_id": r["item_id"],
+                "population": r["population"],
                 "text_sha256": _sha_text(r["text"]),
+                "pair_sha256": r["pair_sha256"],
             }
             for r in subset
         ]
 
     payload = {
-        "schema": "graph-detector-v4-2-engineering-bank-v1",
+        "schema": "graph-detector-v4-2-engineering-bank-v2",
         "bank_id": "detector_v4_2_engineering_v1",
         "protocol": V4_2_PROTOCOL,
         "judge_population": "two_independent_llm_judges",
@@ -399,17 +699,33 @@ def detector_v4_2_build_bank(
                 "leaking": strip(leak_gate),
                 "usage": "opened once per frozen checkpoint+threshold, and recorded",
             },
+            # A separate partition, never halved into the other two. The retain
+            # false-alarm rate is its own gate and its own denominator; mixing retain rows
+            # into `clean` is what makes an aggregate FPR able to hide a retain failure.
+            "retain": {
+                "all": strip(retain_rows),
+                "usage": "the retain false-alarm denominator, in full, at every threshold",
+            },
             "split_rule": budget["split_rule"],
         },
         "counts": {
             "n_texts": len(rows),
+            "n_natural": len(natural_rows),
+            "n_retain": len(retain_rows),
             "n_leaking": len(leaking),
             "n_clean": len(clean),
             "n_unlabelled": len(unlabelled),
             "n_duplicates_dropped": n_duplicates,
+            "by_group": n_rows_by_group,
         },
         "unlabelled_policy": budget["unlabelled_policy"],
+        "deduplication": budget["deduplication"],
         "request_provenance": provenance,
+        "labels_are_not_here": (
+            "this file carries no answer_attempt label. The gate is scored against the "
+            "adjudicated model-judge labels produced by "
+            "`rdl graph-detector-v4-2-bank-audit` over a frozen stratified sample of it."
+        ),
     }
     payload["content_sha256"] = _sha_text(
         json.dumps(payload["partitions"], sort_keys=True, separators=(",", ":"))
@@ -417,19 +733,44 @@ def detector_v4_2_build_bank(
     atomic_json(output_dir / BANK_FILENAME[bank], payload)
     typer.echo(
         f"wrote {output_dir / BANK_FILENAME[bank]}  "
-        f"(leaking {len(leaking)}, clean {len(clean)}, dropped {n_duplicates} duplicates)"
+        f"(natural {len(natural_rows)}: leaking {len(leaking)}, clean {len(clean)}; "
+        f"retain {len(retain_rows)}; dropped {n_duplicates} duplicate pairs)"
+    )
+    typer.echo("")
+    typer.echo(
+        f"next: rdl graph-detector-v4-2-bank-audit --bank-path {output_dir / BANK_FILENAME[bank]}"
     )
 
 
 # ------------------------------------------------------------------ final gate --
 
 
+def _load_bank_rows(payload: Mapping) -> list[dict]:
+    """Every row of a bank, flattened, carrying its partition and population."""
+    out: list[dict] = []
+    partitions = payload.get("partitions", {})
+    for partition in ("development", "heldout"):
+        block = partitions.get(partition, {})
+        for key in ("clean", "leaking"):
+            for row in block.get(key, ()):
+                out.append({**row, "partition": partition, "nli_leaking": key == "leaking"})
+    for row in partitions.get("retain", {}).get("all", ()):
+        out.append({**row, "partition": "retain", "nli_leaking": None})
+    return out
+
+
 def detector_v4_2_final_gate(
     bank: str = typer.Option("engineering", "--bank", help="engineering | final"),
     bank_dir: Path = typer.Option(DEFAULT_V4_2_OUT, "--bank-dir"),
+    labels: Path = typer.Option(..., "--labels", help="the adjudicated bank-audit labels, JSONL"),
     model_artifact: Path = typer.Option(..., "--model-artifact"),
     threshold: float = typer.Option(..., "--threshold", help="frozen BEFORE this runs"),
+    policy_cohort: Path = typer.Option(
+        Path("data/cohorts/graph_unlearning_v1/discovery.json"), "--policy-cohort"
+    ),
+    backend: str = typer.Option("cross_encoder", "--backend"),
     device: str = typer.Option("", "--device"),
+    partition: str = typer.Option("heldout", "--partition", help="heldout | development | all"),
     output_dir: Path = typer.Option(DEFAULT_V4_2_OUT, "--output-dir"),
     reopen: bool = typer.Option(
         False,
@@ -437,22 +778,49 @@ def detector_v4_2_final_gate(
         help="engineering bank only; records that the bank is now development data",
     ),
 ) -> None:
-    """Open a bank once, at a frozen threshold, and record that it was opened.
+    """Score a bank once, at a frozen threshold, and record that it was opened.
 
-    The opening record is the enforcement. Without it, "opened exactly once" is a sentence
+    This command *scores*. The first version only wrote an opening record and printed the
+    name of another command to run, which meant the bank could be marked opened while
+    nothing had been measured on it — and the number that eventually appeared came from
+    ``rdl graph-detector-v4-gates``, which reads the **v4** natural bank and the **v4.1**
+    audit, not this bank at all. A gate that does not read the surface it gates is not a
+    gate.
+
+    The opening record is the enforcement of "once". Without it, that phrase is a sentence
     in a protocol that nothing checks, and the second open — the one after a disappointing
     first — is the one that would never be mentioned.
     """
+    from ..defenses.concept_registry import ConceptPolicy, ConceptRegistry
+    from ..defenses.identity_router import alias_index
+    from ..eval.detector_v4_1 import (
+        goal_a_gate_inputs,
+        goal_a_summarise,
+        score_goal_a,
+    )
+    from .detector_v4_gates import _natural_scores, _protected_questions, build_backend
+
     if bank not in BANK_FILENAME:
         raise typer.BadParameter(f"--bank must be engineering or final, got {bank!r}")
+    if partition not in ("heldout", "development", "all"):
+        raise typer.BadParameter(f"--partition must be heldout|development|all, got {partition!r}")
     bank_path = bank_dir / BANK_FILENAME[bank]
     if not bank_path.exists():
         raise typer.BadParameter(
             f"{bank_path} is absent; run `rdl graph-detector-v4-2-build-bank` first"
         )
+    if not labels.exists():
+        raise typer.BadParameter(
+            f"{labels} is absent. The gate is scored against adjudicated model-judge "
+            "labels for THIS bank; run `rdl graph-detector-v4-2-bank-audit` and the two "
+            "judges over its inputs first. Scoring against the v4.1 audit instead would "
+            "gate a new bank on labels drawn from a different one."
+        )
     record_path = output_dir / OPENING_RECORD_FILENAME[bank]
+    n_prior = 0
     if record_path.exists():
         previous = json.loads(record_path.read_text(encoding="utf-8"))
+        n_prior = int(previous.get("n_openings", 0))
         if bank == "final":
             raise typer.BadParameter(
                 f"{record_path} exists: the FINAL bank was opened on "
@@ -479,15 +847,154 @@ def detector_v4_2_final_gate(
             "unselected checkpoint is a gate against whatever was on disk."
         )
 
-    import time
+    # ---------------------------------------------------------------- the labels --
+    label_rows = {
+        str(r.get("audit_id", "")): r
+        for r in (
+            json.loads(line)
+            for line in labels.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+    }
+    bank_rows = _load_bank_rows(payload)
+    by_pair = {str(r.get("pair_sha256") or r.get("text_sha256")): r for r in bank_rows}
 
-    n_prior = (
-        int(json.loads(record_path.read_text(encoding="utf-8")).get("n_openings", 0))
-        if (record_path.exists())
-        else 0
+    # The labels must belong to THIS bank. A label file keyed to another bank's rows would
+    # score this checkpoint against a surface it may already have been developed on.
+    unmatched = [
+        audit_id
+        for audit_id, row in label_rows.items()
+        if str(row.get("pair_sha256") or row.get("text_sha256")) not in by_pair
+    ]
+    if unmatched:
+        raise typer.BadParameter(
+            f"{len(unmatched)} label row(s) name content this bank does not contain "
+            f"(e.g. {unmatched[:3]}). These labels were produced for a different bank. "
+            "Gating a new bank on an old bank's labels is the failure this check exists "
+            "for: every number would describe the old surface."
+        )
+    declared_bank = {
+        str(r.get("bank_content_sha256"))
+        for r in label_rows.values()
+        if r.get("bank_content_sha256")
+    }
+    if declared_bank and declared_bank != {str(payload.get("content_sha256"))}:
+        raise typer.BadParameter(
+            f"{labels} was produced against bank content {sorted(declared_bank)} and this "
+            f"bank hashes to {payload.get('content_sha256')}. The bank moved after the "
+            "audit; the labels describe rows that are no longer these rows."
+        )
+
+    wanted_partitions = (
+        {"heldout", "retain"}
+        if partition == "heldout"
+        else (
+            {"development", "retain"}
+            if partition == "development"
+            else {"development", "heldout", "retain"}
+        )
     )
+
+    from ..studies.graph_leak.cohort import load_cohort
+
+    cohort = load_cohort(policy_cohort, exclusions_path=None)
+    concept_of = {e.item_id: e.concept_id for e in cohort.items}
+
+    scored_rows: list[dict] = []
+    for audit_id, label in sorted(label_rows.items()):
+        source = by_pair[str(label.get("pair_sha256") or label.get("text_sha256"))]
+        if source["partition"] not in wanted_partitions:
+            continue
+        if label.get("answer_attempt") is None and source["partition"] != "retain":
+            continue
+        scored_rows.append(
+            {
+                "audit_id": audit_id,
+                "request": source["request"],
+                "text": source["text"],
+                "item_id": source["item_id"],
+                "concept_id": concept_of.get(str(source.get("item_id", "")), ""),
+                "population": source.get("population", "protected"),
+                "partition": source["partition"],
+                "nli_leaking": source.get("nli_leaking"),
+                "answer_attempt": label.get("answer_attempt"),
+                "reference_content": label.get("reference_content"),
+                "question_type": label.get("question_type"),
+            }
+        )
+    if not scored_rows:
+        raise typer.BadParameter(
+            f"no labelled rows fall in partition {partition!r}. Nothing to score."
+        )
+
+    registry = ConceptRegistry.from_questions(
+        [
+            {"item_id": e.item_id, "concept_id": e.concept_id, "question": q}
+            for e, q in (
+                (e, next((r["request"] for r in scored_rows if r["item_id"] == e.item_id), ""))
+                for e in cohort.items
+            )
+            if q
+        ],
+        policy=ConceptPolicy(),
+    )
+    questions_by_concept: dict[str, list[str]] = {}
+    for row in scored_rows:
+        concept = row["concept_id"]
+        if concept:
+            questions_by_concept.setdefault(concept, []).append(row["request"])
+    protected_questions = _protected_questions(registry, questions_by_concept)
+    index = alias_index(registry)
+
+    detector = build_backend(
+        backend, model_artifact if backend == "cross_encoder" else None, device=device
+    )
+    parameter_device = str(detector.to_dict().get("device_of_parameters") or "unknown")
+    if device.startswith("cuda") and not parameter_device.startswith("cuda"):
+        raise typer.BadParameter(
+            f"--device {device} was requested but the model's parameters are on "
+            f"{parameter_device!r}. Refusing to open the bank: the record would assert a "
+            "GPU that never ran."
+        )
+
+    predictions = _natural_scores(scored_rows, detector, protected_questions, index)
+    summary = goal_a_summarise(scored_rows, predictions, threshold=threshold)
+    gate = score_goal_a(goal_a_gate_inputs(summary))
+
+    result = {
+        "schema": "graph-detector-v4-2-bank-gate-result-v1",
+        "protocol": V4_2_PROTOCOL,
+        "bank": bank,
+        "bank_path": str(bank_path),
+        "bank_content_sha256": payload.get("content_sha256"),
+        "labels_file": str(labels),
+        "labels_sha256": _sha_file(labels),
+        "partition": partition,
+        "threshold": threshold,
+        "threshold_frozen_before_opening": True,
+        "backend": backend,
+        "model_artifact": str(model_artifact),
+        "selected_checkpoint": model_manifest.get("selected_checkpoint"),
+        "checkpoint_hashes": model_manifest.get("selected_checkpoint_hashes"),
+        "device_requested": device or None,
+        "device_of_parameters": parameter_device,
+        "gpu_used": parameter_device.startswith("cuda"),
+        "n_rows_scored": len(scored_rows),
+        "n_rows_by_partition": {
+            name: sum(1 for r in scored_rows if r["partition"] == name)
+            for name in sorted({r["partition"] for r in scored_rows})
+        },
+        "summary": summary,
+        "judge_population": "two_independent_llm_judges",
+        "human_grounded": False,
+        "publication_label_valid": False,
+        "is_still_a_gate": bank == "final" or n_prior == 0,
+        **gate,
+    }
+    atomic_json(output_dir / GATE_RESULT_FILENAME[bank], result)
+
     record = {
-        "schema": "graph-detector-v4-2-bank-opening-record-v1",
+        "schema": "graph-detector-v4-2-bank-opening-record-v2",
         "protocol": V4_2_PROTOCOL,
         "bank": bank,
         "bank_path": str(bank_path),
@@ -495,6 +1002,9 @@ def detector_v4_2_final_gate(
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "threshold": threshold,
         "threshold_frozen_before_opening": True,
+        "partition": partition,
+        "labels_file": str(labels),
+        "labels_sha256": result["labels_sha256"],
         "model_artifact": str(model_artifact),
         "selected_checkpoint": model_manifest.get("selected_checkpoint"),
         "checkpoint_hashes": model_manifest.get("selected_checkpoint_hashes"),
@@ -502,6 +1012,9 @@ def detector_v4_2_final_gate(
         "human_grounded": bool(model_manifest.get("human_grounded")),
         "publication_label_valid": bool(model_manifest.get("publication_label_valid")),
         "device_requested": device or None,
+        "device_of_parameters": parameter_device,
+        "gate_result": str(output_dir / GATE_RESULT_FILENAME[bank]),
+        "all_gates_passed": gate["all_gates_passed"],
         "n_openings": n_prior + 1,
         "is_still_a_gate": bank == "final" or n_prior == 0,
         "meaning": (
@@ -510,13 +1023,19 @@ def detector_v4_2_final_gate(
         ),
     }
     atomic_json(record_path, record)
+
+    typer.echo(f"wrote {output_dir / GATE_RESULT_FILENAME[bank]}")
     typer.echo(f"wrote {record_path}  (opening #{record['n_openings']})")
     typer.echo("")
-    typer.echo(
-        f"next: rdl graph-detector-v4-gates --backend cross_encoder "
-        f"--device {device or 'cpu'} --model-artifact {model_artifact}"
-    )
+    for entry in gate["gates"]:
+        mark = "PASS" if entry["passed"] else ("n/a " if entry["passed"] is None else "FAIL")
+        typer.echo(
+            f"  [{mark}] {entry['gate']}: {entry['measured']} "
+            f"(need {entry['comparison']} {entry['bound']})"
+        )
+    typer.echo("")
     typer.echo(
         "the bank is now open. If this run's numbers disappoint, the response is a NEW "
         "bank, not a second look at this one."
     )
+    raise typer.Exit(0 if gate["all_gates_passed"] else 1)

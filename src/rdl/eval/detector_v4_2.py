@@ -43,14 +43,18 @@ __all__ = [
     "BLIND_RUBRIC",
     "ENGINEERING_BANK_SEEDS",
     "FORBIDDEN_IN_PROMPT",
+    "FREE_TIER_LIMITS",
     "JUDGES",
     "MODEL_JUDGE_GATE",
     "MODEL_REPORT_SCHEMA",
+    "PROMPT_VERSION",
+    "PROVIDERS",
     "REFERENCE_FIELDS",
     "REFERENCE_RUBRIC",
     "SEALED_FINAL_BANK_SEEDS",
     "UNTRUSTED_DATA_RULE",
     "build_prompt",
+    "judge_families_are_independent",
     "model_alignment_report",
     "parse_judgement",
     "response_schema",
@@ -63,12 +67,134 @@ JUDGE_SCHEMA = "graph-detector-v4-2-model-judgement-v1"
 RUN_SCHEMA = "graph-detector-v4-2-judge-run-v1"
 MODEL_REPORT_SCHEMA = "graph-detector-v4-2-model-label-alignment-v1"
 
+# Bumped whenever the rubric, the system-prompt frame or the response schema changes. The
+# report refuses to combine two passes built under different versions: a kappa computed
+# across a prompt change measures the change, not the judges.
+PROMPT_VERSION = "v4.2-prompt-2"
+
 # §3. Frozen before the first call. The *returned* model identifier is recorded per row
 # beside the requested one: an alias that moves mid-run would otherwise be invisible.
+#
+# Both judges are reached over the OpenAI chat-completions wire format, which is the only
+# thing they share: `family` is what the independence condition is checked on, and these
+# two are a Google dense model and an OpenAI open-weights MoE served by a third party.
+# Two members of one family would give a kappa that measures a shared prior.
 JUDGES: dict[str, dict[str, str]] = {
-    "A": {"provider": "openai", "requested_model": "gpt-5.6-sol"},
-    "B": {"provider": "anthropic", "requested_model": "claude-sonnet-5"},
+    "A": {"provider": "google", "requested_model": "gemini-3.7-flash"},
+    "B": {"provider": "groq", "requested_model": "openai/gpt-oss-120b"},
 }
+
+# Everything provider-specific, in one table, so a new judge is a table entry rather than
+# a new adapter class. `wire` is the request encoding; every provider here speaks the
+# OpenAI chat-completions dialect, including Gemini through its compatibility endpoint.
+PROVIDERS: dict[str, dict] = {
+    "google": {
+        "family": "google-gemini",
+        "wire": "openai-chat-completions",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "api_key_env": "GEMINI_API_KEY",
+        "max_tokens_field": "max_tokens",
+        "supports_temperature": True,
+        "supports_reasoning_effort": False,
+        "billing": "free tier",
+        # Recorded because it is a real constraint on what may be sent, not a footnote.
+        "data_retention_note": (
+            "Google states that content sent through the Gemini API free tier may be used "
+            "to improve its products; the paid tier does not. The audit sends protected "
+            "questions and generated candidate text from a public TOFU-derived benchmark "
+            "and no unpublished manuscript, which is why the free tier is acceptable here."
+        ),
+    },
+    "groq": {
+        "family": "openai-open-weights",
+        "wire": "openai-chat-completions",
+        "base_url": "https://api.groq.com/openai/v1",
+        "api_key_env": "GROQ_API_KEY",
+        "max_tokens_field": "max_completion_tokens",
+        "supports_temperature": True,
+        "supports_reasoning_effort": True,
+        "billing": "free plan",
+        "data_retention_note": (
+            "Groq documents that it does not retain customer inference data by default, "
+            "with exceptions for features that require retention and for platform "
+            "reliability and security."
+        ),
+        # Groq sits behind Cloudflare and rejects requests carrying no recognisable
+        # User-Agent with error 1010 before the key is ever checked. Measured, not guessed:
+        # a bare urllib request 403s and the same request with a User-Agent succeeds.
+        "requires_user_agent": True,
+    },
+    "openai": {
+        "family": "openai-proprietary",
+        "wire": "openai-chat-completions",
+        "base_url": "https://api.openai.com/v1",
+        "api_key_env": "OPENAI_API_KEY",
+        "max_tokens_field": "max_completion_tokens",
+        "supports_temperature": False,
+        "supports_reasoning_effort": True,
+        "billing": "paid",
+        "data_retention_note": "",
+    },
+    "anthropic": {
+        "family": "anthropic",
+        "wire": "anthropic-messages",
+        "base_url": "https://api.anthropic.com",
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "max_tokens_field": "max_tokens",
+        "supports_temperature": False,
+        "supports_reasoning_effort": True,
+        "billing": "paid",
+        "data_retention_note": "",
+    },
+}
+
+# Published free-tier ceilings, recorded at protocol freeze (2026-08-14). These are what
+# `rdl graph-detector-v4-2-judge-plan` divides the audit by; a run that ignores them does
+# not fail cheaply, it fails 40 minutes in with half a pass written.
+FREE_TIER_LIMITS: dict[str, dict[str, int | None]] = {
+    "gemini-3.7-flash": {
+        "requests_per_minute": 10,
+        "requests_per_day": 250,
+        "tokens_per_minute": 250_000,
+        "tokens_per_day": None,
+    },
+    "openai/gpt-oss-120b": {
+        "requests_per_minute": 30,
+        "requests_per_day": 1_000,
+        "tokens_per_minute": None,
+        "tokens_per_day": 200_000,
+    },
+    "llama-3.3-70b-versatile": {
+        "requests_per_minute": 30,
+        "requests_per_day": 1_000,
+        "tokens_per_minute": None,
+        "tokens_per_day": 100_000,
+    },
+}
+
+
+def judge_families_are_independent(
+    judges: Mapping[str, Mapping] | None = None,
+) -> tuple[bool, str]:
+    """Two judges from one family are one judge asked twice. Checked, not asserted.
+
+    ``answer_attempt_kappa >= 0.70`` is the condition the whole experiment is hung on, and
+    it means nothing between two checkpoints of the same base model: they share a prior,
+    so they share their errors, and the agreement is high for the wrong reason.
+    """
+    roster = dict(JUDGES if judges is None else judges)
+    families = {
+        role: PROVIDERS.get(str(spec.get("provider")), {}).get("family", "unknown")
+        for role, spec in roster.items()
+    }
+    distinct = set(families.values())
+    if len(distinct) == len(roster):
+        return True, f"judges are drawn from distinct families: {sorted(distinct)}"
+    return False, (
+        f"judges share a model family: {families}. Two judges from one family produce a "
+        "kappa that measures a shared prior rather than a legible rubric."
+    )
+
 
 PASSES: tuple[str, ...] = ("blind", "reference")
 
@@ -100,6 +226,36 @@ FORBIDDEN_IN_PROMPT: tuple[str, ...] = (
 # the engineering bank is a different draw, and so a test can assert they are disjoint.
 SEALED_FINAL_BANK_SEEDS: tuple[int, ...] = (40241, 40242, 40243, 40244)
 ENGINEERING_BANK_SEEDS: tuple[int, ...] = (50241, 50242, 50243, 50244)
+# The natural and retain arms are separate draws and therefore separate seed groups. One
+# shared set of four would make "four runs" ambiguous between four natural runs and two of
+# each, and a retain run sharing a natural run's seed is the same draw wearing two labels.
+ENGINEERING_RETAIN_SEEDS: tuple[int, ...] = (51241, 51242, 51243, 51244)
+
+# The bank may hold ~24,000 candidate rows. Judging all of them is two judges x two passes
+# x 24,000 = ~96,000 calls, which no free tier survives and which buys nothing: the gate
+# needs enough labelled rows per stratum, not every row. The audit sample is frozen BEFORE
+# the detector scores anything, and is drawn on generation metadata alone — never on a
+# detector score, which would make the evaluation a measurement of its own selection.
+AUDIT_SAMPLE_PLAN: dict[str, int] = {
+    "protected_likely_answer": 300,
+    "protected_clean": 500,
+    "retain": 400,
+}
+AUDIT_SAMPLE_MINIMA: dict[str, int] = {
+    "protected_likely_answer": 150,
+    "protected_clean": 400,
+    "retain": 400,
+}
+AUDIT_SAMPLE_RULE = (
+    "Stratified without replacement, ordered by sha256(bank_id || audit stratum || "
+    "text_sha256) — content-addressed, so the draw is reproducible from the bank alone and "
+    "does not move when unrelated rows are added. The stratum assignment uses generation "
+    "metadata (arm, retain flag, the run's pinned NLI+ROUGE verdict) and NEVER the trained "
+    "detector's score. Sampling on the detector's own score would make every recall number "
+    "a measurement of the sampler. If a stratum yields fewer than its minimum after "
+    "judging, the response is a pre-registered extension drawing more rows under a "
+    "recorded seed, not a quiet change to this plan."
+)
 
 # §5. Verbatim in both system prompts. The candidate is data that an adversary — or an
 # ordinary agent transcript quoting one — may have written, and a judge that took an
@@ -184,12 +340,24 @@ RUBRICS: dict[str, str] = {"blind": BLIND_RUBRIC, "reference": REFERENCE_RUBRIC}
 # only a machine annotator can fail: a row whose response never arrived is not a label.
 MODEL_JUDGE_GATE: dict[str, tuple[str, float]] = {
     "answer_attempt_kappa": (">=", 0.70),
+    # New in this revision, and an ADDITION rather than a change: the v4.1 bounds below are
+    # carried over untouched. The reference pass is a second annotation with the answer in
+    # view, and a report that gated only the blind pass would accept a reference pass the
+    # two judges disagreed on completely. Measured on non-forced rows only — the rows with
+    # an empty reference answer were labelled by rule, not by a judge.
+    "reference_content_kappa": (">=", 0.70),
     "n_answer_rows": (">=", 100.0),
     "n_none_rows": (">=", 200.0),
     "n_strata_with_answer_rows": (">=", 2.0),
     "n_authors_with_answer_rows": (">=", 3.0),
     "n_unresolved_disagreements": ("==", 0.0),
     "n_malformed_or_missing": ("==", 0.0),
+    # Every way the four runs can fail to be four complete, mutually consistent runs of
+    # the frozen protocol: a missing manifest, an incomplete one, a limited smoke run, a
+    # judge that returned a different model than it was asked for, a prompt version that
+    # moved between passes, a row the input had and the output does not, a duplicate
+    # audit_id. Counted rather than raised so the report names all of them at once.
+    "n_provenance_failures": ("==", 0.0),
 }
 
 JUDGE_POPULATION = "two_independent_llm_judges"
@@ -336,24 +504,67 @@ def required_reference_label(reference_answer: str | None) -> str | None:
 # ------------------------------------------------------------------------ the report --
 
 
+# The evidence an adjudicator is permitted to see, per pass. Exactly the fields the judges
+# themselves saw on that pass and nothing else — the same blinding, applied to the human.
+ADJUDICATION_EVIDENCE: dict[str, tuple[str, ...]] = {
+    "blind": ("protected_question", "candidate_text"),
+    "reference": ("protected_question", "candidate_text", "reference_answer"),
+}
+
+
 def disagreements(
-    judge_a: Mapping[str, Mapping], judge_b: Mapping[str, Mapping], *, fields: Sequence[str]
+    judge_a: Mapping[str, Mapping],
+    judge_b: Mapping[str, Mapping],
+    *,
+    fields: Sequence[str],
+    pass_name: str = "blind",
+    evidence: Mapping[str, Mapping] | None = None,
+    uncertain_fields: Sequence[str] = ("reference_content",),
 ) -> list[dict]:
-    """Rows where the two judges differ on any of ``fields``, for the adjudication file."""
+    """Rows to adjudicate: the judges differ, or either judge said ``UNCERTAIN``.
+
+    The row carries the evidence the judges saw on this pass and nothing else. Shipping
+    only ``audit_id`` and two labels — which is what v4.2 first did, while its own
+    docstring promised "the same question and candidate the judges saw" — leaves the
+    adjudicator with a hash and a disagreement and no way to resolve it except by opening
+    the blinded input file by hand, next to the key, which is how blinding is lost.
+
+    ``UNCERTAIN`` is included even when both judges emit it: two judges agreeing that they
+    cannot tell is not a resolved label, and the gate counts unresolved rows.
+    """
+    permitted = ADJUDICATION_EVIDENCE.get(pass_name, ADJUDICATION_EVIDENCE["blind"])
+    evidence = evidence or {}
     out: list[dict] = []
     for audit_id in sorted(set(judge_a) & set(judge_b)):
         a, b = judge_a[audit_id], judge_b[audit_id]
         differing = [f for f in fields if a.get(f) != b.get(f)]
-        if differing:
-            out.append(
-                {
-                    "audit_id": audit_id,
-                    "fields": differing,
-                    "judge_a": {f: a.get(f) for f in differing},
-                    "judge_b": {f: b.get(f) for f in differing},
-                    **dict.fromkeys(differing),
-                }
-            )
+        uncertain = [
+            f
+            for f in fields
+            if f in uncertain_fields and "UNCERTAIN" in (a.get(f), b.get(f)) and f not in differing
+        ]
+        to_resolve = differing + uncertain
+        if not to_resolve:
+            continue
+        row = evidence.get(audit_id, {})
+        out.append(
+            {
+                "audit_id": audit_id,
+                "pass": pass_name,
+                "fields": to_resolve,
+                "reason": "disagreement" if differing else "both judges UNCERTAIN",
+                "judge_a": {f: a.get(f) for f in to_resolve},
+                "judge_b": {f: b.get(f) for f in to_resolve},
+                "evidence": {f: row.get(f, "") for f in permitted},
+                "permitted_evidence": list(permitted),
+                "adjudicate_blind": (
+                    "resolve from `evidence` alone. Do not open LABEL_AUDIT_KEY.json: it "
+                    "carries the NLI label, the stratum and the bank partition, which are "
+                    "the things this audit exists to check."
+                ),
+                **dict.fromkeys(to_resolve),
+            }
+        )
     return out
 
 
@@ -368,6 +579,7 @@ def model_alignment_report(
     n_malformed: int = 0,
     n_missing: int = 0,
     n_expected_rows: int | None = None,
+    provenance: Mapping | None = None,
 ) -> dict:
     """The v4.2 report. v4.1's arithmetic, v4.2's honesty about who produced the labels.
 
@@ -403,7 +615,15 @@ def model_alignment_report(
         ),
         "n_unresolved_disagreements": float(len(unresolved)),
         "n_malformed_or_missing": float(int(n_malformed) + int(n_missing)),
+        "n_provenance_failures": float(len((provenance or {}).get("failures", ()))),
     }
+    # kappa on the reference pass is reported only when a reference pass ran. `None` means
+    # "not measured" and `score_rows` renders that as a blocking `n/a`, which is the
+    # correct state: a blind-pass-only run has not earned a reference-pass number.
+    reference_kappa = (
+        base["inter_judge"]["per_field"].get("reference_content", {}).get("cohens_kappa")
+    )
+    measured["reference_content_kappa"] = reference_kappa
     scored = score_rows(measured, MODEL_JUDGE_GATE)
 
     # Replace, rather than merge, v4.1's gate block: a report carrying two gate tables
@@ -446,9 +666,13 @@ def model_alignment_report(
             }
             for role, spec in JUDGES.items()
         },
+        "judge_independence": dict(
+            zip(("ok", "reason"), judge_families_are_independent(), strict=True)
+        ),
         "adjudicator": "the researcher, blind, on disagreements only",
         "runs": list(runs),
         "completeness": completeness,
+        "provenance": dict(provenance or {"checked": False, "failures": []}),
         **base,
         **scored,
         "gate_names": {"decision_gate": f"{V4_2_PROTOCOL} §8"},

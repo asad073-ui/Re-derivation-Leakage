@@ -92,14 +92,21 @@ PREREGISTERED_SEEDS = (20260814, 20260815, 20260816)
 # checkpoint was chosen by this rule rather than by whichever number came out best.
 CHECKPOINT_SELECTION_RULE = (
     "Across all (seed, epoch) pairs, select the checkpoint with the highest development "
-    "ANSWER-recall subject to development NONE-false-alarm-rate <= 0.10, where recall and "
-    "FPR are read at the best EXACT score breakpoint on the development pool. Ties break "
-    "toward the lower threshold, then the earlier epoch, then the smaller seed. Macro F1 "
-    "is recorded as a diagnostic and selects nothing. This is a clause-level proxy for "
-    "Goal A and is NOT the operating point: the reportable threshold is chosen on ROUTED "
-    "rows by `rdl graph-detector-v4-gates`, under both the protected-nonanswer and retain "
-    "ceilings, which a clause pool cannot express."
+    "protected ANSWER-recall subject to BOTH development protected-clean FPR <= 0.10 AND "
+    "development retain FPR <= 0.10, where recall and both FPRs are read at the best "
+    "EXACT score breakpoint on the development pool. Ties break toward the lower "
+    "threshold, then the earlier epoch, then the smaller seed. Macro F1 is recorded as a "
+    "diagnostic and selects nothing. This is a clause-level proxy for Goal A and is NOT "
+    "the operating point: the reportable threshold is chosen on ROUTED rows by "
+    "`rdl graph-detector-v4-gates`, under the same two ceilings."
 )
+# Why two ceilings and not one aggregate. The downstream gate names protected_nonanswer_fpr
+# and retain_fpr separately. Selecting on their union selects checkpoints that gate will
+# reject, and does so asymmetrically: the retain pool is the smaller one (2 example classes
+# of 6 in the synthetic pool, ~300 of ~1,019 rows in the natural one), so an aggregate of
+# 0.10 is satisfiable with a retain rate far above it. That is the failure mode the
+# aggregate cannot see, and it is the one that matters — firing on retain traffic is the
+# utility cost the whole defence is measured against.
 DEV_FPR_CEILING = 0.10
 
 # A pinned pretrained NLI cross-encoder. Its head is TRAINED, so a zero-shot number from it
@@ -206,11 +213,28 @@ def require_label_audit(v4_1_dir: Path, v4_2_dir: Path) -> dict:
                 f"{report.get('publication_label_valid')!r}. Two model judges agreeing is "
                 "consistency evidence, not correctness. Refusing to train on it."
             )
+        provenance_failures = list((report.get("provenance") or {}).get("failures", ()))
+        if provenance_failures:
+            raise SystemExit(
+                f"{model} records {len(provenance_failures)} provenance failure(s):\n  "
+                + "\n  ".join(str(f) for f in provenance_failures)
+                + "\nRefusing to train. These are the ways four judge runs can fail to be "
+                "four complete runs of the frozen protocol — a smoke run standing in for "
+                "a pass, a prompt version that moved, a model that was not the one "
+                "requested, rows the judges never saw."
+            )
+        independence = report.get("judge_independence") or {}
+        if independence.get("ok") is False:
+            raise SystemExit(
+                f"{model}: {independence.get('reason')}. Refusing to train: a kappa "
+                "between two judges of one family measures a shared prior."
+            )
         authority = {
             "report": str(model),
             "judge_population": str(report.get("judge_population")),
             "human_grounded": False,
             "publication_label_valid": False,
+            "judge_independence": independence,
             "authorises": "ENGINEERING training and evaluation only",
             "warning": (
                 "This run is authorised by MODEL judges. No result from it may be "
@@ -276,6 +300,11 @@ def synthetic_examples(dataset: dict, split: str) -> list[dict]:
     for row in dataset["rows"]:
         if row["split"] != split:
             continue
+        # The row's false-alarm pool IS its population. Carried through to the development
+        # metrics so the retain false-alarm rate has its own denominator: pooled with the
+        # generated-clean rows it is 2 pools in 6, and an aggregate NONE FPR of 0.10 is
+        # satisfiable with a retain FPR of 0.30.
+        population = "retain" if row.get("false_alarm_pool") == "retain_answer" else "protected"
         for candidate in row["candidates"]:
             for clause in segment(candidate) or ():
                 out.append(
@@ -286,6 +315,7 @@ def synthetic_examples(dataset: dict, split: str) -> list[dict]:
                         "label": row["label"],
                         "split": split,
                         "source": "synthetic",
+                        "population": population,
                         "group": row["subject"],
                     }
                 )
@@ -363,6 +393,22 @@ def natural_examples(
 
     alias_index = alias_index or {}
     text_of = {r["audit_id"]: r for r in load(judge_path)}
+
+    # ONE field is read from the audit key: `population`, which says whether the row is a
+    # retain-author row. It is a metric denominator, never a model input — the encoder is
+    # handed the question, the aliases and the candidate and nothing else. Without it the
+    # retain rows are indistinguishable from protected NONE rows in the development pool,
+    # and the retain false-alarm ceiling cannot be enforced at checkpoint selection at all.
+    key_path = v4_1_dir / "LABEL_AUDIT_KEY.json"
+    population_of: dict[str, str] = {}
+    if key_path.exists():
+        population_of = {
+            audit_id: str(entry.get("population", "protected"))
+            for audit_id, entry in json.loads(key_path.read_text(encoding="utf-8"))
+            .get("rows", {})
+            .items()
+        }
+
     out: list[dict] = []
     n_without = 0
     for row in load(adjudicated_path):
@@ -385,6 +431,7 @@ def natural_examples(
                 "candidate": blind["candidate_text"],
                 "label": label,
                 "source": "natural_adjudicated",
+                "population": population_of.get(row["audit_id"], "protected"),
                 "group": row["audit_id"],
             }
         )
@@ -392,6 +439,13 @@ def natural_examples(
         "source": str(adjudicated_path),
         "n_rows": len(out),
         "n_without_aliases": n_without,
+        "n_retain_rows": sum(1 for r in out if r["population"] == "retain"),
+        "population_source": str(key_path) if population_of else None,
+        "why_population": (
+            "the retain false-alarm ceiling is a separate gate with a separate "
+            "denominator. Only `population` is read from the key, and only as a metric "
+            "denominator; it never reaches the encoder."
+        ),
         "why_aliases": (
             "runtime inference receives routed identity aliases; v4.1 trained these rows "
             "with an empty alias list, which is training-serving skew in the one field "
@@ -475,14 +529,20 @@ def collate(features: list[dict], pad_id: int) -> dict:
 # -------------------------------------------------------------------- evaluation --
 
 
-def evaluate(model, loader, device) -> dict:
+def evaluate(model, loader, device, populations: list[str] | None = None) -> dict:
     """Per-class metrics, macro F1, and the Goal A selection numbers on development.
 
     ``macro_f1`` is a diagnostic and selects nothing (see
     :data:`CHECKPOINT_SELECTION_RULE`). The number that selects is
     ``selection_answer_recall``: ANSWER-recall at the best EXACT score breakpoint whose
-    NONE false-alarm rate clears :data:`DEV_FPR_CEILING`. Exact breakpoints rather than a
-    0.05 grid, because a coarse grid reports the recall of a threshold nobody chose.
+    protected-clean AND retain false-alarm rates BOTH clear :data:`DEV_FPR_CEILING`. Exact
+    breakpoints rather than a 0.05 grid, because a coarse grid reports the recall of a
+    threshold nobody chose.
+
+    ``populations`` is aligned with the loader's rows, which is why ``dev_loader`` is built
+    with ``shuffle=False``. Without it every NONE row is one pool, and a checkpoint whose
+    retain FPR is 0.30 passes on an aggregate of 0.10 as long as the generated-clean rows
+    outnumber the retain ones — which in the synthetic pool they do, four classes to two.
     """
     import torch
 
@@ -535,31 +595,52 @@ def evaluate(model, loader, device) -> dict:
         "confusion": {
             LABELS[i]: dict(zip(LABELS, confusion[i], strict=True)) for i in range(len(LABELS))
         },
-        **selection_metrics(answer_scores, golds),
+        **selection_metrics(answer_scores, golds, populations),
     }
 
 
-def selection_metrics(answer_scores: list[float], golds: list[int]) -> dict:
-    """ANSWER-recall at the best exact breakpoint clearing the NONE-FPR ceiling."""
-    positives = [s for s, g in zip(answer_scores, golds, strict=True) if g == ANSWER_INDEX]
-    negatives = [s for s, g in zip(answer_scores, golds, strict=True) if g == LABELS.index("NONE")]
-    if not positives or not negatives:
+def selection_metrics(
+    answer_scores: list[float], golds: list[int], populations: list[str] | None = None
+) -> dict:
+    """ANSWER-recall at the best exact breakpoint clearing BOTH false-alarm ceilings.
+
+    Two pools, not one. ``protected_clean`` is NONE rows about a protected author;
+    ``retain`` is NONE rows about a retain author. They are separate gates downstream
+    (``GOAL_A_GATES`` names both), so selecting a checkpoint on their union picks
+    checkpoints the downstream gate will reject — and picks them in the specific direction
+    of over-firing on retain traffic, because that is the smaller pool.
+    """
+    none_index = LABELS.index("NONE")
+    if populations is None or len(populations) != len(answer_scores):
+        populations = ["protected"] * len(answer_scores)
+    triples = list(zip(answer_scores, golds, populations, strict=True))
+
+    positives = [s for s, g, p in triples if g == ANSWER_INDEX and p != "retain"]
+    protected_clean = [s for s, g, p in triples if g == none_index and p != "retain"]
+    retain = [s for s, g, p in triples if p == "retain"]
+    if not positives or not protected_clean:
         return {
             "selection_answer_recall": None,
             "selection_threshold": None,
             "selection_none_fpr": None,
-            "selection_note": "development pool lacks ANSWER or NONE rows",
+            "selection_protected_clean_fpr": None,
+            "selection_retain_fpr": None,
+            "n_selection_positives": len(positives),
+            "n_selection_protected_clean": len(protected_clean),
+            "n_selection_retain": len(retain),
+            "selection_note": "development pool lacks protected ANSWER or protected NONE rows",
         }
     # Exact breakpoints: every score is a candidate operating point, plus one above the
     # maximum so "fire on nothing" is representable.
     breakpoints = sorted({*answer_scores, max(answer_scores) + 1e-9})
-    best: tuple[float, float, float] | None = None  # (recall, -threshold, fpr)
+    best: tuple[float, float, float, float] | None = None
     for threshold in breakpoints:
-        fpr = sum(1 for s in negatives if s >= threshold) / len(negatives)
-        if fpr > DEV_FPR_CEILING:
+        fpr = sum(1 for s in protected_clean if s >= threshold) / len(protected_clean)
+        retain_fpr = sum(1 for s in retain if s >= threshold) / len(retain) if retain else 0.0
+        if fpr > DEV_FPR_CEILING or retain_fpr > DEV_FPR_CEILING:
             continue
         recall = sum(1 for s in positives if s >= threshold) / len(positives)
-        candidate = (recall, -threshold, fpr)
+        candidate = (recall, -threshold, fpr, retain_fpr)
         if best is None or candidate[:2] > best[:2]:
             best = candidate
     if best is None:
@@ -567,17 +648,32 @@ def selection_metrics(answer_scores: list[float], golds: list[int]) -> dict:
             "selection_answer_recall": 0.0,
             "selection_threshold": None,
             "selection_none_fpr": None,
-            "selection_note": f"no threshold clears NONE FPR <= {DEV_FPR_CEILING}",
+            "selection_protected_clean_fpr": None,
+            "selection_retain_fpr": None,
+            "n_selection_positives": len(positives),
+            "n_selection_protected_clean": len(protected_clean),
+            "n_selection_retain": len(retain),
+            "selection_note": (
+                f"no threshold clears BOTH protected-clean FPR <= {DEV_FPR_CEILING} and "
+                f"retain FPR <= {DEV_FPR_CEILING}"
+            ),
         }
-    recall, negative_threshold, fpr = best
+    recall, negative_threshold, fpr, retain_fpr = best
     return {
         "selection_answer_recall": recall,
         "selection_threshold": -negative_threshold,
+        # Kept under its original name so older artifacts stay readable, and now equal to
+        # the protected-clean rate rather than to a mixture of two pools.
         "selection_none_fpr": fpr,
+        "selection_protected_clean_fpr": fpr,
+        "selection_retain_fpr": retain_fpr,
+        "n_selection_positives": len(positives),
+        "n_selection_protected_clean": len(protected_clean),
+        "n_selection_retain": len(retain),
         "selection_note": (
-            "clause-level proxy on the development pool. NOT the reportable operating "
-            "point, which `rdl graph-detector-v4-gates` chooses on routed rows under both "
-            "the protected-nonanswer and retain ceilings."
+            "clause-level proxy on the development pool, under BOTH false-alarm ceilings. "
+            "NOT the reportable operating point, which `rdl graph-detector-v4-gates` "
+            "chooses on routed rows under the same two ceilings."
         ),
     }
 
@@ -641,7 +737,7 @@ def baseline_zero_shot(
         label2id = {str(k).lower(): int(v) for k, v in (model.config.label2id or {}).items()}
         if entailment_label.lower() not in label2id:
             raise SystemExit(
-                f"--baseline-entailment-label {entailment_label!r} is not in " f"{sorted(label2id)}"
+                f"--baseline-entailment-label {entailment_label!r} is not in {sorted(label2id)}"
             )
         index = label2id[entailment_label.lower()]
         label_map = {"id2label": dict(model.config.id2label or {}), "override": entailment_label}
@@ -857,7 +953,10 @@ def train_one_seed(
                 optimizer.zero_grad(set_to_none=True)
                 n_optimizer_steps += 1
 
-        metrics = evaluate(model, dev_loader, device)
+        # Aligned with dev_loader, which is built shuffle=False for exactly this reason.
+        metrics = evaluate(
+            model, dev_loader, device, [str(r.get("population", "protected")) for r in dev_rows]
+        )
         path = output_dir / f"seed{seed}-checkpoint-epoch{epoch}"
         model.save_pretrained(path)
         tokenizer.save_pretrained(path)
@@ -899,22 +998,36 @@ def train_one_seed(
 def select_checkpoint(seed_results: list[dict]) -> dict:
     """Apply :data:`CHECKPOINT_SELECTION_RULE` across every (seed, epoch) pair."""
     candidates = [entry for result in seed_results for entry in result["history"]]
-    eligible = [
-        entry
-        for entry in candidates
-        if entry["development"].get("selection_answer_recall") is not None
-        and (entry["development"].get("selection_none_fpr") is not None)
-        and entry["development"]["selection_none_fpr"] <= DEV_FPR_CEILING
-    ]
+
+    def eligible_entry(entry: dict) -> bool:
+        development = entry["development"]
+        if development.get("selection_answer_recall") is None:
+            return False
+        protected = development.get("selection_protected_clean_fpr")
+        retain = development.get("selection_retain_fpr")
+        if protected is None:
+            return False
+        # `retain is None` means the pool carried no retain rows, which is not the same as
+        # a retain FPR of zero. A checkpoint whose retain rate was never measured is not
+        # eligible: "we did not measure it" and "it was fine" must not agree.
+        if retain is None:
+            return False
+        return protected <= DEV_FPR_CEILING and retain <= DEV_FPR_CEILING
+
+    eligible = [entry for entry in candidates if eligible_entry(entry)]
     if not eligible:
         return {
             "selected": None,
             "reason": (
-                f"no (seed, epoch) pair reached a development threshold with NONE FPR "
-                f"<= {DEV_FPR_CEILING}. The rule does not fall back to macro F1; a "
+                f"no (seed, epoch) pair reached a development threshold clearing BOTH "
+                f"protected-clean FPR <= {DEV_FPR_CEILING} and retain FPR "
+                f"<= {DEV_FPR_CEILING}, with both measured. The rule does not fall back "
+                "to macro F1 and does not fall back to the aggregate NONE rate; a "
                 "checkpoint selected by a different rule than the frozen one is not the "
                 "checkpoint the protocol authorises."
             ),
+            "n_candidates": len(candidates),
+            "n_eligible": 0,
         }
     best = max(
         eligible,
@@ -949,7 +1062,13 @@ def run_smoke(args, pins: TrainingPins, budget, tokenizer, train_rows, dev_rows)
     from rdl.defenses.detection_context import ProtectedQuestion, build_context
 
     device = args.device
+    # Its own directory. `train_one_seed` writes `seed{seed}-checkpoint-epoch{n}`, and the
+    # smoke uses the first pre-registered seed and epoch 1 — exactly the path the real run
+    # writes. Sharing the directory means a 64-row smoke checkpoint can be mistaken for,
+    # or can overwrite, a trained one.
+    smoke_dir = args.output_dir / "smoke"
     checks: dict[str, object] = {}
+    checks["output_dir"] = str(smoke_dir)
     checks["cuda_available"] = bool(torch.cuda.is_available())
     checks["device_name"] = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"
     if device.startswith("cuda"):
@@ -967,7 +1086,7 @@ def run_smoke(args, pins: TrainingPins, budget, tokenizer, train_rows, dev_rows)
         dev_rows=dev_rows,
         tokenizer=tokenizer,
         budget=budget,
-        output_dir=args.output_dir,
+        output_dir=smoke_dir,
         device=device,
         epochs=1,
         min_optimizer_steps=1,
@@ -990,26 +1109,81 @@ def run_smoke(args, pins: TrainingPins, budget, tokenizer, train_rows, dev_rows)
         raise SystemExit("the reloaded checkpoint is not on CUDA")
 
     # Batched independent inference, through the class the gate uses.
+    #
+    # Several DIFFERENT questions and several DIFFERENT contexts, not one context repeated.
+    # The bug this is looking for is a batched path that pairs row i's text with row j's
+    # context — a zip that silently truncates, a sort that reorders, a context cached
+    # across the batch. One question repeated sixteen times cannot see any of those,
+    # because every mispairing produces the same input. The gate calls
+    # `score_independent` with a different context per row; so does this.
     detector = CrossEncoderAnswerabilityDetector(
         reloaded, tokenizer, model_repo_id=pins.model_repo_id, device=device, batch_size=8
     )
-    question = ProtectedQuestion(
-        scope_id="smoke#000",
-        forget_id="smoke",
-        question=dev_rows[0]["question"],
-        aliases=tuple(dev_rows[0]["aliases"]),
-        template_id="smoke",
-    )
-    context = build_context(
-        dev_rows[0]["question"],
-        protected_questions=[question],
-        alias_index={"smoke": list(question.alias_token_sets)},
-    )
-    scores = detector.score_independent(
-        [(context, r["candidate"]) for r in dev_rows[:16]], restrict_to=None
-    )
+    distinct: list[dict] = []
+    seen_questions: set[str] = set()
+    for row in dev_rows:
+        question_text = str(row["question"])
+        if question_text in seen_questions:
+            continue
+        seen_questions.add(question_text)
+        distinct.append(row)
+        if len(distinct) >= 16:
+            break
+    if len(distinct) < 2:
+        raise SystemExit(
+            "the smoke needs at least two distinct development questions to test that "
+            "batched scoring pairs each text with its own context; the pool has "
+            f"{len(distinct)}"
+        )
+
+    pairs = []
+    for i, row in enumerate(distinct):
+        question = ProtectedQuestion(
+            scope_id=f"smoke#{i:03d}",
+            forget_id=f"smoke-{i:03d}",
+            question=str(row["question"]),
+            aliases=tuple(row["aliases"]),
+            template_id="smoke",
+        )
+        context = build_context(
+            str(row["question"]),
+            protected_questions=[question],
+            alias_index={question.forget_id: list(question.alias_token_sets)},
+        )
+        pairs.append((context, str(row["candidate"])))
+
+    scores = detector.score_independent(pairs, restrict_to=None)
     checks["independent_batch_scored"] = len(scores)
-    checks["independent_batch_order_preserved"] = len(scores) == len(dev_rows[:16])
+    checks["n_distinct_questions"] = len(seen_questions)
+    checks["n_distinct_contexts"] = len({id(c) for c, _t in pairs})
+    checks["independent_batch_length_preserved"] = len(scores) == len(pairs)
+    if len(scores) != len(pairs):
+        raise SystemExit(
+            f"score_independent returned {len(scores)} results for {len(pairs)} pairs; "
+            "the batched path is dropping or duplicating rows"
+        )
+
+    # Association, not just length: rescoring one pair on its own must reproduce the
+    # score it got inside the batch. A batch that pairs text i with context j has the
+    # right length and the wrong answers, and only this check distinguishes the two.
+    probe = len(pairs) - 1
+    alone = detector.score_independent([pairs[probe]], restrict_to=None)
+    batched_probability = float(scores[probe].answer_probability)
+    alone_probability = float(alone[0].answer_probability)
+    checks["probe_index"] = probe
+    checks["probe_batched_answer_probability"] = batched_probability
+    checks["probe_alone_answer_probability"] = alone_probability
+    # fp16 batching is not bit-exact against a batch of one, so this is a tolerance and
+    # not an equality. It is tight enough that a swapped context fails it.
+    checks["independent_batch_association_preserved"] = (
+        abs(batched_probability - alone_probability) <= 1e-3
+    )
+    if not checks["independent_batch_association_preserved"]:
+        raise SystemExit(
+            f"pair {probe} scored {batched_probability:.6f} inside the batch and "
+            f"{alone_probability:.6f} on its own. The batched path is not pairing each "
+            "text with its own context."
+        )
     checks["forward_pairs"] = detector.stats()["forward_pairs"]
     checks["detector_parameter_device"] = detector.parameter_device()
 
@@ -1026,7 +1200,7 @@ def run_smoke(args, pins: TrainingPins, budget, tokenizer, train_rows, dev_rows)
         "checkpoint_hashes": checkpoint_hashes(checkpoint),
         "versions": _versions(),
     }
-    path = args.output_dir / "DETECTOR_V4_2_GPU_SMOKE.json"
+    path = smoke_dir / "DETECTOR_V4_2_GPU_SMOKE.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"wrote {path}")

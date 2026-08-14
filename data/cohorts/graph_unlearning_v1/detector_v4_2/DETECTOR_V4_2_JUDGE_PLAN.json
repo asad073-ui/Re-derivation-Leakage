@@ -1,0 +1,112 @@
+{
+  "calls_nothing": true,
+  "free_tier_days_required": 9,
+  "judges": {
+    "A": {
+      "api_key_env": "GEMINI_API_KEY",
+      "billing": "free tier",
+      "estimated_cost_usd": 0.0,
+      "estimated_input_tokens": 1388499,
+      "estimated_output_tokens": 278080,
+      "estimated_total_tokens": 1666579,
+      "family": "google-gemini",
+      "free_tier": {
+        "binding_constraint": "requests_per_day",
+        "days_by_request_ceiling": 7,
+        "days_by_token_ceiling": null,
+        "fits_in_one_free_day": false,
+        "free_tier_days_required": 7,
+        "minimum_wall_clock_minutes_at_rpm": 173.8,
+        "published_limits": {
+          "requests_per_day": 250,
+          "requests_per_minute": 10,
+          "tokens_per_day": null,
+          "tokens_per_minute": 250000
+        }
+      },
+      "n_calls": 1738,
+      "paid_fallback_cost_usd": null,
+      "passes": {
+        "blind": {
+          "estimated_input_tokens": 924586,
+          "estimated_output_tokens": 163040,
+          "input_file": "data\\cohorts\\graph_unlearning_v1\\detector_v4_1\\LABEL_AUDIT_JUDGE_A.jsonl",
+          "n_calls": 1019,
+          "n_forced_no_call": 0,
+          "n_rows": 1019,
+          "present": true
+        },
+        "reference": {
+          "estimated_input_tokens": 463913,
+          "estimated_output_tokens": 115040,
+          "input_file": "data\\cohorts\\graph_unlearning_v1\\detector_v4_1\\LABEL_AUDIT_REFERENCE_PASS_A.jsonl",
+          "n_calls": 719,
+          "n_forced_no_call": 300,
+          "n_rows": 1019,
+          "present": true
+        }
+      },
+      "provider": "google",
+      "requested_model": "gemini-3.7-flash"
+    },
+    "B": {
+      "api_key_env": "GROQ_API_KEY",
+      "billing": "free plan",
+      "estimated_cost_usd": 0.0,
+      "estimated_input_tokens": 1388499,
+      "estimated_output_tokens": 278080,
+      "estimated_total_tokens": 1666579,
+      "family": "openai-open-weights",
+      "free_tier": {
+        "binding_constraint": "tokens_per_day",
+        "days_by_request_ceiling": 2,
+        "days_by_token_ceiling": 9,
+        "fits_in_one_free_day": false,
+        "free_tier_days_required": 9,
+        "minimum_wall_clock_minutes_at_rpm": 57.9,
+        "published_limits": {
+          "requests_per_day": 1000,
+          "requests_per_minute": 30,
+          "tokens_per_day": 200000,
+          "tokens_per_minute": null
+        }
+      },
+      "n_calls": 1738,
+      "paid_fallback_cost_usd": 0.4168,
+      "passes": {
+        "blind": {
+          "estimated_input_tokens": 924586,
+          "estimated_output_tokens": 163040,
+          "input_file": "data\\cohorts\\graph_unlearning_v1\\detector_v4_1\\LABEL_AUDIT_JUDGE_B.jsonl",
+          "n_calls": 1019,
+          "n_forced_no_call": 0,
+          "n_rows": 1019,
+          "present": true
+        },
+        "reference": {
+          "estimated_input_tokens": 463913,
+          "estimated_output_tokens": 115040,
+          "input_file": "data\\cohorts\\graph_unlearning_v1\\detector_v4_1\\LABEL_AUDIT_REFERENCE_PASS_B.jsonl",
+          "n_calls": 719,
+          "n_forced_no_call": 300,
+          "n_rows": 1019,
+          "present": true
+        }
+      },
+      "provider": "groq",
+      "requested_model": "openai/gpt-oss-120b"
+    }
+  },
+  "protocol": "docs/graph_unlearning/DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md",
+  "schema": "graph-detector-v4-2-judge-plan-v1",
+  "token_estimate_method": "~4.0 characters per token over the real prompts, plus 160 output tokens per call (measured envelope for both judges at freeze was 42 and 130, the latter including 94 reasoning tokens). An estimate, not a measurement; the run manifest records the real counts.",
+  "totals": {
+    "estimated_cost_usd": 0.0,
+    "estimated_total_tokens": 3333158,
+    "input_tokens": 2776998,
+    "n_calls": 3476,
+    "output_tokens": 556160,
+    "paid_fallback_cost_usd": 0.4168
+  },
+  "verdict": "the audit needs 9 day(s) of free-tier quota. Run it with --resume: the runner checkpoints every row, stops cleanly on a per-day ceiling, and picks up where it stopped. The paid fallback rate is recorded beside each judge if waiting is not worth it."
+}

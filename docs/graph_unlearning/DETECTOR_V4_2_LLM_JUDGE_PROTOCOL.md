@@ -37,18 +37,46 @@ as a downgrade.
 
 ## 3. The judges
 
-| role | provider | requested model | notes |
-|---|---|---|---|
-| Model Judge A | OpenAI | `gpt-5.6-sol` | the returned model identifier is recorded separately from the requested one |
-| Model Judge B | Anthropic | `claude-sonnet-5` | same |
-| Adjudicator | the researcher | — | blind; sees only rows where A and B differ, in the same blinded form the judges saw |
+| role | provider | requested model | family | billing | notes |
+|---|---|---|---|---|---|
+| Model Judge A | Google Gemini API | `gemini-3.7-flash` | `google-gemini` | free tier | the returned model identifier is recorded separately from the requested one |
+| Model Judge B | Groq | `openai/gpt-oss-120b` | `openai-open-weights` | free plan | same |
+| Adjudicator | the researcher | — | — | — | blind; sees only rows where A and B differ or either is UNCERTAIN, with exactly the evidence that pass's judges saw |
 
-**Sampling parameters are provider-constrained and are recorded, not assumed.**
-`claude-sonnet-5` rejects non-default `temperature`, `top_p` and `top_k` with a 400; v4.2
-therefore does not set them on Judge B and does not pretend the run is temperature-zero.
-Judge B runs at a fixed thinking configuration and a fixed `effort`; Judge A runs at a
-fixed reasoning effort. Whatever is used is written into the manifest, and changing it
-after a κ has been seen is a protocol violation rather than a tuning step.
+**The two judges must be from different model families, and this is checked rather than
+asserted.** `judge_families_are_independent()` compares the `family` column above, and the
+runner, the report and the trainer all refuse a roster that fails it. κ ≥ 0.70 between two
+checkpoints of one base model measures a shared prior: they agree because they err the same
+way. Two proprietary models from one lab would fail this for the same reason.
+
+**Both judges are free-tier, and that is a protocol parameter like any other.** It was
+chosen before the first call and is recorded. The saving is real — the audit's API bill is
+zero rather than USD 40-65 — but the reason it is acceptable is that the pair is *more*
+independent than one expensive proprietary judge, not that it is cheaper. If a free tier's
+quality proves insufficient, the response is a recorded model change in `DECISIONS.md`
+before any labels are kept, never a swap after seeing a κ.
+
+**Free-tier ceilings are part of the design.** Groq publishes 30 requests/minute, 1,000
+requests/day and 200,000 tokens/day for `openai/gpt-oss-120b`; Gemini publishes its own
+per-minute and per-day request ceilings. `rdl graph-detector-v4-2-judge-plan` divides the
+audit by them offline before any call is made, and the runner paces itself against them,
+checkpoints every row, and stops cleanly on a per-day ceiling so `--resume` continues the
+next day. A multi-day audit is the expected shape of a free-tier run, not a failure.
+
+**Data handling differs between the two providers and is recorded.** Google states that
+free-tier Gemini content may be used to improve its products; the paid tier does not. Groq
+documents that it does not retain customer inference data by default. What v4.2 sends is
+protected questions and generated candidate text derived from the public TOFU benchmark
+— no unpublished manuscript — which is why the free tier is acceptable for this audit and
+would not automatically be acceptable for a different one.
+
+**Sampling parameters are provider-constrained and are recorded, not assumed.** Both
+judges accept `temperature=0`, which is what v4.2 sends; Groq additionally accepts
+`reasoning_effort`, fixed at `low` and recorded. The output cap is 1,024 tokens — the
+response is four enum values, and the measured envelope at freeze was 42 completion tokens
+for Gemini and 130 for gpt-oss-120b including 94 reasoning tokens. Whatever is used is
+written into the manifest, and changing it after a κ has been seen is a protocol violation
+rather than a tuning step. Neither run is claimed to be deterministic.
 
 Both judges are called **statelessly**: one request per row, no conversation history, no
 tools, no browsing, no memory, no repository access, no retrieval. A judge that could read
@@ -110,7 +138,22 @@ content — it is quoted, delimited, and never promoted out of the data channel.
 ## 6. The runner
 
 `rdl graph-detector-v4-2-llm-judge`. One stateless call per row, strict structured JSON
-output, at most two retries on a malformed or schema-invalid response.
+output, bounded concurrency, and up to five retries with full-jitter exponential backoff on
+408/409/425/429/5xx. Backoff is not optional politeness: Gemini's free tier returns 503
+UNAVAILABLE under load often enough that a runner without it records failures instead of
+labels.
+
+**Every row is durable when it returns.** Each completed row is written to
+`V4_2_JUDGE_{judge}_{PASS}.partial.jsonl` and an atomic progress manifest is rewritten
+after every batch. `--resume` reads that file, reuses what is there, and asks only for what
+is missing. A stored row is refused rather than reused when its `prompt_version` or
+`prompt_sha256` disagrees with what this invocation would build, when it appears twice with
+different content, or when it names an `audit_id` the input no longer has — a re-judged row
+under a changed rubric answers a different question. Failed rows are always retried; that
+is what resuming is for.
+
+**A per-day quota ends the run; it does not fail it.** The partial file stays intact and
+the manifest says so. Re-run with `--resume` when the quota resets.
 
 It must never silently infer a missing label. A row whose response is missing, malformed
 after retries, or schema-invalid is written with the label `null` and an `error` field,
@@ -118,26 +161,44 @@ counted in `n_malformed`, and **blocks the report** — it does not default to `
 runner that defaulted to the majority class would convert an outage into a label
 distribution.
 
-Recorded per row: `audit_id`, the label(s), `provider`, `requested_model`,
-`returned_model`, UTC timestamp, `prompt_sha256`, `rubric_sha256`, `input_file_sha256`,
-the exact request parameters, `n_retries`, and token usage. Recorded per run: totals,
-cost, and the counts of malformed and missing rows.
+**Smoke runs are physically separated from real runs.** `--limit` requires `--run-id`,
+which redirects every output into `<output-dir>/<run-id>/`, and the resulting manifest
+carries `reportable: false`. The report counts a non-reportable manifest as a provenance
+failure. Without this a five-row smoke writes the same filename as the 1,019-row pass.
+
+**The reference pass cannot run first.** It shows the judge the answer, so it is refused
+until both blind run manifests exist, are complete, are reportable and carry this prompt
+version. Otherwise "blind" describes one prompt rather than the procedure.
+
+Recorded per row: `audit_id`, the label(s), `provider`, `provider_family`,
+`requested_model`, `returned_model`, the **provider request id**, UTC timestamp,
+`prompt_version`, `prompt_sha256`, `rubric_sha256`, `response_schema_sha256`,
+`input_file_sha256`, the **raw response hash**, `n_retries`, and token usage. Recorded per
+run: the SDK version, the output file hash, totals, cost, the paid-fallback cost, the
+published free-tier limits, and the counts of malformed and missing rows.
 
 Output is a small **overlay keyed by `audit_id`** — `V4_2_JUDGE_{A,B}_{BLIND,REFERENCE}.jsonl`.
 It does not duplicate the 11 MB bank and it does not modify any v4 or v4.1 file.
 
-Credentials come from `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in the environment. They
-are never accepted as arguments, never written to a manifest or a log, and never
-committed. The runner is the only part of v4.2 that touches the network; every other
-v4.2 command is offline and stays inside `make cpu-all`.
+Credentials come from `GEMINI_API_KEY` and `GROQ_API_KEY` in the environment; see
+`.env.example`. They are never accepted as arguments, never written to a manifest or a
+log, and never committed. The runner is the only part of v4.2 that touches the network;
+every other v4.2 command — including `judge-plan`, `freeze-banks`, `build-bank` and
+`bank-audit` — is offline and stays inside `make cpu-all`.
 
 ## 7. Order of operations
 
 Fixed here so a judge cannot be re-run after its counterpart's result is known.
 
-1. Judge A blind pass — all 1,019 rows.
+0. `rdl graph-detector-v4-2-judge-plan` — offline. How many calls, how many tokens, how
+   many free-tier days. Nothing is called; this is the step that decides whether the audit
+   fits in the quota before any of it is spent.
+0b. Smoke both judges into a separate `--run-id` directory: five rows blind each, a few
+   reference rows with non-empty references, one forced restart to exercise `--resume`.
+   These manifests are `reportable: false` and the report refuses them.
+1. Judge A blind pass — all 1,019 rows. `--resume` across days as the quota allows.
 2. Judge B blind pass — all 1,019 rows.
-3. Validate both returned all 1,019 rows with no malformed rows.
+3. Validate both returned all 1,019 rows with no malformed rows and no provenance failures.
 4. Compute pre-adjudication κ and the confusion matrix. **This is the first number seen.**
 5. Emit the blind disagreement file.
 6. The researcher adjudicates blind-pass disagreements, blind, in the blinded form.
@@ -156,12 +217,29 @@ revision recorded in `DECISIONS.md` and a re-run, not a lowered bound.
 | condition | bound |
 |---|---|
 | Judge A–B κ on `answer_attempt`, pre-adjudication | ≥ 0.70 |
+| Judge A–B κ on `reference_content`, non-forced rows only | ≥ 0.70 |
 | adjudicated ANSWER rows | ≥ 100 |
 | adjudicated NONE rows | ≥ 200 |
 | ANSWER rows spanning distinct strata | ≥ 2 |
 | ANSWER rows spanning distinct authors | ≥ 3 |
 | unresolved primary disagreements | = 0 |
 | malformed or missing judge outputs | = 0 |
+| provenance failures across the four run manifests | = 0 |
+
+The v4.1 bounds are **unchanged**; the last two rows are additions. `reference_content` κ
+closes a hole — a report gating only the blind pass would accept a reference pass the two
+judges disagreed on completely. Forced rows (empty reference answer, labelled `UNCERTAIN`
+by rule) are excluded from it, because two judges neither of which was asked are not two
+judges who agreed.
+
+**Provenance failures** are counted rather than raised, so one run names all of them. Each
+is a way four judge runs can fail to be four complete runs of this protocol: a missing or
+incomplete manifest, a non-reportable smoke run standing in for a pass, a prompt version
+that moved between passes, a provider that returned a model other than the one requested
+or more than one model identifier, an input file whose hash no longer matches the run, an
+input row with no overlay row, an overlay row naming an `audit_id` the input does not
+have, a duplicate `audit_id`, an output file that changed after the run, or a run with no
+provider request ids to trace. Two judges given different rubrics on one pass is another.
 
 κ is additionally reported **separately for `slot` and `open-ended`** questions. As in
 v4.1 §5, if only the open-ended subset fails, the response is a new pre-registered
@@ -198,8 +276,8 @@ a per-class failure analysis. Only after it passes may `publication_label_valid`
 
 ## 11. RTX-ready under v4.2
 
-v4.1 §8's twelve conditions, with condition 2 replaced and six added. The detector is
-ready for an RTX 3090 when **all eighteen** hold:
+v4.1 §8's twelve conditions, with condition 2 replaced and sixteen added. The detector
+is ready for an RTX 3090 when **all twenty-eight** hold:
 
 | # | condition |
 |---|---|
@@ -219,8 +297,18 @@ ready for an RTX 3090 when **all eighteen** hold:
 | 14 | training and runtime inputs carry the same identity aliases |
 | 15 | checkpoint weights, tokenizer, config and label map are hashed |
 | 16 | the checkpoint-selection rule and the threshold grid are frozen before training |
-| 17 | a non-reportable CUDA smoke mode exists and passes on the box |
+| 17 | a non-reportable CUDA smoke mode exists, exercises DISTINCT questions and contexts, verifies batch ordering AND association, writes to its own directory, and passes on the box |
 | 18 | `make cpu-all` and `make graph-smoke` green |
+| 19 | the two judges are from distinct model families, checked not asserted |
+| 20 | the judge runner checkpoints every row, resumes without duplicate payment, and refuses conflicting stored rows |
+| 21 | a smoke run cannot occupy a real pass's path, and a non-reportable manifest cannot back a report |
+| 22 | the reference pass is refused until both blind passes are complete and frozen |
+| 23 | the bank verifier parses the manifest schema real graph runs write, and treats an unreadable field as a failure |
+| 24 | the frozen generation budget is internally possible: `n_samples >= primary_k`, `n_items` a cohort actually has |
+| 25 | natural and retain are separate run groups with disjoint seed sets, validated for uniqueness within each group |
+| 26 | checkpoint selection enforces the protected-clean AND retain false-alarm ceilings separately |
+| 27 | a bank's audit sample is frozen from generation metadata alone, never from a detector score |
+| 28 | `final-gate` loads the bank AND labels bound to that bank, scores at the frozen threshold, and refuses another bank's labels |
 
 At that point `engineering_gpu_ready` is `true` and `publication_label_valid` is still
 `false`. Those are different claims and this protocol keeps them apart.
@@ -231,3 +319,74 @@ At that point `engineering_gpu_ready` is `true` and `publication_label_valid` is
 are unchanged; every correction is a new file. `DETECTOR_V4_ORACLE_CEILING.json` keeps
 v4.1's reinterpretation — an answer-token-overlap baseline, not a ceiling. The detector is
 still the replaceable component.
+
+## 13. The banks, the budget, and the audit sample
+
+### 13.1 The budget has to be a design that exists
+
+v4.2.0 froze `n_items=60, samples_per_item=8, k=32`. Neither half of that can be
+generated. The discovery cohort has **50** items and the retain cohort has **45**; and
+`primary_k` is the number of draws the success-at-k statistic is read over, so
+**`n_samples >= primary_k`** is arithmetic, not preference — 8 samples cannot measure
+k=32. Every reportable evaluation run in `runs/graph` that declares `primary_k=32` carries
+`n_samples=32`, which is the design the budget now names. `validate_budget()` refuses the
+old one, and a contract test proves it.
+
+### 13.2 Natural and retain are two groups, not one set of four runs
+
+| group | cohort split | `n_items` | `n_samples` | `primary_k` | runs | seeds |
+|---|---|---|---|---|---|---|
+| natural | `discovery` | 50 | 32 | 32 | 4 | 50241–50244 |
+| retain | `retain_utility` | 45 | 32 | 32 | 4 | 51241–51244 |
+
+The natural group supplies the recall numerator and the protected-clean false-alarm pool;
+the retain group supplies the retain false-alarm pool. "Four runs" over one undifferentiated
+set is ambiguous between four natural runs and two of each, and it lets a retain run and a
+natural run share a seed — one draw wearing two labels. Seeds are validated for uniqueness
+*within* each group and disjointness *between* them, and both are disjoint from the sealed
+final-bank seeds 40241–40244.
+
+Deduplication is by **(candidate text, protected question)**, not by text alone. The same
+refusal string under two different protected questions is two rows; collapsing them deletes
+one question's false-alarm evidence.
+
+### 13.3 The bank is sampled, not exhaustively labelled
+
+A bank holds up to ~24,000 rows. Two judges × two passes over all of them is ~96,000
+calls: months of free-tier quota, or real money, for labels the gate does not need.
+`rdl graph-detector-v4-2-bank-audit` freezes a stratified sample **before the detector
+scores anything**:
+
+| stratum | planned | minimum |
+|---|---|---|
+| likely-leaking protected rows | 300 | 150 ANSWER after judging |
+| protected clean / non-answer rows | 500 | 400 |
+| retain rows | 400 | 400 |
+
+The stratum is decided by **generation metadata alone** — group, retain flag, the run's own
+pinned NLI+ROUGE verdict — and never by the trained detector's score. Sampling on the
+detector's score makes every recall number a measurement of the sampler: draw the rows it
+already fires on and recall is high by construction. The draw is content-addressed, ordered
+by `sha256(bank_id ‖ stratum ‖ pair_sha256)`, so it is reproducible from the bank alone and
+does not move when unrelated rows are added. The file the judges read is re-ordered by a
+hash that does not encode the stratum, so the strata are interleaved.
+
+The **full raw bank is preserved**; this command chooses which rows are labelled, and
+removes nothing. The sampled `audit_id`s are hashed into the manifest. If a stratum comes
+up short the command exits non-zero and records the shortfall: the response is a
+pre-registered extension drawing more rows under a recorded seed, never a plan reduced to
+fit the draw.
+
+### 13.4 `final-gate` scores
+
+v4.2.0's `final-gate` wrote an opening record and printed the name of a different command
+— one that reads the **v4** natural bank and the **v4.1** audit. The bank could be marked
+opened while nothing had been measured on it, and the number that eventually appeared
+described the surface the detector was developed on.
+
+`final-gate` now loads the bank **and** the adjudicated labels for that bank, refuses
+labels whose rows the bank does not contain or whose `bank_content_sha256` does not match,
+scores the frozen checkpoint at the frozen threshold under `goal_a_summarise`, and writes
+the gate result and the opening record atomically. The retain rows are their own partition
+with their own denominator at every threshold — an aggregate clean rate cannot express the
+retain ceiling, which is exactly why checkpoint selection now enforces both separately too.
