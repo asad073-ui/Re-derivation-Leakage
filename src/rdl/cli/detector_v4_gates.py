@@ -73,12 +73,40 @@ GATES_FILENAME = "DETECTOR_V4_GATES.json"
 # v4.1 writes its own file. D6 of DETECTOR_V4_1_PROTOCOL.md: every correction is a new
 # artifact, and DETECTOR_V4_GATES.json is frozen evidence that GU-0036 cites by name.
 V4_1_GATES_FILENAME = "DETECTOR_V4_1_GATES.json"
-THRESHOLD_GRID = tuple(round(0.05 * i, 4) for i in range(1, 21))  # 0.05 .. 1.00
+# A coarse grid reports the recall of a threshold nobody chose. The sweep now runs over
+# EXACT score breakpoints — every distinct score is an operating point, plus one above the
+# maximum so "fire on nothing" is representable — with the 0.05 grid kept only as the
+# fallback for a pool small enough that breakpoints and grid coincide.
+COARSE_THRESHOLD_GRID = tuple(round(0.05 * i, 4) for i in range(1, 21))  # 0.05 .. 1.00
+MAX_BREAKPOINTS = 512
 BACKENDS = ("lexical", "cross_encoder")
 
 
+def breakpoints(scores: Sequence[float]) -> tuple[float, ...]:
+    """Exact operating points from observed scores, capped so the sweep stays bounded.
+
+    Above :data:`MAX_BREAKPOINTS` distinct scores the list is thinned by rank rather than
+    by value, so the retained points still sit ON observed scores. A uniform 0.01 grid
+    would be finer than 0.05 and still describe thresholds no row realises.
+    """
+    distinct = sorted({float(s) for s in scores})
+    if not distinct:
+        return COARSE_THRESHOLD_GRID
+    distinct.append(distinct[-1] + 1e-9)
+    if len(distinct) <= MAX_BREAKPOINTS:
+        return tuple(distinct)
+    stride = len(distinct) / MAX_BREAKPOINTS
+    thinned = {distinct[min(len(distinct) - 1, int(i * stride))] for i in range(MAX_BREAKPOINTS)}
+    thinned.add(distinct[-1])
+    return tuple(sorted(thinned))
+
+
 def build_backend(
-    backend: str, model_artifact: Path | None, *, answer_threshold: float = 0.5
+    backend: str,
+    model_artifact: Path | None,
+    *,
+    answer_threshold: float = 0.5,
+    device: str = "",
 ) -> ConceptDetector:
     """``--backend`` -> a :class:`ConceptDetector`. The only place the two differ.
 
@@ -88,6 +116,8 @@ def build_backend(
     if backend == "lexical":
         if model_artifact is not None:
             raise typer.BadParameter("--model-artifact is meaningless for the lexical backend")
+        if device:
+            raise typer.BadParameter("--device is meaningless for the lexical backend")
         return LexicalAnswerabilityDetector(answer_threshold=answer_threshold)
     if backend == "cross_encoder":
         if model_artifact is None:
@@ -99,7 +129,7 @@ def build_backend(
         from ..defenses.cross_encoder_answerability import CrossEncoderAnswerabilityDetector
 
         return CrossEncoderAnswerabilityDetector.from_artifact(
-            model_artifact, answer_threshold=answer_threshold
+            model_artifact, answer_threshold=answer_threshold, device=device
         )
     raise typer.BadParameter(f"--backend must be one of {BACKENDS}, got {backend!r}")
 
@@ -227,15 +257,38 @@ def _natural_scores(
     Grouped by request so the router runs once per distinct request rather than once per
     message, which is also how the executor will call it: one routing decision per
     trajectory, reused at every surface.
+
+    Each message is scored on its own — accumulation across unrelated trajectories would
+    make one item's verdict depend on another's — but "on its own" is a property of the
+    SCORING, not of the batch size. v4.1 bought it with ``score_batch([one_text])`` per
+    row, which meant the cross-encoder's configured batch size batched nothing and the
+    natural bank ran as thousands of single-row forwards. A backend that offers
+    :meth:`score_independent` gets the same independence in one batched pass; the lexical
+    floor, which is pure Python and gains nothing from batching, takes the loop.
     """
     by_request: dict[str, list[int]] = {}
     for i, row in enumerate(rows):
         by_request.setdefault(str(row.get("request", "")), []).append(i)
     scores: list[dict] = [{"answer_probability": 0.0, "forget_ids": ()} for _ in rows]
+
+    independent = getattr(detector, "score_independent", None)
+    if callable(independent):
+        order: list[int] = []
+        requests: list[tuple] = []
+        for request, idxs in by_request.items():
+            context = build_context(request, protected_questions=questions, alias_index=index)
+            for i in idxs:
+                order.append(i)
+                requests.append((context, str(rows[i]["text"])))
+        for i, result in zip(order, independent(requests), strict=True):
+            scores[i] = {
+                "answer_probability": result.answer_probability,
+                "forget_ids": result.forget_ids,
+            }
+        return scores
+
     for request, idxs in by_request.items():
         context = build_context(request, protected_questions=questions, alias_index=index)
-        # Each message is scored on its own: accumulation across unrelated trajectories
-        # would make one item's verdict depend on another's.
         for i in idxs:
             result = detector.score_batch([str(rows[i]["text"])], context=context)[0]
             scores[i] = {
@@ -357,7 +410,7 @@ def _goal_a_arm(
             [rows[i] for i in idxs], [scores[i] for i in idxs], threshold=threshold
         )
 
-    grid = [measure(dev, t) for t in THRESHOLD_GRID]
+    grid = [measure(dev, t) for t in breakpoints([s["answer_probability"] for s in scores])]
     eligible = [
         g
         for g in grid
@@ -387,6 +440,10 @@ def _goal_a_arm(
         "selection": {
             "grid": grid,
             "selected_threshold": selected,
+            "grid_rule": (
+                "exact score breakpoints, not a fixed 0.05 grid. A coarse grid reports "
+                "the recall of a threshold no row realises."
+            ),
             "constraint": (
                 f"protected_nonanswer_fpr <= {GOAL_A_GATES['protected_nonanswer_fpr'][1]} and "
                 f"retain_fpr <= {GOAL_A_GATES['retain_fpr'][1]}"
@@ -407,6 +464,9 @@ def detector_v4_gates(
         None, "--model-artifact", help="DETECTOR_V4_MODEL.json, for --backend cross_encoder"
     ),
     v4_1_dir: Path = typer.Option(DEFAULT_V4_1_OUT, "--v4-1-dir"),
+    device: str = typer.Option(
+        "", "--device", help="cuda | cuda:0 | cpu, for --backend cross_encoder"
+    ),
     output: Path | None = typer.Option(None, "--output"),
 ) -> None:
     """Select an operating point on development, open held-out once, write the gates."""
@@ -422,12 +482,29 @@ def detector_v4_gates(
     dataset = json.loads((data_dir / DATASET_FILENAME).read_text(encoding="utf-8"))
     # Built once. The sweep re-thresholds this object rather than constructing twenty, so
     # a cross-encoder's weights are loaded exactly once per invocation.
-    base = build_backend(backend, model_artifact)
+    base = build_backend(backend, model_artifact, device=device)
+
+    # Checked BEFORE any scoring, like the output-path check above. A gate that asked for
+    # CUDA and got CPU is not a slower gate: its latency, batching and numerics all belong
+    # to a different run than the one the artifact would claim. Finding that out after the
+    # sweep would mean discovering it an hour into rented time.
+    parameter_device = str(base.to_dict().get("device_of_parameters") or "unknown")
+    if device.startswith("cuda") and not parameter_device.startswith("cuda"):
+        raise typer.BadParameter(
+            f"--device {device} was requested but the model's parameters are on "
+            f"{parameter_device!r}. Refusing to run: the artifact's gpu_used field would "
+            "assert a GPU that never ran, which is the exact defect v4.1 shipped. Check "
+            'that torch sees the card (`python -c "import torch; '
+            'print(torch.cuda.is_available())"`) and re-run.'
+        )
 
     # ------------------------------------------------------------- synthetic arm --
     synthetic: dict[str, dict] = {}
     synthetic_grid = []
-    for threshold in THRESHOLD_GRID:
+    # The coarse grid stays HERE alone. This arm re-scores every row at every threshold
+    # (the verdict, not a score, is what changes), so an exact-breakpoint sweep would be
+    # hundreds of full passes for an arm whose own role field says it is not the verdict.
+    for threshold in COARSE_THRESHOLD_GRID:
         detector = _at_threshold(base, threshold)
         rows = [r for r in dataset["rows"] if r["split"] == "development"]
         summary = summarise(rows, _synthetic_verdicts(rows, detector))
@@ -497,7 +574,11 @@ def detector_v4_gates(
         retain_scores = _natural_scores(retain_rows, detector, questions, index)
 
         grid = []
-        for threshold in THRESHOLD_GRID:
+        # Exact breakpoints: the scores are already computed, so every distinct one is a
+        # free operating point and the 0.05 grid was only ever an approximation of them.
+        for threshold in breakpoints(
+            [s["answer_probability"] for s in (*dev_scores, *retain_scores)]
+        ):
             row = _natural_measure(dev_rows, dev_scores, concept_of, threshold)
             row["retain_answer_fpr"] = (
                 sum(1 for s in retain_scores if s["answer_probability"] >= threshold)
@@ -566,6 +647,42 @@ def detector_v4_gates(
         goal_a = {"measured": False, "reason": f"{bank_path} is absent"}
 
     detector_dict = base.to_dict()
+
+    # -------------------------------------------------------------- what actually ran --
+    # Measured after the sweep, so detector_stats reflects the work that was done.
+    cuda_available = None
+    if backend == "cross_encoder":
+        try:
+            import torch
+
+            cuda_available = bool(torch.cuda.is_available())
+        except ImportError:  # pragma: no cover - the CPU gate has no torch
+            cuda_available = False
+    compute = {
+        "device_requested": device or None,
+        "device_of_parameters": parameter_device,
+        "parameters_on_cuda": parameter_device.startswith("cuda"),
+        "cuda_available": cuda_available,
+        "gpu_name": None,
+        "batched_independent_scoring": callable(getattr(base, "score_independent", None)),
+        "detector_stats": base.stats() if hasattr(base, "stats") else {},
+    }
+    if compute["parameters_on_cuda"]:
+        try:
+            import torch
+
+            compute["gpu_name"] = str(torch.cuda.get_device_name(0))
+        except Exception:  # pragma: no cover - reporting, not control flow
+            compute["gpu_name"] = "unknown"
+    if device.startswith("cuda") and not compute["parameters_on_cuda"]:
+        raise typer.BadParameter(
+            f"--device {device} was requested but the model's parameters are on "
+            f"{parameter_device!r}. Refusing to write a reportable gate: the artifact's "
+            "gpu_used field would assert a GPU that never ran, which is the exact defect "
+            'v4.1 shipped. Check that torch sees the card (`python -c "import torch; '
+            'print(torch.cuda.is_available())"`) and re-run.'
+        )
+
     report = {
         "schema": "graph-detector-v4-gates-v2",
         "phase": (
@@ -615,18 +732,22 @@ def detector_v4_gates(
             "audit is the next step"
             if not goal_a.get("measured")
             else (
-                "the detector clears the Goal A bounds on adjudicated human labels "
+                "the detector clears the Goal A bounds on the adjudicated labels "
                 "(ENGINEERING ONLY — the one-shot gate opens the fresh bank)"
                 if goal_a.get("all_gates_passed")
-                else "the detector does NOT clear the Goal A bounds on adjudicated human labels"
+                else "the detector does NOT clear the Goal A bounds on the adjudicated labels"
             )
         ),
         "runtime_reads_gold_answers": False,
+        "compute": compute,
         "scope": {
             "model_trained": False,
             "graph_generation_run": False,
             "frozen_v1_v2_v3_artifacts_modified": False,
-            "gpu_used": backend == "cross_encoder",
+            # Measured, not inferred from the backend name. v4.1 wrote
+            # `backend == "cross_encoder"` here while `from_artifact` never moved the
+            # model off the CPU, so this field could assert a GPU that never ran.
+            "gpu_used": bool(compute["parameters_on_cuda"]),
         },
     }
     atomic_json(out, report)

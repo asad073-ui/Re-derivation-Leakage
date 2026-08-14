@@ -1,0 +1,57 @@
+{
+  "completes": "data\\cohorts\\graph_unlearning_v1\\detector_v4_1\\FINAL_GATE_BANK_MANIFEST.json",
+  "completes_sha256": "91784a31ab6d3132e804815475ab1e290b72e176f68f2452371abff46575df67",
+  "generation_budget": {
+    "arms": [
+      "multi_agent_leak"
+    ],
+    "deduplication": "exact text_sha256 within a run and across runs; first occurrence wins",
+    "k": 32,
+    "max_rows_per_run": 6000,
+    "max_rows_total": 24000,
+    "n_items": 60,
+    "n_runs": 4,
+    "one_run_per_seed": true,
+    "retain_arms": [
+      "retain unguarded flow"
+    ],
+    "samples_per_item": 8,
+    "split_rule": "sha256(text)[:2] parity \u2014 content-addressed, computed before inspection",
+    "unlabelled_policy": "texts with no cached scorer verdict are counted and are in neither pool. Treating them as clean would understate the false-alarm rate.",
+    "why_a_budget_is_part_of_the_freeze": "seeds fix WHICH trajectories are drawn; the budget fixes HOW MANY. A bank whose size is decided at generation time can be grown until a gate passes, and nothing in the artifact would show it. FINAL_GATE_BANK_MANIFEST.json froze the seeds and the minimum label counts and not this, which is the gap these commands close."
+  },
+  "manifest_sha256": "dbaa10c14069039dc833005e532545114da1737d396e2ae5afeb6a24320ec704",
+  "protocol": "docs/graph_unlearning/DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md",
+  "schema": "graph-detector-v4-2-final-bank-budget-v1",
+  "sealed_until": "the human validation frozen in DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md section 10 passes, the checkpoint and threshold are frozen, and publication_label_valid is true. A model-judge-authorised run opens the ENGINEERING bank instead.",
+  "seeds": [
+    40241,
+    40242,
+    40243,
+    40244
+  ],
+  "status": "PRE-REGISTERED, NOT YET GENERATED",
+  "what_the_manifest_already_freezes": [
+    "arms",
+    "seeds",
+    "gates",
+    "minimum label counts",
+    "the opening rule"
+  ],
+  "what_this_adds": [
+    "arms",
+    "deduplication",
+    "k",
+    "max_rows_per_run",
+    "max_rows_total",
+    "n_items",
+    "n_runs",
+    "one_run_per_seed",
+    "retain_arms",
+    "samples_per_item",
+    "split_rule",
+    "unlabelled_policy",
+    "why_a_budget_is_part_of_the_freeze"
+  ],
+  "why_a_separate_file": "FINAL_GATE_BANK_MANIFEST.json is frozen pre-registration and is not edited, for the same reason DETECTOR_V4_ORACLE_CEILING.json is not edited. This file sits beside it, carries its hash, and adds only what it did not fix."
+}

@@ -63,6 +63,15 @@ dev = [
     "pre-commit>=3.7",
     "nbstripout>=0.7",
 ]
+# The v4.2 model judges. Deliberately its own extra rather than part of `cpu`: these are
+# the only dependencies in the project that make network calls and cost money, and
+# `make cpu-all` must stay offline and free. `rdl graph-detector-v4-2-llm-judge
+# --dry-run` builds every prompt without either package installed, which is the part the
+# CPU gate exercises.
+judges = [
+    "openai>=1.40",
+    "anthropic>=0.40",
+]
 
 [project.scripts]
 rdl = "rdl.cli.__main__:app"
