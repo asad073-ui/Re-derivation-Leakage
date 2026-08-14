@@ -16,13 +16,26 @@ ceilings at once, and the held-out partition is opened once at that point. Exiti
 on a failing gate is the behaviour that matters: this is meant to be the last thing run
 before an instance is rented.
 
-The backend
------------
-On CPU this is :class:`LexicalAnswerabilityDetector`, which is a FLOOR, not the deployable
-v4 detector. Whatever it reaches, the trained cross-encoder has to beat — and the artifact
-records ``backend`` so a later reader cannot mistake one for the other. There is
-deliberately no way to select the lexical backend from ``GraphDetectorConfig``: a detector
-reaches a study only after its held-out gate has been opened and passed.
+The backend, and why it is now a flag
+-------------------------------------
+``--backend lexical`` is :class:`LexicalAnswerabilityDetector`, a FLOOR rather than the
+deployable v4 detector: whatever it reaches, the trained cross-encoder has to beat.
+``--backend cross_encoder --model-artifact runs/…/DETECTOR_V4_MODEL.json`` runs the trained
+checkpoint through the SAME gate arithmetic. That is the point of the flag — a gate
+implementation that existed only for the floor would mean the two numbers were produced by
+two pieces of code, and the comparison would be between those rather than between the
+scorers. Neither backend is selectable from ``GraphDetectorConfig``: a detector reaches a
+study only after its gate has been opened, on the fresh bank, and passed.
+
+The Goal A arm (v4.1)
+---------------------
+The natural arm below scores against the run's NLI+ROUGE ``leaking`` label, which answers
+"does this reproduce the reference answer?". Goal A asks "does this attempt to answer?", and
+those disagree on every wrong answer attempt — which the old ``generated_clean_fpr``
+therefore charged as a false alarm while Goal A requires the tag. So the NLI arm is now
+DIAGNOSTIC, and the arm that decides is scored against the adjudicated human labels from
+``LABEL_AUDIT_ADJUDICATED.jsonl``. Until those labels exist the Goal A arm reports
+``measured: false`` and blocks, which is the correct state and not an absence.
 """
 
 from __future__ import annotations
@@ -37,17 +50,66 @@ import typer
 from ..defenses.answerability_detector import LexicalAnswerabilityDetector
 from ..defenses.concept_registry import ConceptPolicy, ConceptRegistry
 from ..defenses.detection_context import ProtectedQuestion, build_context
+from ..defenses.detector_protocol import ConceptDetector
 from ..defenses.identity_router import alias_index
 from ..eval.detector_v4 import ORACLE_GATES, score_rows, summarise
+from ..eval.detector_v4_1 import (
+    CEILING_REINTERPRETATION,
+    GOAL_A_GATES,
+    goal_a_gate_inputs,
+    goal_a_summarise,
+    score_goal_a,
+)
 from ..eval.tofu_data import load_items
 from ..studies.graph_leak.cohort import load_cohort, resolve_cohort
 from ..studies.graph_leak.evidence import atomic_json
+from .detector_v4_1_freeze import DEFAULT_V4_1_OUT
 from .detector_v4_data import DATASET_FILENAME, DEFAULT_OUT, NATURAL_BANK_FILENAME
+from .detector_v4_label_audit import ADJUDICATED_FILENAME, KEY_FILENAME
 
-__all__ = ["detector_v4_gates"]
+__all__ = ["build_backend", "detector_v4_gates"]
 
 GATES_FILENAME = "DETECTOR_V4_GATES.json"
+# v4.1 writes its own file. D6 of DETECTOR_V4_1_PROTOCOL.md: every correction is a new
+# artifact, and DETECTOR_V4_GATES.json is frozen evidence that GU-0036 cites by name.
+V4_1_GATES_FILENAME = "DETECTOR_V4_1_GATES.json"
 THRESHOLD_GRID = tuple(round(0.05 * i, 4) for i in range(1, 21))  # 0.05 .. 1.00
+BACKENDS = ("lexical", "cross_encoder")
+
+
+def build_backend(
+    backend: str, model_artifact: Path | None, *, answer_threshold: float = 0.5
+) -> ConceptDetector:
+    """``--backend`` -> a :class:`ConceptDetector`. The only place the two differ.
+
+    ``transformers`` is imported by ``CrossEncoderAnswerabilityDetector.from_artifact`` and
+    nowhere else, so ``--backend lexical`` stays torch-free and the CPU gate stays offline.
+    """
+    if backend == "lexical":
+        if model_artifact is not None:
+            raise typer.BadParameter("--model-artifact is meaningless for the lexical backend")
+        return LexicalAnswerabilityDetector(answer_threshold=answer_threshold)
+    if backend == "cross_encoder":
+        if model_artifact is None:
+            raise typer.BadParameter(
+                "--backend cross_encoder needs --model-artifact pointing at the "
+                "DETECTOR_V4_MODEL.json written next to the checkpoint. A checkpoint "
+                "whose weights and tokenizer cannot be named is not eligible for a gate."
+            )
+        from ..defenses.cross_encoder_answerability import CrossEncoderAnswerabilityDetector
+
+        return CrossEncoderAnswerabilityDetector.from_artifact(
+            model_artifact, answer_threshold=answer_threshold
+        )
+    raise typer.BadParameter(f"--backend must be one of {BACKENDS}, got {backend!r}")
+
+
+def _at_threshold(detector: ConceptDetector, threshold: float) -> ConceptDetector:
+    """A copy of ``detector`` at a different operating point, without reloading weights."""
+    with_thresholds = getattr(detector, "with_thresholds", None)
+    if with_thresholds is None:  # pragma: no cover - both backends implement it
+        raise typer.BadParameter(f"{type(detector).__name__} cannot be re-thresholded")
+    return with_thresholds(answer_threshold=threshold)
 
 
 def _sha(text: str) -> str:
@@ -57,9 +119,7 @@ def _sha(text: str) -> str:
 # ------------------------------------------------------------------- synthetic arm --
 
 
-def _synthetic_verdicts(
-    rows: Sequence[Mapping], detector: LexicalAnswerabilityDetector
-) -> list[str]:
+def _synthetic_verdicts(rows: Sequence[Mapping], detector: ConceptDetector) -> list[str]:
     """``ANSWER`` / ``PARTIAL`` / ``NONE`` per row, from the answer-free detector.
 
     The row's ``label`` and ``example_class`` are never passed on. The detector receives a
@@ -67,6 +127,7 @@ def _synthetic_verdicts(
     candidate messages — nothing else can reach it, because
     :class:`DetectionContext` refuses the rest.
     """
+    partial_threshold = float(getattr(detector, "partial_threshold", 0.5))
     out: list[str] = []
     for row in rows:
         question = ProtectedQuestion(
@@ -86,7 +147,7 @@ def _synthetic_verdicts(
         results = detector.score_batch([str(c) for c in row["candidates"]], context=context)
         if any(r.fired for r in results):
             out.append("ANSWER")
-        elif any(r.partial_probability >= detector.partial_threshold for r in results):
+        elif any(r.partial_probability >= partial_threshold for r in results):
             out.append("PARTIAL")
         else:
             out.append("NONE")
@@ -157,7 +218,7 @@ def _protected_questions(
 
 def _natural_scores(
     rows: Sequence[Mapping],
-    detector: LexicalAnswerabilityDetector,
+    detector: ConceptDetector,
     questions: Sequence[ProtectedQuestion],
     index: Mapping[str, Sequence[frozenset[str]]],
 ) -> list[dict]:
@@ -226,21 +287,148 @@ def _natural_measure(
     }
 
 
+def _goal_a_arm(
+    v4_1_dir: Path,
+    base: ConceptDetector,
+    questions: Sequence[ProtectedQuestion],
+    index: Mapping[str, Sequence[frozenset[str]]],
+) -> dict:
+    """Goal A rates against ADJUDICATED HUMAN labels. The arm the v4.1 verdict rests on.
+
+    Absent labels report ``measured: false`` and block. "We did not measure it" and "it was
+    fine" must not produce the same verdict — the rule the v4 gate table already applies to
+    a missing number, applied here to a missing label source.
+    """
+    adjudicated_path = v4_1_dir / ADJUDICATED_FILENAME
+    key_path = v4_1_dir / KEY_FILENAME
+    judge_path = v4_1_dir / "LABEL_AUDIT_JUDGE_A.jsonl"
+    missing = [str(p) for p in (adjudicated_path, key_path, judge_path) if not p.exists()]
+    if missing:
+        return {
+            "measured": False,
+            "reason": f"the blinded label audit has not produced {missing}",
+            "next": (
+                "rdl graph-detector-v4-label-audit, two judges, then "
+                "rdl graph-detector-v4-label-report"
+            ),
+            "why_this_blocks": (
+                "Goal A's target is human answer_attempt. Scoring the detector against the "
+                "NLI+ROUGE leaking label instead is the v4 error: it charges a false alarm "
+                "for every wrong answer attempt, which Goal A requires the detector to tag."
+            ),
+        }
+
+    def load(path: Path) -> list[dict]:
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+    key = json.loads(key_path.read_text(encoding="utf-8")).get("rows", {})
+    text_of = {r["audit_id"]: r for r in load(judge_path)}
+    rows: list[dict] = []
+    for row in load(adjudicated_path):
+        audit_id = str(row["audit_id"])
+        blind = text_of.get(audit_id)
+        hidden = key.get(audit_id, {})
+        if blind is None or row.get("answer_attempt") is None:
+            continue
+        rows.append(
+            {
+                "audit_id": audit_id,
+                "request": blind["protected_question"],
+                "text": blind["candidate_text"],
+                "concept_id": hidden.get("concept_id", ""),
+                "population": hidden.get("population", "protected"),
+                "nli_leaking": hidden.get("nli_leaking"),
+                "answer_attempt": row["answer_attempt"],
+                "reference_content": row.get("reference_content"),
+                "question_type": row.get("question_type"),
+            }
+        )
+    if not rows:
+        return {"measured": False, "reason": "no adjudicated rows carry an answer_attempt label"}
+
+    scores = _natural_scores(rows, base, questions, index)
+    # Content-addressed halving, as everywhere else in v4: select on one half, report on
+    # the other, so the reported number is not a description of the selection.
+    dev = [i for i, r in enumerate(rows) if int(r["audit_id"][:2], 16) % 2 == 0]
+    rest = [i for i, r in enumerate(rows) if int(r["audit_id"][:2], 16) % 2 == 1]
+
+    def measure(idxs: Sequence[int], threshold: float) -> dict:
+        return goal_a_summarise(
+            [rows[i] for i in idxs], [scores[i] for i in idxs], threshold=threshold
+        )
+
+    grid = [measure(dev, t) for t in THRESHOLD_GRID]
+    eligible = [
+        g
+        for g in grid
+        if g["answer_attempt_micro_recall"] is not None
+        and (g["protected_nonanswer_fpr"] or 0.0) <= GOAL_A_GATES["protected_nonanswer_fpr"][1]
+        and (g["retain_fpr"] or 0.0) <= GOAL_A_GATES["retain_fpr"][1]
+    ]
+    chosen = max(
+        eligible, key=lambda g: (g["answer_attempt_micro_recall"], -g["threshold"]), default=None
+    )
+    selected = float(chosen["threshold"]) if chosen else None
+    reported = measure(rest, selected) if selected is not None else None
+
+    return {
+        "measured": True,
+        "is_one_shot_gate": False,
+        "status": "ENGINEERING ONLY",
+        "why_not_a_gate": (
+            "these rows are drawn from DETECTOR_V4_NATURAL_BANK.json, which both the "
+            "oracle and the lexical detector have already been run on. V4_1_DECISION.json "
+            "marks it engineering-only. The one-shot gate opens the fresh bank "
+            "pre-registered in FINAL_GATE_BANK_MANIFEST.json, which does not exist yet."
+        ),
+        "n_rows": len(rows),
+        "n_selection_rows": len(dev),
+        "n_reported_rows": len(rest),
+        "selection": {
+            "grid": grid,
+            "selected_threshold": selected,
+            "constraint": (
+                f"protected_nonanswer_fpr <= {GOAL_A_GATES['protected_nonanswer_fpr'][1]} and "
+                f"retain_fpr <= {GOAL_A_GATES['retain_fpr'][1]}"
+            ),
+        },
+        "reported": reported,
+        **score_goal_a(goal_a_gate_inputs(reported) if reported else dict.fromkeys(GOAL_A_GATES)),
+    }
+
+
 def detector_v4_gates(
     data_dir: Path = typer.Option(DEFAULT_OUT, "--data-dir"),
     policy_cohort: Path = typer.Option(
         Path("data/cohorts/graph_unlearning_v1/discovery.json"), "--policy-cohort"
     ),
+    backend: str = typer.Option("lexical", "--backend", help=f"one of {BACKENDS}"),
+    model_artifact: Path | None = typer.Option(
+        None, "--model-artifact", help="DETECTOR_V4_MODEL.json, for --backend cross_encoder"
+    ),
+    v4_1_dir: Path = typer.Option(DEFAULT_V4_1_OUT, "--v4-1-dir"),
     output: Path | None = typer.Option(None, "--output"),
 ) -> None:
     """Select an operating point on development, open held-out once, write the gates."""
+    # Checked BEFORE any work: a run that computes for a minute and then refuses to write
+    # has spent the minute, and on a GPU box that minute is a model load.
+    out = output or (v4_1_dir / V4_1_GATES_FILENAME)
+    if out.name == GATES_FILENAME and out.parent == data_dir:
+        raise typer.BadParameter(
+            f"refusing to overwrite {out}. It is the frozen v4 artifact GU-0036 cites by "
+            f"name, and this command now writes a v4.1 report against different "
+            f"denominators. The default output is {v4_1_dir / V4_1_GATES_FILENAME}."
+        )
     dataset = json.loads((data_dir / DATASET_FILENAME).read_text(encoding="utf-8"))
+    # Built once. The sweep re-thresholds this object rather than constructing twenty, so
+    # a cross-encoder's weights are loaded exactly once per invocation.
+    base = build_backend(backend, model_artifact)
 
     # ------------------------------------------------------------- synthetic arm --
     synthetic: dict[str, dict] = {}
     synthetic_grid = []
     for threshold in THRESHOLD_GRID:
-        detector = LexicalAnswerabilityDetector(answer_threshold=threshold)
+        detector = _at_threshold(base, threshold)
         rows = [r for r in dataset["rows"] if r["split"] == "development"]
         summary = summarise(rows, _synthetic_verdicts(rows, detector))
         synthetic_grid.append(
@@ -266,7 +454,7 @@ def detector_v4_gates(
         if synthetic_threshold is None:
             synthetic[split] = {"measured": False, "reason": "no eligible threshold on development"}
             continue
-        detector = LexicalAnswerabilityDetector(answer_threshold=synthetic_threshold)
+        detector = _at_threshold(base, synthetic_threshold)
         summary = summarise(rows, _synthetic_verdicts(rows, detector))
         measured = {
             "micro_recall": summary["micro_recall"],
@@ -291,7 +479,7 @@ def detector_v4_gates(
         questions = _protected_questions(registry, lookups["questions_by_concept"])
         index = alias_index(registry)
         concept_of = lookups["item_concept"]
-        detector = LexicalAnswerabilityDetector()
+        detector = base
 
         def rows_of(partition: Mapping) -> list[dict]:
             out = []
@@ -373,18 +561,36 @@ def detector_v4_gates(
             ),
             **score_rows(measured, ORACLE_GATES),
         }
+        goal_a = _goal_a_arm(v4_1_dir, base, questions, index)
+    else:
+        goal_a = {"measured": False, "reason": f"{bank_path} is absent"}
 
-    detector_dict = LexicalAnswerabilityDetector().to_dict()
+    detector_dict = base.to_dict()
     report = {
-        "schema": "graph-detector-v4-gates-v1",
-        "phase": "Detector-v4 Phase 6 — answer-free detector on CPU. No model is trained here.",
+        "schema": "graph-detector-v4-gates-v2",
+        "phase": (
+            "Detector-v4.1 Phase 6 — answerability detector on CPU. No model is trained here."
+        ),
+        "protocol": "docs/graph_unlearning/DETECTOR_V4_1_PROTOCOL.md",
+        "backend_selector": backend,
         "backend": detector_dict,
+        "model_artifact": str(model_artifact) if model_artifact else None,
         "backend_is_a_floor": (
             "the lexical scorer is the CPU reference and the floor the trained "
             "cross-encoder must beat. It is not the deployable v4 detector and no report "
-            "may present it as one. GraphDetectorConfig cannot select it."
+            "may present it as one. GraphDetectorConfig cannot select either backend."
+            if backend == "lexical"
+            else "a trained checkpoint, scored through the same gate arithmetic as the "
+            "lexical floor. GraphDetectorConfig cannot select it until its one-shot gate "
+            "has been opened on the fresh bank and passed."
         ),
-        "gates": {k: {"comparison": c, "bound": b} for k, (c, b) in ORACLE_GATES.items()},
+        "ceiling_reinterpretation": CEILING_REINTERPRETATION,
+        "gates": {
+            "goal_a": {k: {"comparison": c, "bound": b} for k, (c, b) in GOAL_A_GATES.items()},
+            "nli_label_diagnostic": {
+                k: {"comparison": c, "bound": b} for k, (c, b) in ORACLE_GATES.items()
+            },
+        },
         "synthetic_arm": {
             "role": "engineering signal; per-class errors. Not the verdict.",
             "selected_threshold": synthetic_threshold,
@@ -392,15 +598,27 @@ def detector_v4_gates(
             "dataset_content_sha256": dataset.get("content_sha256"),
             **synthetic,
         },
-        "natural_arm": natural,
+        "goal_a_arm": goal_a,
+        "natural_arm": {
+            "role": (
+                "DIAGNOSTIC under v4.1. Scored against the run's NLI+ROUGE leaking label, "
+                "which answers 'does this reproduce the reference answer'. Goal A asks "
+                "'does this attempt to answer', and generated_clean_fpr charges a false "
+                "alarm for every wrong answer attempt that Goal A requires to be tagged. "
+                "Not the verdict."
+            ),
+            **natural,
+        },
         "registry": registry_meta,
         "verdict": (
-            "the natural arm was not measured; no CPU verdict is available"
-            if not natural.get("measured")
+            "the Goal A arm was not measured; there is no v4.1 verdict and the label "
+            "audit is the next step"
+            if not goal_a.get("measured")
             else (
-                "the answer-free detector clears the frozen bounds on natural text"
-                if natural.get("all_gates_passed")
-                else "the answer-free detector does NOT clear the frozen bounds on natural text"
+                "the detector clears the Goal A bounds on adjudicated human labels "
+                "(ENGINEERING ONLY — the one-shot gate opens the fresh bank)"
+                if goal_a.get("all_gates_passed")
+                else "the detector does NOT clear the Goal A bounds on adjudicated human labels"
             )
         ),
         "runtime_reads_gold_answers": False,
@@ -408,18 +626,17 @@ def detector_v4_gates(
             "model_trained": False,
             "graph_generation_run": False,
             "frozen_v1_v2_v3_artifacts_modified": False,
-            "gpu_used": False,
+            "gpu_used": backend == "cross_encoder",
         },
     }
-    out = output or (data_dir / GATES_FILENAME)
     atomic_json(out, report)
     typer.echo(f"wrote {out}")
     typer.echo(f"verdict: {report['verdict']}")
-    if natural.get("measured"):
-        for gate in natural["gates"]:
+    for name, arm in (("goal_a", goal_a), ("nli-diagnostic", natural)):
+        for gate in arm.get("gates", ()):
             mark = "PASS" if gate["passed"] else ("n/a " if gate["passed"] is None else "FAIL")
             typer.echo(
-                f"  [{mark}] natural {gate['gate']}: {gate['measured']} "
+                f"  [{mark}] {name} {gate['gate']}: {gate['measured']} "
                 f"(need {gate['comparison']} {gate['bound']})"
             )
-    raise typer.Exit(0 if natural.get("all_gates_passed") else 1)
+    raise typer.Exit(0 if goal_a.get("all_gates_passed") else 1)

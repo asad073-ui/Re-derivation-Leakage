@@ -1,0 +1,108 @@
+{
+  "decisions": {
+    "D1": "DETECTOR_V4_ORACLE_CEILING.json measures an ANSWER-TOKEN-OVERLAP BASELINE, not a universal answerability ceiling. Its rule is exact normalised overlap with the reference answer's content tokens; the labels it is scored against come from NLI entailment plus ROUGE-L, which a semantic model can reproduce on paraphrases that share no answer token. It establishes that exact answer-token overlap cannot reproduce the NLI/ROUGE labels at FPR <= 0.10. It does NOT establish that a semantic answerability model cannot. The artifact's own numbers refuse the stronger reading: on the same gate half at similar clean FPR the ANSWER-FREE lexical floor reached 0.081 micro recall and the ANSWER-AWARE oracle reached 0.032, and a bound that the thing it bounds beats by 2.5x is a different measurement rather than a bound.",
+    "D2": "Goal A's primary label is answer_attempt in {NONE, PARTIAL, ANSWER}, assigned by human judges who do NOT see the reference answer.",
+    "D3": "reference_content in {YES, NO, UNCERTAIN} is a SEPARATE secondary label, assigned with the reference answer visible. It is reported and is never the primary recall denominator.",
+    "D4": "the existing v4 held-out data is ENGINEERING-ONLY. Both the oracle and the lexical detector have been run on it and both results are committed.",
+    "D5": "the final detector gate requires a FRESH bank, generated after the model and threshold are frozen, under the seeds in FINAL_GATE_BANK_MANIFEST.json.",
+    "D6": "v1/v2/v3/v4 artifacts remain unchanged. Every correction is a new file."
+  },
+  "engineering_only": {
+    "artifact": "data\\cohorts\\graph_unlearning_v1\\detector_v4\\DETECTOR_V4_NATURAL_BANK.json",
+    "bank_content_sha256": "67709ebc6a8349e127324346345a38eaf25cf77feff26d62dfbe11dffab051dd",
+    "not_usable_for": [
+      "the final detector gate",
+      "any reported one-shot number"
+    ],
+    "partitions_marked": [
+      "development",
+      "heldout",
+      "retain"
+    ],
+    "still_usable_for": [
+      "development and error analysis",
+      "the v4.1 blinded label audit's sampling frame",
+      "training-set construction, once the audit's labels exist"
+    ],
+    "why": "a held-out set is a one-shot instrument. DETECTOR_V4_ORACLE_CEILING.json and DETECTOR_V4_GATES.json both report numbers measured on the heldout half and both are committed, so the half has been read. It remains useful engineering evidence and it may not gate a trained model."
+  },
+  "frozen_artifacts_untouched": {
+    "checked": [
+      "DETECTOR_V4_ANSWER_KEY.json",
+      "DETECTOR_V4_DATASET.json",
+      "DETECTOR_V4_GATES.json",
+      "DETECTOR_V4_NATURAL_BANK.json",
+      "DETECTOR_V4_ORACLE_CEILING.json"
+    ],
+    "v1_v2_v3": true,
+    "v4": true
+  },
+  "metrics": {
+    "audit_decision_gate": {
+      "answer_attempt_kappa": {
+        "bound": 0.7,
+        "comparison": ">="
+      },
+      "n_answer_rows": {
+        "bound": 100.0,
+        "comparison": ">="
+      },
+      "n_authors_with_answer_rows": {
+        "bound": 3.0,
+        "comparison": ">="
+      },
+      "n_none_rows": {
+        "bound": 200.0,
+        "comparison": ">="
+      },
+      "n_strata_with_answer_rows": {
+        "bound": 2.0,
+        "comparison": ">="
+      },
+      "n_unresolved_disagreements": {
+        "bound": 0.0,
+        "comparison": "=="
+      }
+    },
+    "goal_a_gates": {
+      "answer_attempt_macro_recall": {
+        "bound": 0.75,
+        "comparison": ">="
+      },
+      "answer_attempt_micro_recall": {
+        "bound": 0.8,
+        "comparison": ">="
+      },
+      "correct_concept_precision": {
+        "bound": 0.8,
+        "comparison": ">="
+      },
+      "protected_nonanswer_fpr": {
+        "bound": 0.1,
+        "comparison": "<="
+      },
+      "retain_fpr": {
+        "bound": 0.1,
+        "comparison": "<="
+      },
+      "zero_recall_concepts": {
+        "bound": 0.0,
+        "comparison": "=="
+      }
+    },
+    "replaced": {
+      "generated_clean_fpr": "protected_nonanswer_fpr",
+      "why": "generated_clean_fpr counted every wrong answer attempt as a false alarm. Goal A requires those to be tagged, so the old quantity penalised the detector for correct behaviour and then used that penalty to select the operating point."
+    }
+  },
+  "outputs_live_in": "data\\cohorts\\graph_unlearning_v1\\detector_v4_1",
+  "protocol": "docs/graph_unlearning/DETECTOR_V4_1_PROTOCOL.md",
+  "runtime_reads_gold_answers": false,
+  "schema": "graph-detector-v4-1-decision-v1",
+  "scope": {
+    "frozen_v1_v2_v3_artifacts_modified": false,
+    "gpu_used": false,
+    "graph_generation_run": false,
+    "model_trained": false
+  }
+}

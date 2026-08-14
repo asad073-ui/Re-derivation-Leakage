@@ -1142,3 +1142,98 @@ so it misses paraphrased relations by construction — 0.28 micro recall on the 
 synthetic split, whose surface variants are disjoint from training — and it raises almost
 no false alarms (0.002 clean, 0.0 retain). That shape is the argument for a cross-encoder,
 not a substitute for one.
+
+### GU-0037 — 2026-08-14 — The ceiling was not a ceiling, and the detector was scored against the wrong label
+
+GU-0036 concluded that the bound on Detector v4 is the leak definition rather than the
+model class, and stopped before renting an instance. Stopping was right. The stated reason
+was not.
+
+#### 1. `DETECTOR_V4_ORACLE_CEILING.json` is a lexical baseline, not an upper bound
+
+The oracle's rule is exact normalised answer-token overlap,
+`|answer_tokens ∩ candidate_tokens| / |answer_tokens|`. The labels it is scored against
+come from the run's pinned NLI entailment scorer plus ROUGE-L. A cross-encoder recognises
+a paraphrase that shares no answer token, so an overlap rule cannot bound one, and
+
+> "no answer-free detector can beat this oracle"
+
+is not what the artifact demonstrates. What it demonstrates is narrower and still useful:
+*exact answer-token overlap cannot reproduce the NLI/ROUGE labels at FPR ≤ 0.10.*
+
+The artifact carries the refutation of its own stronger reading. On the same gate half at
+similar sub-10% clean FPR, the **answer-free** lexical floor reached 0.081 micro recall and
+the **answer-aware** oracle reached 0.032. A universal ceiling that the thing it bounds
+beats by 2.5× is a different measurement, not a bound.
+
+The file is not edited — it is frozen evidence and the negative result stands.
+`data/cohorts/graph_unlearning_v1/detector_v4_1/DETECTOR_V4_1_CEILING_CORRECTION.json`
+carries the corrected interpretation and the original's content hash, and
+`rdl.eval.detector_v4_1.CEILING_REINTERPRETATION` is the string every new report cites.
+
+#### 2. Goal A and the natural leak label are different tasks
+
+Goal A tags a *wrong* answer attempt: "X was born in Rome" for an author born in Madrid is
+still an attempt to supply the forgotten fact, and the protocol table has said so since v4.
+The natural bank's `leaking`/`clean` split is the run's NLI+ROUGE verdict against the
+reference answer, which calls that same text **clean**.
+
+So `generated_clean_fpr` — the quantity that selects the operating point under a 0.10
+ceiling — penalises the detector for doing exactly what Goal A requires. v4 compared a
+policy detector ("does this attempt to answer?") against truth-content labels ("does this
+reproduce the reference answer?") and reported the mismatch as a detector failure.
+
+v4.1 separates them. `answer_attempt` ∈ {NONE, PARTIAL, ANSWER} is the primary label and is
+assigned **without** the reference answer visible; `reference_content` ∈ {YES, NO,
+UNCERTAIN} is a secondary label assigned **with** it. `protected_nonanswer_fpr` replaces
+`generated_clean_fpr` for Goal A and counts only rows a human judged NONE.
+
+#### 3. Open-ended questions are a harder stratum, not a proof of impossibility
+
+GU-0036 read 92.5% open-ended leaking rows as "Goal A is ill-posed here". That follows only
+for slot-filling. "What inspired X?" → "X was inspired by childhood experiences" plainly
+attempts an answer, and a human can say so without knowing whether it is true. What the
+open-ended share establishes is that v4 must detect semantic responsiveness, which is the
+argument for the cross-encoder rather than against the task.
+
+If judges cannot agree on open-ended rows, the response is a **new pre-registered
+slot-bearing study** — not a filter applied to this one after seeing which subset agrees.
+
+#### 4. The v4 held-out data is spent
+
+Both the oracle and the lexical detector have been run on the natural bank's gate half and
+both results are committed. It remains engineering evidence and it is no longer a one-shot
+gate. `FINAL_GATE_BANK_MANIFEST.json` pre-registers a fresh bank — unguarded arms, new
+seeds, generated after the model and threshold are frozen — as the only surface the trained
+detector's gate may open.
+
+#### 5. What was unfinished in the training path
+
+`scripts/train_detector_v4.py` loaded a model, tokenised, wrote a manifest and raised
+`SystemExit`. It had no optimizer, no loop, no development evaluation, no checkpoint
+selection, no checkpoint saving and no inference backend, so "the recipe is reviewable"
+described a document rather than a trainer. Its encoding also called
+`truncation="only_second"` on `question, identity + "[SEP]" + candidate`, which truncates
+the **end of the second sequence** — the candidate, the one span that must survive.
+
+Fixed on this branch: a real loop with seed control, class weighting, per-epoch development
+evaluation, best-checkpoint selection and checkpoint saving; `budget_encode`, which spends
+its token budget in the order *drop aliases → shorten the question → keep the candidate*
+and records every candidate truncation as a counted error; `tokenizer_revision` required
+and recorded separately from `model_revision`; a pinned off-the-shelf NLI cross-encoder
+baseline alongside the fine-tune, because `microsoft/deberta-v3-base` has a randomly
+initialised classification head and is not an answerability baseline;
+`rdl.defenses.cross_encoder_answerability` as a real `ConceptDetector`, unit-tested against
+a tiny in-process torch module so `make cpu-all` stays network-free; and
+`rdl graph-detector-v4-gates --backend {lexical,cross_encoder}` so one gate implementation
+scores both.
+
+`--force-despite-failed-ceiling` is **deleted**. It existed to train despite a failing
+artifact; the correct response to that artifact was to fix its interpretation, and a flag
+that skips the fix is a way to keep the mistake.
+
+#### What is still not done
+
+The blinded audit needs two human judges. That is condition 2 of the twelve in
+`DETECTOR_V4_1_PROTOCOL.md` §8, it is the only one this branch does not meet, and no GPU
+step may run before it clears.
