@@ -57,6 +57,7 @@ pairs to a κ that is supposed to measure whether the rubric is legible.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -68,6 +69,7 @@ from ..eval.detector_v4_2 import (
     JUDGES,
     PROMPT_VERSION,
     REFERENCE_FIELDS,
+    V4_2_PROTOCOL,
     disagreements,
     model_alignment_report,
     sha256_text,
@@ -88,6 +90,11 @@ from .detector_v4_2_llm_judge import (
 __all__ = ["detector_v4_2_label_report"]
 
 ADJUDICATED_FILENAME = "V4_2_ADJUDICATED.jsonl"
+# Written by a blind-pass-only report with zero unresolved rows; required by the reference
+# pass. See the module docstring: "both blind API runs finished" and "the blind labels are
+# settled" are different facts, and only the second one makes a reference pass safe.
+BLIND_FREEZE_FILENAME = "V4_2_BLIND_FREEZE.json"
+BLIND_FREEZE_SCHEMA = "graph-detector-v4-2-blind-freeze-v1"
 DISAGREEMENT_FILENAME = "V4_2_DISAGREEMENTS_{pass_upper}.jsonl"
 REPORT_FILENAME = "DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json"
 
@@ -518,6 +525,93 @@ def detector_v4_2_label_report(
 
     out = output_dir / REPORT_FILENAME
     atomic_json(out, report)
+
+    # ------------------------------------------------------- the blind freeze --
+    # A blind-pass-only report with every disagreement resolved is the moment the blind
+    # labels stop being revisable. Recording it as an artifact is what makes the reference
+    # pass's precondition checkable: `_require_frozen_blind_passes` used to verify only
+    # that two API runs had *completed*, which is a statement about the network, not about
+    # whether anyone had settled what the blind labels are. Between those two things sits
+    # the whole point of a blind pass — an operator who has seen reference-pass output
+    # could still go back and change them.
+    freeze_path = output_dir / BLIND_FREEZE_FILENAME
+    if wanted == ["blind"]:
+        blind_runs = [r for r in runs if r.get("pass") == "blind"]
+        # BLIND fields only. `adjudicate` walks every field of the audit, so on a
+        # blind-pass-only run every row is "unresolved" for `reference_content` — nobody
+        # has been asked yet. Counting those would make the freeze unreachable and the
+        # reference pass permanently refused, which is a different failure from the one
+        # this artifact exists to prevent.
+        unresolved_blind = [
+            row for row in unresolved if set(row.get("fields", ())) & set(BLIND_FIELDS)
+        ]
+        blocked: list[str] = []
+        if failures:
+            blocked.append(f"{len(failures)} provenance failure(s)")
+        if unresolved_blind:
+            blocked.append(
+                f"{len(unresolved_blind)} unresolved blind disagreement(s) on "
+                f"{sorted({f for row in unresolved_blind for f in row.get('fields', ())})}"
+            )
+        if n_failed:
+            blocked.append(f"{n_failed} malformed row(s)")
+        if blocked:
+            typer.echo("", err=True)
+            typer.echo(
+                "the blind labels are NOT frozen: " + "; ".join(blocked) + ". Resolve every "
+                "blind disagreement and re-run with --adjudication; the reference pass is "
+                "refused until this artifact exists.",
+                err=True,
+            )
+        else:
+            atomic_json(
+                freeze_path,
+                {
+                    "schema": BLIND_FREEZE_SCHEMA,
+                    "protocol": V4_2_PROTOCOL,
+                    "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "bundle_id": bundle.bundle_id,
+                    "prompt_version": PROMPT_VERSION,
+                    # The bytes this freeze is a statement about. The reference pass
+                    # re-hashes them: a freeze that named no hashes would be satisfied by
+                    # overlays edited after it was written.
+                    "blind_overlays": {
+                        str(run.get("judge")): run.get("output_file_sha256") for run in blind_runs
+                    },
+                    "blind_overlay_files": {
+                        str(run.get("judge")): run.get("output_file") for run in blind_runs
+                    },
+                    "adjudication_file": str(adjudication) if adjudication else None,
+                    "adjudication_sha256": (
+                        _file_sha256(adjudication)
+                        if adjudication and adjudication.exists()
+                        else None
+                    ),
+                    "adjudicated_file": str(adjudicated_path),
+                    "adjudicated_sha256": adjudicated_sha,
+                    "report_file": str(out),
+                    "report_sha256": _file_sha256(out),
+                    "n_rows": len(adjudicated_rows),
+                    # Blind rows only: `reference_content` is unresolved for every row at
+                    # this point because no judge has been asked, which is the state this
+                    # freeze exists to precede.
+                    "n_unresolved": len(unresolved_blind),
+                    "n_unresolved_any_field": len(unresolved),
+                    "answer_attempt_kappa": (
+                        report.get("inter_judge", {})
+                        .get("per_field", {})
+                        .get("answer_attempt", {})
+                        .get("cohens_kappa")
+                    ),
+                    "meaning": (
+                        "every blind disagreement is resolved and the blind labels are "
+                        "final. The reference pass may now run. Re-running a blind pass "
+                        "after this point produces overlays whose hashes no longer match "
+                        "this file, and the reference pass will refuse them."
+                    ),
+                },
+            )
+            typer.echo(f"wrote {freeze_path}  (blind labels frozen)")
 
     typer.echo(f"wrote {out}")
     for line in written:

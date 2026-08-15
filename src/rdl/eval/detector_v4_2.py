@@ -99,14 +99,24 @@ PROVIDERS: dict[str, dict] = {
         "max_tokens_field": "max_tokens",
         "supports_temperature": True,
         "supports_reasoning_effort": False,
-        "billing": "free tier",
+        # PAID Standard tier. This field said "free tier" through v4.2.2 while the rate
+        # table beside it said the opposite, which is the state a reader is entitled to
+        # treat as a lie in one direction or the other.
+        "billing": "paid — Standard tier, synchronous requests",
         # Recorded because it is a real constraint on what may be sent, not a footnote.
+        # A free tier DOES exist for this model; the protocol refuses it, which is a
+        # different statement and the one that has to be enforced.
         "data_retention_note": (
-            "Google states that content sent through the Gemini API free tier may be used "
-            "to improve its products; the paid tier does not. The audit sends protected "
-            "questions and generated candidate text from a public TOFU-derived benchmark "
-            "and no unpublished manuscript, which is why the free tier is acceptable here."
+            "Google states that content submitted through the Gemini API free tier may be "
+            "used to improve its products, and that paid-tier content is not. This audit "
+            "therefore runs on a PAID project: what is sent is a public TOFU-derived "
+            "benchmark's questions and generated candidate text, but the manifest asserts "
+            "paid-tier handling and an artifact that asserts it while a free project was "
+            "used would be false. The runner cannot detect the project's tier, so a "
+            "reportable Gemini run requires --assert-paid-tier and records who asserted it."
         ),
+        "free_tier_exists": True,
+        "free_tier_permitted_by_protocol": False,
     },
     "groq": {
         "family": "openai-open-weights",
@@ -165,8 +175,18 @@ PROVIDERS: dict[str, dict] = {
 # table is what the planner divides by before any call has been made.
 RATE_LIMITS: dict[str, dict] = {
     "gemini-3.7-flash": {
-        "free_tier_available": False,
-        "billing": "paid",
+        # A free tier EXISTS for this model — v4.2.2 said it did not, which was wrong in
+        # the other direction from v4.2.1's "both judges are free". The protocol refuses
+        # it, and refusing something is not the same as it not existing: `free_tier_used`
+        # is what the cost arithmetic keys on, and the reason is data handling, not money.
+        "free_tier_exists": True,
+        "free_tier_used": False,
+        "why_not_free": (
+            "Google states that free-tier content may be used to improve its products and "
+            "that paid-tier content is not. The protocol asserts paid-tier handling, so a "
+            "run on a free project would make the manifest false."
+        ),
+        "billing": "paid — Standard tier",
         "requests_per_minute": 10,
         "requests_per_day": None,
         "tokens_per_minute": None,
@@ -176,13 +196,15 @@ RATE_LIMITS: dict[str, dict] = {
         # tier and recorded as what it is rather than as a measurement.
         "requests_per_minute_source": "self-imposed pacing floor, not a published ceiling",
         "quota_source": (
-            "no free tier is offered for this model; paid-tier ceilings are account-tier "
-            "dependent and are NOT verified for this account. The run manifest's "
-            "observed_rate_limits is the verified number."
+            "paid Standard-tier ceilings are account-tier dependent and are NOT verified "
+            "for this account. The run manifest's observed_rate_limits is the verified "
+            "number."
         ),
     },
     "openai/gpt-oss-120b": {
-        "free_tier_available": True,
+        "free_tier_exists": True,
+        "free_tier_used": True,
+        "why_not_free": None,
         "billing": "free plan",
         "requests_per_minute": 30,
         "requests_per_day": 1_000,
@@ -196,7 +218,9 @@ RATE_LIMITS: dict[str, dict] = {
         ),
     },
     "llama-3.3-70b-versatile": {
-        "free_tier_available": True,
+        "free_tier_exists": True,
+        "free_tier_used": True,
+        "why_not_free": None,
         "billing": "free plan",
         "requests_per_minute": 30,
         "requests_per_day": 1_000,
@@ -207,25 +231,63 @@ RATE_LIMITS: dict[str, dict] = {
     },
 }
 
-# USD per million tokens. Corrected 2026-08-15 (GU-0040): the previous table recorded both
-# judges at 0.0 "by rate and not by omission", which was wrong for Gemini and made the
-# audit look free. A price that is wrong in the cheap direction is the one that gets a run
-# started without a budget.
+# USD per million tokens, BY REQUEST MODE. Corrected twice, and the second correction is
+# the reason this table has a second level of keys.
+#
+# v4.2.1 priced both judges at 0.0 because one of them was free. v4.2.2 fixed that and
+# recorded $0.375/$1.875 for Gemini — which are the **Batch / Flex** rates, half of
+# Standard. The runner does not use Batch: it issues synchronous chat-completions requests
+# one row at a time, which bill at Standard. A rate table with one unlabelled number
+# cannot say that, so the tier is now part of the key and :data:`REQUEST_MODE` records
+# which one this pipeline actually incurs.
 #
 # A null unit price means the rate was not established here; the token counts are always
 # recorded, so a price can be applied afterwards.
 PRICING_AS_OF = "2026-08-15"
+
+# What the runner does. Every price the pipeline reports is read at this tier, and the
+# batch column exists so that a future batched runner is a table lookup rather than a
+# rediscovery of this defect.
+REQUEST_MODE = "standard-synchronous"
+
+PRICES_USD_PER_MTOK_BY_TIER: dict[str, dict[str, dict[str, float | None]]] = {
+    "gemini-3.7-flash": {
+        # Standard, synchronous — what this runner incurs.
+        "standard": {"input": 0.75, "output": 3.75},
+        # Batch / Flex, at half the Standard rate. Recorded because it is the number
+        # v4.2.2 mistakenly reported as Standard, and because a batched runner would
+        # legitimately pay it.
+        "batch": {"input": 0.375, "output": 1.875},
+    },
+    "openai/gpt-oss-120b": {
+        "standard": {"input": 0.15, "output": 0.60},
+        "batch": {"input": 0.15, "output": 0.60},
+    },
+    "llama-3.3-70b-versatile": {
+        "standard": {"input": 0.59, "output": 0.79},
+        "batch": {"input": 0.59, "output": 0.79},
+    },
+    "claude-sonnet-5": {"standard": {"input": 2.00, "output": 10.00}},
+    "claude-haiku-4-5": {"standard": {"input": 1.00, "output": 5.00}},
+    "claude-opus-5": {"standard": {"input": 5.00, "output": 25.00}},
+    "gpt-5.6-sol": {"standard": {"input": 5.00, "output": 30.00}},
+}
+
+
+def rates_for(model: str, tier: str = REQUEST_MODE) -> dict[str, float | None]:
+    """The unit prices this pipeline actually pays for ``model``.
+
+    ``standard-synchronous`` resolves to the ``standard`` column; anything else must name
+    a column that exists, because silently falling back to a cheaper one is the defect
+    this function was written for.
+    """
+    column = "standard" if tier == "standard-synchronous" else tier
+    return dict(PRICES_USD_PER_MTOK_BY_TIER.get(model, {}).get(column, {}))
+
+
+# Flat view at the tier the runner uses, kept for readers that only need one number.
 PRICES_USD_PER_MTOK: dict[str, dict[str, float | None]] = {
-    # No free tier. Google's published rate through 2026-12-31.
-    "gemini-3.7-flash": {"input": 0.375, "output": 1.875},
-    # Free plan available and used; this is what the same tokens cost if the free plan's
-    # per-day ceiling is not worth waiting out.
-    "openai/gpt-oss-120b": {"input": 0.15, "output": 0.60},
-    "llama-3.3-70b-versatile": {"input": 0.59, "output": 0.79},
-    "claude-sonnet-5": {"input": 2.00, "output": 10.00},
-    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
-    "claude-opus-5": {"input": 5.00, "output": 25.00},
-    "gpt-5.6-sol": {"input": 5.00, "output": 30.00},
+    model: rates_for(model) for model in PRICES_USD_PER_MTOK_BY_TIER
 }
 # What a model that IS on a free plan bills at when the free plan is exhausted. Same rate
 # as above for Groq; kept as a separate table because "what this run cost" and "what it
@@ -236,11 +298,14 @@ PAID_FALLBACK_USD_PER_MTOK: dict[str, dict[str, float]] = {
     "llama-3.3-70b-versatile": {"input": 0.59, "output": 0.79},
 }
 PRICE_NOTE = (
-    f"List prices as of {PRICING_AS_OF}. gemini-3.7-flash has NO free tier — $0.375/M "
-    "input and $1.875/M output — so the Gemini passes are billed and estimated_cost_usd "
-    "is a real charge. openai/gpt-oss-120b runs on Groq's free plan, so its "
-    "estimated_cost_usd is 0.0 by rate; paid_fallback_cost_usd is what the same token "
-    "counts would cost at $0.15/$0.60 if the free plan's per-day ceiling is not worth "
+    f"List prices as of {PRICING_AS_OF}, read at the {REQUEST_MODE} tier because that is "
+    "what the runner issues — one synchronous chat-completions request per row, never a "
+    "Batch job. gemini-3.7-flash Standard is $0.75/M input and $3.75/M output; the "
+    "$0.375/$1.875 recorded in v4.2.2 are the Batch/Flex rates, which this pipeline does "
+    "not pay. A free tier exists for it and the protocol REFUSES it, for data handling "
+    "rather than for money, so its cost is always billed. openai/gpt-oss-120b runs on "
+    "Groq's free plan, so its estimated_cost_usd is 0.0 by plan; paid_fallback_cost_usd "
+    "is what the same tokens cost at $0.15/$0.60 if the per-day ceiling is not worth "
     "waiting out. A null unit price means the rate was not established here."
 )
 
@@ -248,22 +313,21 @@ PRICE_NOTE = (
 def price_of(model: str, input_tokens: int, output_tokens: int) -> float | None:
     """Billed USD for one model's token counts, or ``None`` if its rate is unknown.
 
-    A model on a free plan bills nothing, which is why this reads
-    :data:`RATE_LIMITS` for the plan and :data:`PRICES_USD_PER_MTOK` for the rate. The two
-    were conflated before: every judge was priced at 0.0 because one of them was free.
+    Two independent facts, and conflating them is how both previous versions got this
+    wrong: whether the model is being run on a free plan (:data:`RATE_LIMITS`
+    ``free_tier_used``) and what a paid request costs at the tier this runner uses
+    (:func:`rates_for`). A free tier that exists but is refused bills at the full rate.
     """
-    if RATE_LIMITS.get(model, {}).get("free_tier_available"):
+    if RATE_LIMITS.get(model, {}).get("free_tier_used"):
         return 0.0
-    prices = PRICES_USD_PER_MTOK.get(model, {})
-    per_input, per_output = prices.get("input"), prices.get("output")
-    if per_input is None or per_output is None:
-        return None
-    return round(input_tokens / 1e6 * per_input + output_tokens / 1e6 * per_output, 4)
+    return list_price_of(model, input_tokens, output_tokens)
 
 
-def list_price_of(model: str, input_tokens: int, output_tokens: int) -> float | None:
+def list_price_of(
+    model: str, input_tokens: int, output_tokens: int, *, tier: str = REQUEST_MODE
+) -> float | None:
     """What the tokens cost at list rate, ignoring any free plan. Never ``0.0`` by plan."""
-    prices = PRICES_USD_PER_MTOK.get(model, {})
+    prices = rates_for(model, tier)
     per_input, per_output = prices.get("input"), prices.get("output")
     if per_input is None or per_output is None:
         return None

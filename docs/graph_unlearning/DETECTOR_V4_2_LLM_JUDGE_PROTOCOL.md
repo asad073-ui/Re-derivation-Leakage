@@ -39,7 +39,7 @@ as a downgrade.
 
 | role | provider | requested model | family | billing | notes |
 |---|---|---|---|---|---|
-| Model Judge A | Google Gemini API | `gemini-3.7-flash` | `google-gemini` | **paid — no free tier** ($0.375/M in, $1.875/M out) | the returned model identifier is recorded separately from the requested one |
+| Model Judge A | Google Gemini API | `gemini-3.7-flash` | `google-gemini` | **paid Standard tier** ($0.75/M in, $3.75/M out) | a free tier exists and is REFUSED; the returned model identifier is recorded separately from the requested one |
 | Model Judge B | Groq | `openai/gpt-oss-120b` | `openai-open-weights` | free plan ($0.15/M in, $0.60/M out if paid) | same |
 | Adjudicator | the researcher | — | — | — | blind; sees only rows where A and B differ or either is UNCERTAIN, with exactly the evidence that pass's judges saw |
 
@@ -55,14 +55,24 @@ served by a third party — which is the reason. It was chosen before the first 
 recorded. If a judge's quality proves insufficient, the response is a recorded model change
 in `DECISIONS.md` before any labels are kept, never a swap after seeing a κ.
 
-**One judge bills and one does not, and v4.2.1 got this wrong (GU-0040).** The protocol
-described both as free-tier and the code priced both at zero. Google's pricing page lists
-**no free tier** for `gemini-3.7-flash`: it costs $0.375/M input and $1.875/M output through
-2026-12-31. Groq's free plan does cover `openai/gpt-oss-120b`, at 30 requests/minute, 1,000
+**One judge bills and one does not, and this took three revisions to state correctly
+(GU-0040, GU-0041).** v4.2.1 described both as free-tier and priced both at zero. v4.2.2
+said Gemini had no free tier and priced it at $0.375/$1.875 — **the Batch/Flex rates**,
+half of Standard. This runner issues one *synchronous* chat-completions request per row and
+never a Batch job, so it pays **Standard: $0.75/M input, $3.75/M output**. A free tier does
+exist for the model; the protocol **refuses** it, for data handling rather than for money
+(below), which is why the cost is billed in full either way.
+
+Groq's free plan does cover `openai/gpt-oss-120b`, at 30 requests/minute, 1,000
 requests/day and 200,000 tokens/day, and bills $0.15/M input and $0.60/M output when the
-free plan is exhausted — not the $0.75 output rate the repository had estimated. For the
-1,019-row audit that is **$1.04 on Gemini plus nine days of Groq's token ceiling, or $1.42
-total to skip the wait**; budget twice the estimate for retries.
+free plan is exhausted. For the 1,019-row audit that is **$2.08 on Gemini plus nine days of
+Groq's token ceiling, or $2.46 total to skip the wait**; the ~1,800-row bank audit is
+roughly another $3.70, and the whole labelling programme should be budgeted at $12-15 with
+retries.
+
+Prices are keyed by tier in `PRICES_USD_PER_MTOK_BY_TIER`, and `REQUEST_MODE` records which
+tier this pipeline incurs. A cost field with one unlabelled number cannot distinguish a
+Batch rate from a Standard one, which is exactly how the second error survived review.
 
 **Quota figures are plan documentation, not facts about this account.** Per-account limits
 differ from a published plan in both directions. `rdl graph-detector-v4-2-judge-plan`
@@ -73,12 +83,14 @@ runner paces itself, checkpoints every row, and stops cleanly on a per-day ceili
 `--resume` continues the next day. A multi-day audit is the expected shape of a free-plan
 run, not a failure.
 
-**Data handling differs between the two providers and is recorded.** Google states that
-free-tier Gemini content may be used to improve its products; the paid tier does not. Groq
-documents that it does not retain customer inference data by default. What v4.2 sends is
-protected questions and generated candidate text derived from the public TOFU benchmark
-— no unpublished manuscript — which is why the free tier is acceptable for this audit and
-would not automatically be acceptable for a different one.
+**Data handling differs between the two providers, and it decides which tier is used.**
+Google states that free-tier Gemini content may be used to improve its products and that
+paid-tier content is not. The audit therefore runs on a **paid** project: what is sent is
+public-benchmark-derived text, but the manifest asserts paid-tier handling, and an artifact
+that asserts it while a free project was used is false. No API response names a project's
+billing tier, so a reportable run on Gemini requires `--assert-paid-tier` and records that a
+human asserted it. Groq documents that it does not retain customer inference data by
+default, and its free plan is used.
 
 **Sampling parameters are provider-constrained and are recorded, not assumed.** Both
 judges accept `temperature=0`, which is what v4.2 sends; Groq additionally accepts
@@ -214,7 +226,12 @@ Fixed here so a judge cannot be re-run after its counterpart's result is known.
 4. Compute pre-adjudication κ and the confusion matrix. **This is the first number seen.**
 5. Emit the blind disagreement file.
 6. The researcher adjudicates blind-pass disagreements, blind, in the blinded form.
-7. Freeze the blind labels.
+7. Freeze the blind labels: re-run `label-report --blind-pass-only --adjudication …` until
+   it writes **`V4_2_BLIND_FREEZE.json`**, which it does only with zero unresolved rows and
+   zero provenance failures. Steps 8-9 are **refused** until that file exists, and it
+   carries the two blind overlays' hashes, so a blind pass re-run afterwards is caught.
+   Through v4.2.2 this step was checked only as "both blind API runs completed" — which is
+   a statement about the network, not about whether anyone had settled what the labels are.
 8. Judge A reference pass.
 9. Judge B reference pass.
 10. Adjudicate reference-pass disagreements.
@@ -369,6 +386,18 @@ Deduplication is by **(candidate text, protected question)**, not by text alone.
 refusal string under two different protected questions is two rows; collapsing them deletes
 one question's false-alarm evidence.
 
+**How those eight draws are produced (GU-0041).** `sampling.base_seed` is 1729 and lives in
+the frozen study file; `GraphLaunchConfig` carries only `study` and `active_profile`, so no
+override could reach it. Until v4.2.3 the only route to these seeds was hand-editing the
+frozen study between runs — eight unrecorded edits to the artifact whose purpose is to be
+the thing that did not change, and `build-bank` would have accepted the results because the
+run manifests would look correct. `graph-run --base-seed` now takes a **constrained**
+override: only a seed some frozen manifest already names is accepted, and an arbitrary
+number is refused as a draw nobody registered.
+`rdl graph-detector-v4-2-plan-bank-runs` writes the eight exact invocations out of the
+manifest — as JSON and as a shell script — so the operator copies them rather than composing
+them.
+
 ### 13.3 The bank is sampled, not exhaustively labelled
 
 A bank holds up to ~24,000 rows. Two judges × two passes over all of them is ~96,000
@@ -448,6 +477,11 @@ which is exactly why checkpoint selection enforces both separately too.
 Four further conditions must hold before anything is scored (GU-0040), because v4.2.1
 checked only that the labelled rows were in the bank:
 
+* the **held-out denominators** the rates are computed over meet §13.3's minima — 150
+  ANSWER, 400 protected non-answer, 400 retain — checked on the rows the gate actually
+  scores rather than on the audit's draw. Judging, adjudication and the PARTIAL class all
+  remove rows in between, and six rates over 40 retain rows print in the same shape as six
+  rates over 400;
 * the **bank audit manifest** exists, is `reportable`, was drawn from this bank's content
   hash, and asserts `uses_detector_score: false`;
 * a **model-label alignment report** over those labels **passed**, with zero unresolved

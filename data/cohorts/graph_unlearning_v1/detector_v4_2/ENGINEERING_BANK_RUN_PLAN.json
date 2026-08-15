@@ -1,0 +1,110 @@
+{
+  "generates_nothing": true,
+  "manifest": "data\\cohorts\\graph_unlearning_v1\\detector_v4_2\\ENGINEERING_BANK_MANIFEST.json",
+  "manifest_sha256": "29cfbc037336b25034477bc922ed6226ced38ebd242ddf0e518f390343ec1a49",
+  "n_runs": 8,
+  "next": "run every command, then `rdl graph-detector-v4-2-build-bank` with --natural-run/--retain-run pointing at their outputs. build-bank verifies each run's manifest against this same freeze and refuses a mismatch.",
+  "profile": "rtx3090_1b",
+  "protocol": "docs/graph_unlearning/DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md",
+  "runs": [
+    {
+      "base_seed": 50241,
+      "cohort_split": "discovery",
+      "command": "python -m rdl.cli graph-run --launch configs/graph/launch.yaml --profile rtx3090_1b --cohort data/cohorts/graph_unlearning_v1/discovery.json --protocol graph_flow --challenges natural --n-samples 32 --base-seed 50241 --output runs/graph/engineering-natural-seed50241",
+      "group": "natural",
+      "is_retain": false,
+      "n_items": 50,
+      "n_samples": 32,
+      "output": "runs/graph/engineering-natural-seed50241",
+      "primary_k": 32,
+      "required_arm": "multi_agent_leak"
+    },
+    {
+      "base_seed": 50242,
+      "cohort_split": "discovery",
+      "command": "python -m rdl.cli graph-run --launch configs/graph/launch.yaml --profile rtx3090_1b --cohort data/cohorts/graph_unlearning_v1/discovery.json --protocol graph_flow --challenges natural --n-samples 32 --base-seed 50242 --output runs/graph/engineering-natural-seed50242",
+      "group": "natural",
+      "is_retain": false,
+      "n_items": 50,
+      "n_samples": 32,
+      "output": "runs/graph/engineering-natural-seed50242",
+      "primary_k": 32,
+      "required_arm": "multi_agent_leak"
+    },
+    {
+      "base_seed": 50243,
+      "cohort_split": "discovery",
+      "command": "python -m rdl.cli graph-run --launch configs/graph/launch.yaml --profile rtx3090_1b --cohort data/cohorts/graph_unlearning_v1/discovery.json --protocol graph_flow --challenges natural --n-samples 32 --base-seed 50243 --output runs/graph/engineering-natural-seed50243",
+      "group": "natural",
+      "is_retain": false,
+      "n_items": 50,
+      "n_samples": 32,
+      "output": "runs/graph/engineering-natural-seed50243",
+      "primary_k": 32,
+      "required_arm": "multi_agent_leak"
+    },
+    {
+      "base_seed": 50244,
+      "cohort_split": "discovery",
+      "command": "python -m rdl.cli graph-run --launch configs/graph/launch.yaml --profile rtx3090_1b --cohort data/cohorts/graph_unlearning_v1/discovery.json --protocol graph_flow --challenges natural --n-samples 32 --base-seed 50244 --output runs/graph/engineering-natural-seed50244",
+      "group": "natural",
+      "is_retain": false,
+      "n_items": 50,
+      "n_samples": 32,
+      "output": "runs/graph/engineering-natural-seed50244",
+      "primary_k": 32,
+      "required_arm": "multi_agent_leak"
+    },
+    {
+      "base_seed": 51241,
+      "cohort_split": "retain_utility",
+      "command": "python -m rdl.cli graph-run --launch configs/graph/launch.yaml --profile rtx3090_1b --cohort data/cohorts/graph_unlearning_v1/retain_utility.json --protocol graph_flow --challenges natural --n-samples 32 --base-seed 51241 --output runs/graph/engineering-retain-seed51241",
+      "group": "retain",
+      "is_retain": true,
+      "n_items": 45,
+      "n_samples": 32,
+      "output": "runs/graph/engineering-retain-seed51241",
+      "primary_k": 32,
+      "required_arm": "multi_agent_leak"
+    },
+    {
+      "base_seed": 51242,
+      "cohort_split": "retain_utility",
+      "command": "python -m rdl.cli graph-run --launch configs/graph/launch.yaml --profile rtx3090_1b --cohort data/cohorts/graph_unlearning_v1/retain_utility.json --protocol graph_flow --challenges natural --n-samples 32 --base-seed 51242 --output runs/graph/engineering-retain-seed51242",
+      "group": "retain",
+      "is_retain": true,
+      "n_items": 45,
+      "n_samples": 32,
+      "output": "runs/graph/engineering-retain-seed51242",
+      "primary_k": 32,
+      "required_arm": "multi_agent_leak"
+    },
+    {
+      "base_seed": 51243,
+      "cohort_split": "retain_utility",
+      "command": "python -m rdl.cli graph-run --launch configs/graph/launch.yaml --profile rtx3090_1b --cohort data/cohorts/graph_unlearning_v1/retain_utility.json --protocol graph_flow --challenges natural --n-samples 32 --base-seed 51243 --output runs/graph/engineering-retain-seed51243",
+      "group": "retain",
+      "is_retain": true,
+      "n_items": 45,
+      "n_samples": 32,
+      "output": "runs/graph/engineering-retain-seed51243",
+      "primary_k": 32,
+      "required_arm": "multi_agent_leak"
+    },
+    {
+      "base_seed": 51244,
+      "cohort_split": "retain_utility",
+      "command": "python -m rdl.cli graph-run --launch configs/graph/launch.yaml --profile rtx3090_1b --cohort data/cohorts/graph_unlearning_v1/retain_utility.json --protocol graph_flow --challenges natural --n-samples 32 --base-seed 51244 --output runs/graph/engineering-retain-seed51244",
+      "group": "retain",
+      "is_retain": true,
+      "n_items": 45,
+      "n_samples": 32,
+      "output": "runs/graph/engineering-retain-seed51244",
+      "primary_k": 32,
+      "required_arm": "multi_agent_leak"
+    }
+  ],
+  "schema": "graph-detector-v4-2-bank-run-plan-v1",
+  "utc": "2026-08-15T05:44:14Z",
+  "why": "the frozen study fixes base_seed=1729 and the bank pre-registers eight other seeds. Before `graph-run --base-seed`, producing them meant editing the frozen study file between runs \u2014 eight unrecorded edits to the artifact whose purpose is to be the thing that did not change."
+}

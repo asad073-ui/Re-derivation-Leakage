@@ -55,6 +55,55 @@ _MANIFEST_FOR_PHASE = {
 }
 
 
+def apply_base_seed(cfg: ResolvedGraphConfig, base_seed: int | None) -> ResolvedGraphConfig:
+    """Draw under a DIFFERENT pre-registered seed, without editing the frozen study.
+
+    The study's ``sampling.base_seed`` is 1729 and the study file is frozen
+    pre-registration. The v4.2 engineering bank pre-registers eight OTHER seeds — natural
+    50241-50244 and retain 51241-51244 — and until now there was no way to run under them:
+    ``GraphLaunchConfig`` carries only ``study`` and ``active_profile``, so the OmegaConf
+    dotlist cannot reach ``study.sampling.base_seed``, and the only route to a second draw
+    was hand-editing the frozen study between runs. That is the one thing a frozen
+    pre-registration exists to prevent, and it leaves no trace in any artifact.
+
+    The override is CONSTRAINED: only a seed some frozen manifest already names is
+    accepted. An arbitrary number would be a draw nobody registered, which is the same
+    defect wearing a flag.
+    """
+    if base_seed is None:
+        return cfg
+    permitted = _preregistered_seeds()
+    if int(base_seed) not in permitted:
+        raise typer.BadParameter(
+            f"--base-seed {base_seed} is not pre-registered. The permitted seeds are the "
+            f"study's own {cfg.study.sampling.base_seed} and the frozen bank seeds "
+            f"{sorted(permitted - {cfg.study.sampling.base_seed})}. A seed chosen at the "
+            "command line is a draw nobody registered; add it to a frozen manifest first."
+        )
+    sampling = cfg.study.sampling.model_copy(update={"base_seed": int(base_seed)})
+    study = cfg.study.model_copy(update={"sampling": sampling})
+    return cfg.model_copy(update={"study": study})
+
+
+def _preregistered_seeds() -> set[int]:
+    """Every seed a frozen v4.2 manifest names, plus the study's own default."""
+    from ..eval.detector_v4_2 import (
+        ENGINEERING_BANK_SEEDS,
+        ENGINEERING_RETAIN_SEEDS,
+        SEALED_FINAL_BANK_SEEDS,
+    )
+
+    return {
+        1729,
+        *ENGINEERING_BANK_SEEDS,
+        *ENGINEERING_RETAIN_SEEDS,
+        # The sealed final-bank seeds are permitted HERE and refused by `build-bank`'s
+        # engineering path: generating that bank is a deliberate later act, and a runner
+        # that could not draw it at all would need this code changed under time pressure.
+        *SEALED_FINAL_BANK_SEEDS,
+    }
+
+
 def apply_sample_budget(cfg: ResolvedGraphConfig, n_samples: int | None) -> ResolvedGraphConfig:
     """Reduce the profile's sample budget, identically for `graph-plan` and `graph-run`.
 

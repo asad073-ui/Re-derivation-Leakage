@@ -21,6 +21,14 @@ datasets==3.0.1
 accelerate==0.34.2
 tokenizers==0.21.1
 
+# DeBERTa-v3's tokenizer is the DeBERTa-v2 SentencePiece one, and `transformers` does not
+# pull SentencePiece in. Without this, `AutoTokenizer.from_pretrained` on
+# microsoft/deberta-v3-base and cross-encoder/nli-deberta-v3-base raises at import of the
+# slow tokenizer — on the rented box, at the first line of training, after the environment
+# is built and the clock is running. `tests/integration/test_deberta_tokenizers.py` loads
+# both pinned tokenizers in the network CI job so the failure lands in CI instead.
+sentencepiece==0.2.0
+
 # flash-attn is DELIBERATELY NOT INSTALLED BY THIS FILE.
 #
 # It needs `--no-build-isolation` and a matching nvcc (a CUDA *devel* image, not the

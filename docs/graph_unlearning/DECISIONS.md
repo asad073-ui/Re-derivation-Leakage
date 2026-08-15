@@ -1621,3 +1621,139 @@ final gate bank is still sealed, no engineering bank has been generated, and no 
 been trained. `GraphDetectorConfig` still permits only `hashing64` and `arms.py` still
 constructs `SemanticConceptDetector`, so the v4 detector cannot run inside GraphForget: the
 runtime integration is a separate PR that follows the detector's own gate, not this one.
+
+---
+
+## GU-0041 — v4.2.3: the pre-GPU freeze — what an end-to-end trace found outside the gate bridge
+
+**Status:** accepted. CPU only. No model trained, no GPU used, no bank generated, no frozen
+v1/v2/v3/v4/v4.1 artifact modified, and the final gate bank is still sealed.
+
+GU-0040 fixed the bridge between a labelled bank and a gate. Tracing the pipeline end to
+end — from `judge-plan` through the RTX runbook to `final-gate` — found five more failures
+outside that bridge, four of them scientific-integrity failures rather than ergonomics. As
+before, none of them raises: each produces a number, a checkpoint, or a bill.
+
+### Gemini's price was the Batch rate, and its billing field still said "free tier"
+
+Three states in three revisions, and the first two were both wrong. v4.2.1 priced both
+judges at zero. v4.2.2 recorded `$0.375/M` input and `$1.875/M` output and asserted that no
+free tier exists — but **those are the Batch/Flex rates**, half of Standard, and this runner
+issues one *synchronous* chat-completions request per row and never a Batch job. Standard is
+`$0.75/$3.75`. A free tier does exist; the protocol refuses it, which is a different
+statement and the one that has to be enforced.
+
+`PROVIDERS["google"]["billing"]` was still the literal string `"free tier"` throughout,
+directly contradicting the rate table three fields below it.
+
+Prices are now keyed by tier — `PRICES_USD_PER_MTOK_BY_TIER[model]["standard"|"batch"]` —
+and `REQUEST_MODE = "standard-synchronous"` records which one this pipeline incurs, so a
+future batched runner is a table lookup rather than a rediscovery. `free_tier_exists` and
+`free_tier_used` are separate fields: the cost arithmetic keys on the second, and Gemini's
+is `false` for data-handling reasons rather than because the tier is absent.
+
+The 1,019-row audit therefore bills **$2.08 on Gemini** and **$0.00 on Groq's free plan**
+(nine days of its 200k/day token ceiling), or **$2.46** to skip the wait. The ~1,800-row
+bank audit is roughly another $3.70. Budget $12-15 for the whole labelling programme.
+
+Because the protocol asserts paid-tier data handling and no API response names a project's
+billing tier, a reportable run on a provider whose free tier is refused now requires
+`--assert-paid-tier`. It does not detect anything — it records who asserted it, which is
+the honest shape of a claim the machine cannot check.
+
+### The reference pass could run while the blind labels were still revisable
+
+`_require_frozen_blind_passes()` checked that both blind API runs had **completed**. That is
+a statement about the network. Two judges can disagree on two hundred rows and both be
+complete: the labels are not settled, adjudication has not happened, and every one of those
+rows can still be resolved afterwards by someone who has by then read the reference pass's
+output. §7 puts adjudication and freezing before the reference pass precisely for that
+reason, and nothing enforced it.
+
+A blind-pass-only report with zero unresolved rows and zero provenance failures now writes
+`V4_2_BLIND_FREEZE.json`, carrying the two blind overlays' hashes. The reference pass
+requires it and **re-computes** those hashes, so a blind pass re-run after the freeze is
+caught rather than silently accepted.
+
+### Training could read labels nothing had gated
+
+The report recorded `adjudicated_sha256` and no code ever compared it to a file, so a
+passing report next to an edited adjudicated file trained the model on labels that had never
+cleared a gate. Worse, `natural_examples()` took whichever adjudicated file existed *first*:
+with both audits on disk it read the v4.1 human labels while `require_label_audit()` had
+returned the v4.2 model authority, and the manifest would have named the wrong annotator.
+
+`require_label_audit()` now verifies the exact hash and returns the authority's file, the
+label gate runs **before** the natural rows are read, and the join is given that one path.
+The smoke mode runs on the synthetic rows alone, which is what "the smoke must not require
+labels" always meant.
+
+### The held-out gate could report six rates over forty rows
+
+The protocol's minima — 150 held-out ANSWER, 400 protected non-answer, 400 retain — were
+checked by `bank-audit` against its own **draw**. Between the draw and the gate sit judging
+(a row whose response failed is not a label), adjudication (an unresolved row has no label)
+and the PARTIAL class (in neither the recall numerator nor the false-alarm denominator).
+Every one of those removes rows, and `final-gate` scored whatever survived: six rates over
+40 retain rows print in exactly the same shape as six rates over 400. The alignment report's
+own minimum is 100 ANSWER *overall*, which cannot speak for a partition.
+
+The denominators are now computed from the rows the gate actually scores, checked against
+the minima **before the model is loaded**, and recorded beside the rates. A short population
+is refused, nothing is scored, and no opening record is written.
+
+### The engineering bank's seeds could not be generated
+
+The manifest pre-registers natural 50241-50244 and retain 51241-51244. `sampling.base_seed`
+lives in the frozen study file, `GraphLaunchConfig` carries only `study` and
+`active_profile`, and the OmegaConf dotlist therefore cannot reach it. The only route to
+those eight draws was hand-editing the frozen study between runs — eight unrecorded edits to
+the artifact whose entire purpose is to be the thing that did not change, and `build-bank`
+would have accepted the results because the run manifests would look right.
+
+`graph-run --base-seed` and `graph-plan --base-seed` now take a **constrained** override:
+only a seed some frozen manifest already names. `rdl graph-detector-v4-2-plan-bank-runs`
+writes the exact eight invocations out of the manifest, as JSON and as a shell script, so
+the operator copies rather than composes them.
+
+### P1: the revisions, the source, the tokenizer, the filenames
+
+**Any commit satisfied "the revision is pinned".** The trainer refused an empty
+`--model-revision` and accepted anything else, which pins the shape of the claim rather than
+the claim: two runs a month apart under a moved tag both satisfy it and are different
+experiments. `rdl graph-detector-v4-2-freeze-model-pins` writes
+`DETECTOR_V4_2_MODEL_PINS.json` with the three exact commit SHAs — encoder, tokenizer, NLI
+baseline — refusing anything that is not a 40-character sha, and a reportable run enforces
+equality.
+
+**The training manifest recorded package versions and not the source.** It now records
+`git_sha`, the branch and whether the tree was dirty, and a reportable run refuses a dirty
+tree: the recorded SHA would name a commit that is not what ran.
+
+**`sentencepiece` was undeclared.** DeBERTa-v3 uses the DeBERTa-v2 SentencePiece tokenizer
+and `transformers` does not depend on it, so the first `AutoTokenizer.from_pretrained` on a
+freshly built GPU box raises — after the environment is installed and the clock is running.
+It is pinned in the `gpu` extra and in `requirements-gpu-ampere.txt`, and
+`tests/integration/test_deberta_tokenizers.py` loads both pinned tokenizers in the network
+CI job.
+
+**A bank audit could overwrite the training audit.** Both wrote `V4_2_JUDGE_*`, the report
+and the adjudicated file into one directory under one set of names. `--audit-manifest` on
+the judge runner namespaces every output by bundle id, and the saved resume command now
+carries the manifest, input and output flags rather than just `--resume`.
+
+### What is still not true
+
+There is no trained checkpoint, no passing held-out measurement, and no runtime
+integration. `GraphDetectorConfig` still permits only `hashing64` and `arms.py` still
+constructs `SemanticConceptDetector`. `publication_label_valid` is still false. What is good
+is the architecture — answerability rather than alias similarity, no reference answer at
+inference, protected and retain false alarms separated, checkpoint bytes verified,
+development and held-out separated, and a threshold that is chosen by a command rather than
+typed. Whether the detector is *good* is a question no artifact in this repository can
+currently answer.
+
+The 7B/H100 target remains blocked independently: `configs/graph/models/unlearned_7b.yaml`
+exists and is deliberately unusable — every model and tokenizer identifier and revision is
+null — `validation.json` carries zero concepts, and `exclusions.json` excludes all 20
+forget10 authors.

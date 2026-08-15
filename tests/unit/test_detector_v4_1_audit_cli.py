@@ -338,6 +338,33 @@ def _dirs(tmp_path):
     return human, model
 
 
+# v4.2.3: a label report vouches for the file it produced, by hash, and the trainer
+# VERIFIES it. A report that names no label file cannot authorise one — that is the whole
+# point — so every authority test below writes the labels it claims to have adjudicated.
+def _labels_for(report_dir: Path, filename: str) -> dict:
+    import hashlib
+
+    path = report_dir / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"audit_id": "0" * 16, "answer_attempt": "ANSWER"}) + "\n", encoding="utf-8"
+    )
+    return {
+        "adjudicated_file": str(path),
+        "adjudicated_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
+
+
+def _human_report(report_dir: Path, **overrides) -> str:
+    payload = {
+        "all_gates_passed": True,
+        "verdict": "usable",
+        **_labels_for(report_dir, "LABEL_AUDIT_ADJUDICATED.jsonl"),
+    }
+    payload.update(overrides)
+    return json.dumps(payload)
+
+
 def test_the_trainer_refuses_to_start_without_any_label_audit(tmp_path):
     module = _trainer()
     with pytest.raises(SystemExit, match="neither"):
@@ -365,19 +392,19 @@ def test_the_trainer_accepts_a_passing_human_audit(tmp_path):
     """A gate that can only refuse is not a gate."""
     module = _trainer()
     human, model = _dirs(tmp_path)
-    (human / "LABEL_ALIGNMENT_REPORT.json").write_text(
-        json.dumps({"all_gates_passed": True, "verdict": "usable"}), encoding="utf-8"
-    )
+    (human / "LABEL_ALIGNMENT_REPORT.json").write_text(_human_report(human), encoding="utf-8")
     authority = module.require_label_audit(human, model)
     assert authority["all_gates_passed"] is True
     assert authority["human_grounded"] is True
     assert authority["publication_label_valid"] is True
+    # And it verified the labels rather than taking the report's word for them.
+    assert authority["adjudicated_sha256_verified"] is True
 
 
 # ---------------------------------------------------------------- v4.2 authority --
 
 
-def _model_report(**overrides) -> str:
+def _model_report(report_dir: Path | None = None, **overrides) -> str:
     payload = {
         "all_gates_passed": True,
         "verdict": "usable",
@@ -385,6 +412,8 @@ def _model_report(**overrides) -> str:
         "human_grounded": False,
         "publication_label_valid": False,
     }
+    if report_dir is not None:
+        payload.update(_labels_for(report_dir, "V4_2_ADJUDICATED.jsonl"))
     payload.update(overrides)
     return json.dumps(payload)
 
@@ -394,7 +423,7 @@ def test_the_trainer_accepts_a_model_judge_report_for_engineering_only(tmp_path)
     module = _trainer()
     human, model = _dirs(tmp_path)
     (model / "DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json").write_text(
-        _model_report(), encoding="utf-8"
+        _model_report(model), encoding="utf-8"
     )
     authority = module.require_label_audit(human, model)
     assert authority["all_gates_passed"] is True
@@ -434,9 +463,7 @@ def test_the_human_report_wins_when_both_exist(tmp_path):
     """Model judges are the fallback, not the default."""
     module = _trainer()
     human, model = _dirs(tmp_path)
-    (human / "LABEL_ALIGNMENT_REPORT.json").write_text(
-        json.dumps({"all_gates_passed": True, "verdict": "usable"}), encoding="utf-8"
-    )
+    (human / "LABEL_ALIGNMENT_REPORT.json").write_text(_human_report(human), encoding="utf-8")
     (model / "DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json").write_text(
         _model_report(), encoding="utf-8"
     )

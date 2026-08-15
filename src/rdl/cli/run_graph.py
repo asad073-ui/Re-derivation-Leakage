@@ -10,6 +10,7 @@ from ..paths import make_run_id, repo_root
 from ..studies.graph_leak.runner import GraphRunner
 from .graph_common import (
     DEFAULT_LAUNCH,
+    apply_base_seed,
     apply_sample_budget,
     assert_control_arm_has_enough_items,
     assert_primary_k_reachable,
@@ -56,6 +57,11 @@ def run_graph(
         help="proceed even though the sample budget cannot reach the study's primary k; "
         "the run is a wiring check and every report it produces is diagnostic",
     ),
+    base_seed: int | None = typer.Option(
+        None,
+        "--base-seed",
+        help="draw under a pre-registered seed other than the study's default. Only seeds a frozen manifest names are accepted.",
+    ),
     token: str | None = typer.Option(None, "--hf-token"),
 ) -> None:
     """Run every arm of a graph study and write immutable evidence shards."""
@@ -63,6 +69,9 @@ def run_graph(
     cfg = load_config_or_fail(launch, overrides=overrides, topology=topology)
     # The SAME function `graph-plan` uses, so the plan describes this run.
     cfg = apply_sample_budget(cfg, n_samples)
+    # The engineering bank's eight draws live here: the study file is frozen, so a
+    # second draw used to require editing it between runs.
+    cfg = apply_base_seed(cfg, base_seed)
     assert_primary_k_reachable(cfg, allow_k_substitution=option_value(allow_k_substitution, False))
 
     cohorts = resolve_run_cohorts(
