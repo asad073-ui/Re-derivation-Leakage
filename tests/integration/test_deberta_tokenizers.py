@@ -1,12 +1,15 @@
 """NETWORK. Both pinned DeBERTa-v3 tokenizers load, and they encode a real judged pair.
 
 DeBERTa-v3's tokenizer is the DeBERTa-**v2** SentencePiece tokenizer, and `transformers`
-does not depend on `sentencepiece`. Neither the ``gpu`` extra nor
-``requirements-gpu-ampere.txt`` declared it, so the first
-``AutoTokenizer.from_pretrained("microsoft/deberta-v3-base")`` on a freshly built GPU box
-raises — after the environment is installed, the repository is cloned, the label audit is
-done, and the rental clock is running. The dependency is declared now; this is the test
-that would have caught it, and it runs in the network CI job rather than on the box.
+depends on neither package required to load one: `sentencepiece` reads the model and
+`protobuf` parses its proto. Neither the ``gpu`` extra nor ``requirements-gpu-ampere.txt``
+declared them, so the first ``AutoTokenizer.from_pretrained("microsoft/deberta-v3-base")``
+on a freshly built GPU box raises — after the environment is installed, the repository is
+cloned, the label audit is done, and the rental clock is running.
+
+This test earned its place immediately: written with `sentencepiece` alone, it failed in CI
+on the missing `protobuf`, one dependency further along than the fix that prompted it. Both
+are declared now.
 
 It loads BOTH tokenizers because they are separate pins for separate reasons: the encoder's
 subword split decides every score at a fixed threshold, and the NLI baseline is a different
@@ -28,11 +31,31 @@ MODEL_REPO = "microsoft/deberta-v3-base"
 BASELINE_REPO = "cross-encoder/nli-deberta-v3-base"
 
 
-def test_sentencepiece_is_installed_alongside_transformers():
-    """The dependency itself, asserted separately so its absence is unambiguous."""
-    assert importlib.util.find_spec("sentencepiece") is not None, (
-        "sentencepiece is not installed. DeBERTa-v3 uses the DeBERTa-v2 SentencePiece "
-        "tokenizer and transformers does not pull it in; add it to the gpu extra and to "
+@pytest.mark.parametrize(
+    ("module", "why"),
+    [
+        (
+            "sentencepiece",
+            "DeBERTa-v3 uses the DeBERTa-v2 SentencePiece tokenizer and transformers does "
+            "not pull it in",
+        ),
+        (
+            "google.protobuf",
+            "transformers parses the SentencePiece model through protobuf in "
+            "convert_slow_tokenizer, and raises ImportError without it — sentencepiece "
+            "alone gets one step further and still fails",
+        ),
+    ],
+)
+def test_both_tokenizer_dependencies_are_installed(module, why):
+    """Asserted separately from the load below, so an absence is unambiguous.
+
+    Two packages, not one. The first version of this file checked `sentencepiece` only,
+    and the network job then failed on protobuf — which is exactly the failure this test
+    exists to move off the rented box and into CI.
+    """
+    assert importlib.util.find_spec(module) is not None, (
+        f"{module} is not installed. {why}; add it to the gpu extra and to "
         "requirements-gpu-ampere.txt rather than discovering this on a rented box."
     )
 

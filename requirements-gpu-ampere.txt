@@ -21,13 +21,18 @@ datasets==3.0.1
 accelerate==0.34.2
 tokenizers==0.21.1
 
-# DeBERTa-v3's tokenizer is the DeBERTa-v2 SentencePiece one, and `transformers` does not
-# pull SentencePiece in. Without this, `AutoTokenizer.from_pretrained` on
-# microsoft/deberta-v3-base and cross-encoder/nli-deberta-v3-base raises at import of the
-# slow tokenizer — on the rented box, at the first line of training, after the environment
-# is built and the clock is running. `tests/integration/test_deberta_tokenizers.py` loads
-# both pinned tokenizers in the network CI job so the failure lands in CI instead.
+# DeBERTa-v3's tokenizer is the DeBERTa-v2 SentencePiece one, and `transformers` pulls in
+# neither of the two packages it needs to load it. Without them,
+# `AutoTokenizer.from_pretrained` on microsoft/deberta-v3-base and
+# cross-encoder/nli-deberta-v3-base raises — on the rented box, at the first line of
+# training, after the environment is built and the clock is running.
+#
+# Both, not one. `tests/integration/test_deberta_tokenizers.py` was added with
+# sentencepiece alone and the network CI job failed on the NEXT missing dependency:
+# transformers parses the SentencePiece proto through protobuf and raises "requires the
+# protobuf library" from convert_slow_tokenizer. That test is why this line is complete.
 sentencepiece==0.2.0
+protobuf==4.25.8
 
 # flash-attn is DELIBERATELY NOT INSTALLED BY THIS FILE.
 #

@@ -46,8 +46,14 @@ gpu = [
     "accelerate==0.34.2",
     # DeBERTa-v3 uses the DeBERTa-v2 SentencePiece tokenizer, which `transformers` does
     # not depend on. The detector's encoder and its NLI baseline are both DeBERTa-v3, so
-    # without this the first tokenizer load on the GPU box raises.
+    # without these the first tokenizer load on the GPU box raises.
+    #
+    # BOTH are required, and the network CI job proved it: `sentencepiece` alone gets as
+    # far as reading the model and then `transformers` raises "requires the protobuf
+    # library" from `convert_slow_tokenizer`, because the SentencePiece proto is parsed
+    # through protobuf. One of the two is not a dependency, it is half of one.
     "sentencepiece==0.2.0",
+    "protobuf==4.25.8",
     "bitsandbytes==0.43.3",
     "faiss-cpu==1.8.0.post1",
     "sentence-transformers==3.1.1",
