@@ -12,12 +12,14 @@ from .detector_gates import detector_gates
 from .detector_recall import detector_recall
 from .detector_v4_1_freeze import detector_v4_1_freeze
 from .detector_v4_2_bank_audit import detector_v4_2_bank_audit
+from .detector_v4_2_bank_runs import detector_v4_2_plan_bank_runs
 from .detector_v4_2_banks import (
     detector_v4_2_build_bank,
     detector_v4_2_final_gate,
     detector_v4_2_freeze_banks,
 )
 from .detector_v4_2_llm_judge import detector_v4_2_llm_judge
+from .detector_v4_2_model_pins import detector_v4_2_freeze_model_pins
 from .detector_v4_2_operating_point import detector_v4_2_select_operating_point
 from .detector_v4_2_plan import detector_v4_2_judge_plan
 from .detector_v4_2_report import detector_v4_2_label_report
@@ -114,6 +116,10 @@ app.command("graph-detector-v4-gates")(detector_v4_gates)
 #   label-report  adjudicates the two judges and writes the MODEL label report, which
 #                 carries human_grounded=false and publication_label_valid=false.
 #   judge-plan    how many calls, how many tokens, how many free-tier days. Calls nothing.
+# The exact encoder, tokenizer and baseline COMMITS a reportable run may use. The
+# trainer required a non-empty revision and accepted whatever was typed, which pins
+# the shape of the claim rather than the claim.
+app.command("graph-detector-v4-2-freeze-model-pins")(detector_v4_2_freeze_model_pins)
 app.command("graph-detector-v4-2-judge-plan")(detector_v4_2_judge_plan)
 app.command("graph-detector-v4-2-llm-judge")(detector_v4_2_llm_judge)
 app.command("graph-detector-v4-2-label-report")(detector_v4_2_label_report)
@@ -133,6 +139,7 @@ app.command("graph-detector-v4-2-label-report")(detector_v4_2_label_report)
 #                 opened. Refuses labels that never passed the judge gate.
 app.command("graph-detector-v4-2-freeze-banks")(detector_v4_2_freeze_banks)
 app.command("graph-detector-v4-2-build-bank")(detector_v4_2_build_bank)
+app.command("graph-detector-v4-2-plan-bank-runs")(detector_v4_2_plan_bank_runs)
 app.command("graph-detector-v4-2-bank-audit")(detector_v4_2_bank_audit)
 app.command("graph-detector-v4-2-select-operating-point")(detector_v4_2_select_operating_point)
 app.command("graph-detector-v4-2-final-gate")(detector_v4_2_final_gate)

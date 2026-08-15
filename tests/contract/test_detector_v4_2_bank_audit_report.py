@@ -339,6 +339,49 @@ def test_the_adjudicated_rows_carry_every_identifier_the_gate_binds_on(prepared)
     assert {r["pair_sha256"] for r in rows} == {r["pair_sha256"] for r in _rows()}
 
 
+def test_a_clean_blind_pass_writes_the_freeze_the_reference_pass_requires(prepared):
+    """The artifact that makes "the blind labels are settled" checkable.
+
+    Two complete blind API runs are a fact about the network. This file is written only
+    when every blind disagreement is resolved and no provenance check failed, and it
+    carries the overlays' hashes so a later blind re-run cannot hide behind it.
+    """
+    from rdl.cli.detector_v4_2_llm_judge import _require_frozen_blind_passes
+    from rdl.cli.detector_v4_2_report import BLIND_FREEZE_FILENAME
+
+    with pytest.raises(typer.Exit):
+        _run(prepared, require_reference_pass=False)
+    freeze = json.loads((prepared / "out" / BLIND_FREEZE_FILENAME).read_text(encoding="utf-8"))
+    assert freeze["n_unresolved"] == 0
+    assert sorted(freeze["blind_overlays"]) == sorted(JUDGES)
+    assert freeze["prompt_version"] == PROMPT_VERSION
+
+    # And the runner's precondition is satisfied by exactly this file, in the directory
+    # the overlays live in.
+    import shutil
+
+    shutil.copy(
+        prepared / "out" / BLIND_FREEZE_FILENAME, prepared / "judge" / BLIND_FREEZE_FILENAME
+    )
+    _require_frozen_blind_passes(prepared / "judge")
+
+
+def test_an_unresolved_blind_disagreement_writes_no_freeze(tmp_path):
+    """Disagreement is the case the freeze exists for; it must not be written."""
+    from rdl.cli.detector_v4_2_report import BLIND_FREEZE_FILENAME
+
+    audit_dir = tmp_path / "audit"
+    judge_dir = tmp_path / "judge"
+    audit_dir.mkdir()
+    judge_dir.mkdir()
+    _build_audit(audit_dir)
+    _overlays(judge_dir, audit_dir, agree=False)
+
+    with pytest.raises(typer.Exit):
+        _run(tmp_path, require_reference_pass=False)
+    assert not (tmp_path / "out" / BLIND_FREEZE_FILENAME).exists()
+
+
 def test_the_report_vouches_for_the_label_file_by_hash(prepared):
     """The gate refuses a label file the report does not name."""
     with pytest.raises(typer.Exit):

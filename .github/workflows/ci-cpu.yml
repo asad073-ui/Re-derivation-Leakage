@@ -105,7 +105,13 @@ jobs:
           # This job is specifically the real Transformers contract.  Keep the
           # dependency explicit: the offline CPU extra intentionally omits it.
           pip install transformers==4.51.3
+          # DeBERTa-v3 tokenizers are SentencePiece and transformers does not pull it in.
+          # Installed here, in the job that actually loads them, for the same reason the
+          # GPU requirements now declare it: the alternative is finding out on a rented box.
+          pip install sentencepiece==0.2.0
       - name: Assert Transformers is installed
         run: python -c "import transformers; print(transformers.__version__)"
       - name: Real sampled Transformers generation
         run: python -m pytest tests/integration/test_sampled_hf_generation.py -q -rs
+      - name: The detector's two pinned DeBERTa tokenizers load
+        run: python -m pytest tests/integration/test_deberta_tokenizers.py -q -rs

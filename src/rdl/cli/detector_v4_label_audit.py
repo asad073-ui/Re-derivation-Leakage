@@ -600,14 +600,15 @@ def detector_v4_label_report(
     resolutions = {str(r["audit_id"]): r for r in _read_jsonl(adjudication)} if adjudication else {}
     adjudicated, unresolved = adjudicate(a, b, resolutions)
 
+    adjudicated_path = output_dir / ADJUDICATED_FILENAME
     _write_jsonl(
-        output_dir / ADJUDICATED_FILENAME,
+        adjudicated_path,
         [
             {**row, "text_sha256": key.get(row["audit_id"], {}).get("text_sha256", "")}
             for row in adjudicated
         ],
     )
-    typer.echo(f"wrote {output_dir / ADJUDICATED_FILENAME}  ({len(adjudicated)} rows)")
+    typer.echo(f"wrote {adjudicated_path}  ({len(adjudicated)} rows)")
 
     report = alignment_report(adjudicated, key, judge_a=a, judge_b=b, unresolved=unresolved)
     report["inputs"] = {
@@ -616,6 +617,13 @@ def detector_v4_label_report(
         "adjudication": str(adjudication) if adjudication else None,
         "key": str(key_path),
     }
+    # What this report vouches for, by hash. The v4.2 report has carried these since
+    # GU-0040 and the trainer now VERIFIES them (GU-0041) — for either authority, because
+    # "the labels that passed the audit" has to mean the same thing whoever judged them.
+    # Without this the human path would be the one where an edited label file still trains.
+    report["adjudicated_file"] = str(adjudicated_path)
+    report["adjudicated_sha256"] = hashlib.sha256(adjudicated_path.read_bytes()).hexdigest()
+    report["n_adjudicated_rows"] = len(adjudicated)
     report["scope"] = {
         "model_trained": False,
         "graph_generation_run": False,

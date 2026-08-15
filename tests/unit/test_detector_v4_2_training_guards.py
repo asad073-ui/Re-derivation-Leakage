@@ -229,93 +229,138 @@ def test_an_artifact_with_no_recorded_hashes_is_refused_by_the_loader(tmp_path):
 # =====================================================================================
 
 
-def _args(trainer, **overrides) -> argparse.Namespace:
+# v4.2.3 added two more conditions to a reportable run: the exact commit SHAs must be
+# frozen (DETECTOR_V4_2_MODEL_PINS.json) and the working tree must be clean. These
+# fixtures supply both, so each test below still isolates the ONE thing it is about — a
+# tree that happens to be dirty must not decide whether a seed check passes.
+FROZEN = {"model": "a" * 40, "tokenizer": "b" * 40, "baseline": "c" * 40}
+
+
+@pytest.fixture()
+def prereg(tmp_path, monkeypatch):
+    """A directory carrying frozen pins, and a clean git state."""
+    trainer = _trainer()
+    (tmp_path / trainer.MODEL_PINS_FILENAME).write_text(
+        json.dumps(
+            {
+                "model_repo_id": trainer.PREREGISTERED_MODEL_REPO,
+                "model_revision": FROZEN["model"],
+                "tokenizer_revision": FROZEN["tokenizer"],
+                "baseline_repo_id": trainer.DEFAULT_BASELINE_REPO,
+                "baseline_revision": FROZEN["baseline"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        trainer,
+        "git_state",
+        lambda: {
+            "git_sha": "e" * 40,
+            "git_branch": "research/x",
+            "git_dirty": False,
+            "git_dirty_paths": [],
+        },
+    )
+    return trainer, tmp_path
+
+
+def _pins(trainer, **overrides):
+    defaults = {"model_revision": FROZEN["model"], "tokenizer_revision": FROZEN["tokenizer"]}
+    defaults.update(overrides)
+    return trainer.TrainingPins(**defaults)
+
+
+def _args(trainer, tmp_path=None, **overrides) -> argparse.Namespace:
     defaults = {
         "epochs": trainer.PREREGISTERED_EPOCHS,
         "model_repo_id": trainer.PREREGISTERED_MODEL_REPO,
         "baseline_repo_id": trainer.DEFAULT_BASELINE_REPO,
+        "baseline_revision": FROZEN["baseline"],
         "skip_baseline": False,
         "extra_train": [],
         "reportable": True,
         "declare_extra_train": False,
+        "v4_2_dir": tmp_path,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
 
 
-def test_the_preregistered_run_is_accepted():
-    trainer = _trainer()
-    pins = trainer.TrainingPins(model_revision="a", tokenizer_revision="a")
-    record = trainer.enforce_preregistration(_args(trainer), pins)
+def test_the_preregistered_run_is_accepted(prereg):
+    trainer, tmp_path = prereg
+    pins = _pins(trainer)
+    record = trainer.enforce_preregistration(_args(trainer, tmp_path), pins)
     assert record["reportable"] is True
     assert record["deviations"] == []
 
 
-def test_a_reportable_run_with_other_seeds_is_refused():
-    trainer = _trainer()
-    pins = trainer.TrainingPins(model_revision="a", tokenizer_revision="a", seeds=(7,))
+def test_a_reportable_run_with_other_seeds_is_refused(prereg):
+    trainer, tmp_path = prereg
+    pins = _pins(trainer, seeds=(7,))
     with pytest.raises(SystemExit, match="does not match the preregistration"):
-        trainer.enforce_preregistration(_args(trainer), pins)
+        trainer.enforce_preregistration(_args(trainer, tmp_path), pins)
 
 
-def test_a_reportable_run_with_other_epochs_is_refused():
-    trainer = _trainer()
-    pins = trainer.TrainingPins(model_revision="a", tokenizer_revision="a")
+def test_a_reportable_run_with_other_epochs_is_refused(prereg):
+    trainer, tmp_path = prereg
+    pins = _pins(trainer)
     with pytest.raises(SystemExit, match="epochs 12"):
-        trainer.enforce_preregistration(_args(trainer, epochs=12), pins)
+        trainer.enforce_preregistration(_args(trainer, tmp_path, epochs=12), pins)
 
 
-def test_a_reportable_run_on_another_encoder_is_refused():
-    trainer = _trainer()
-    pins = trainer.TrainingPins(
-        model_repo_id="roberta-base", model_revision="a", tokenizer_revision="a"
-    )
+def test_a_reportable_run_on_another_encoder_is_refused(prereg):
+    trainer, tmp_path = prereg
+    pins = _pins(trainer, model_repo_id="roberta-base")
     with pytest.raises(SystemExit, match="different encoder is a different experiment"):
-        trainer.enforce_preregistration(_args(trainer, model_repo_id="roberta-base"), pins)
+        trainer.enforce_preregistration(
+            _args(trainer, tmp_path, model_repo_id="roberta-base"), pins
+        )
 
 
-def test_leaving_the_preregistration_is_allowed_only_as_non_reportable():
+def test_leaving_the_preregistration_is_allowed_only_as_non_reportable(prereg):
     """The escape hatch does not skip the check; it marks the run."""
-    trainer = _trainer()
-    pins = trainer.TrainingPins(model_revision="a", tokenizer_revision="a", seeds=(7,))
-    record = trainer.enforce_preregistration(_args(trainer, reportable=False), pins)
+    trainer, tmp_path = prereg
+    pins = _pins(trainer, seeds=(7,))
+    record = trainer.enforce_preregistration(_args(trainer, tmp_path, reportable=False), pins)
     assert record["reportable"] is False
     assert any("seeds" in d for d in record["deviations"])
 
 
-def test_every_extra_train_file_is_hashed(tmp_path):
+def test_every_extra_train_file_is_hashed(prereg):
     """`--extra-train some.jsonl` used to leave no trace beyond a row count."""
-    trainer = _trainer()
+    trainer, tmp_path = prereg
     extra = tmp_path / "extra.jsonl"
     extra.write_text(
         json.dumps({"question": "q", "candidate": "c", "label": "NONE"}) + "\n", encoding="utf-8"
     )
-    pins = trainer.TrainingPins(model_revision="a", tokenizer_revision="a")
+    pins = _pins(trainer)
     record = trainer.enforce_preregistration(
-        _args(trainer, extra_train=[extra], reportable=False), pins
+        _args(trainer, tmp_path, extra_train=[extra], reportable=False), pins
     )
     assert record["extra_train_files"][0]["sha256"]
     assert record["extra_train_files"][0]["n_rows"] == 1
 
 
-def test_a_reportable_run_must_declare_its_extra_training_data(tmp_path):
-    trainer = _trainer()
+def test_a_reportable_run_must_declare_its_extra_training_data(prereg):
+    trainer, tmp_path = prereg
     extra = tmp_path / "extra.jsonl"
     extra.write_text("{}\n", encoding="utf-8")
-    pins = trainer.TrainingPins(model_revision="a", tokenizer_revision="a")
+    pins = _pins(trainer)
     with pytest.raises(SystemExit, match="declare-extra-train"):
-        trainer.enforce_preregistration(_args(trainer, extra_train=[extra]), pins)
+        trainer.enforce_preregistration(_args(trainer, tmp_path, extra_train=[extra]), pins)
 
     declared = trainer.enforce_preregistration(
-        _args(trainer, extra_train=[extra], declare_extra_train=True), pins
+        _args(trainer, tmp_path, extra_train=[extra], declare_extra_train=True), pins
     )
     assert declared["extra_train_declared"] is True
 
 
-def test_an_extra_train_file_that_does_not_exist_is_refused(tmp_path):
-    trainer = _trainer()
-    pins = trainer.TrainingPins(model_revision="a", tokenizer_revision="a")
+def test_an_extra_train_file_that_does_not_exist_is_refused(prereg):
+    trainer, tmp_path = prereg
+    pins = _pins(trainer)
     with pytest.raises(SystemExit, match="do not exist"):
         trainer.enforce_preregistration(
-            _args(trainer, extra_train=[tmp_path / "absent.jsonl"], reportable=False), pins
+            _args(trainer, tmp_path, extra_train=[tmp_path / "absent.jsonl"], reportable=False),
+            pins,
         )

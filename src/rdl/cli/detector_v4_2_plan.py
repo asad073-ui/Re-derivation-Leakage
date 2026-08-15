@@ -1,14 +1,18 @@
 """``rdl graph-detector-v4-2-judge-plan`` — how many calls, how many tokens, how many days.
 
-Both v4.2 judges run on free tiers with published per-minute and per-day ceilings. The
-question that decides whether the audit can be run at all is arithmetic: how many calls
-does this audit need, how many tokens is that, and does it fit inside a day's quota. This
-command answers it offline, from the actual input files and the actual prompt builder, and
-never calls an API.
+One judge is billed and one runs on a free plan, so the question that decides whether the
+audit can be run at all has two halves: what does it COST, and does it FIT inside a day's
+quota. This command answers both offline, from the actual input files and the actual prompt
+builder, and never calls an API.
 
 It exists because the alternative is finding out at row 700. A run that discovers its
-per-day ceiling two thirds of the way through has not failed cheaply — on Gemini's free
-tier it has consumed the day, and on Groq's it has consumed the day for every model.
+per-day ceiling two thirds of the way through has not failed cheaply — on Groq's free plan
+it has consumed the day for every model — and a run that discovers its rate was double what
+the repository recorded has spent money nobody budgeted.
+
+Costs are read at the tier the runner actually uses (`REQUEST_MODE`), which is Standard
+synchronous. The Batch/Flex rates are half of Standard and this pipeline does not pay them;
+recording one unlabelled number is how v4.2.2 reported Gemini at half price.
 
 Token counts are estimated from the real prompts
 ------------------------------------------------
@@ -85,15 +89,19 @@ def _pass_load(rows: Sequence[Mapping], pass_name: str) -> dict:
 
 
 def _feasibility(model: str, n_calls: int, n_tokens: int) -> dict:
-    """Days of quota this judge needs, and whether it has a free tier at all.
+    """Days of quota this judge needs, and whether it is on a free plan at all.
 
-    A model with no free tier has no per-day ceiling to wait out: it is billed and it runs
-    in one sitting. The previous version divided every judge by a free-tier quota, which
-    for Gemini meant dividing by a tier that does not exist — a schedule computed from a
-    number that was not real, presented beside a cost of zero that was also not real.
+    A judge that is NOT on a free plan has no per-day ceiling to wait out: it is billed and
+    it runs in one sitting. `free_tier_used` rather than `free_tier_exists` is what this
+    keys on — Gemini has a free tier and the protocol refuses it for data-handling reasons,
+    and a schedule computed as though it were free would be a schedule for a run nobody is
+    allowed to make.
     """
     limits = dict(RATE_LIMITS.get(model, {}))
-    free = bool(limits.get("free_tier_available"))
+    # Whether the free plan is USED, not whether one exists. Gemini has a free tier and
+    # the protocol refuses it; a schedule computed as though it were free would be a
+    # schedule for a run nobody is allowed to make.
+    free = bool(limits.get("free_tier_used"))
     rpd = limits.get("requests_per_day") if free else None
     tpd = limits.get("tokens_per_day") if free else None
     rpm = limits.get("requests_per_minute")
@@ -101,7 +109,9 @@ def _feasibility(model: str, n_calls: int, n_tokens: int) -> dict:
     days_by_tokens = math.ceil(n_tokens / int(tpd)) if tpd else 1
     days = max(days_by_requests, days_by_tokens, 1)
     return {
-        "free_tier_available": free,
+        "free_tier_exists": bool(limits.get("free_tier_exists")),
+        "free_tier_used": free,
+        "why_not_free": limits.get("why_not_free"),
         "billing": limits.get("billing"),
         "plan_limits": limits or None,
         "quota_source": limits.get("quota_source"),
@@ -115,7 +125,7 @@ def _feasibility(model: str, n_calls: int, n_tokens: int) -> dict:
         "free_tier_days_required": days if free else None,
         "minimum_wall_clock_minutes_at_rpm": round(n_calls / int(rpm), 1) if rpm else None,
         "binding_constraint": (
-            "none — this model has no free tier and is billed per token"
+            "none — this judge is billed per token, so money is the constraint and quota " "is not"
             if not free
             else (
                 "tokens_per_day"
@@ -253,13 +263,22 @@ def detector_v4_2_judge_plan(
     typer.echo(f"wrote {output_dir / PLAN_FILENAME}")
     typer.echo("")
     for role, entry in sorted(per_judge.items()):
-        free_days = entry["free_tier"]["free_tier_days_required"]
+        free = entry["free_tier"]
+        free_days = free["free_tier_days_required"]
         typer.echo(
             f"  judge {role} {entry['requested_model']:<24} "
             f"{entry['n_calls']:>6} calls  "
             f"{entry['estimated_total_tokens']:>9,} tok  "
             f"bills ${entry['estimated_cost_usd'] or 0.0:>6.2f}  "
-            + (f"{free_days:>2} free day(s)" if free_days else "no free tier")
+            + (
+                f"{free_days:>2} free day(s)"
+                if free_days
+                else (
+                    "free tier refused by protocol"
+                    if free.get("free_tier_exists")
+                    else "no free tier"
+                )
+            )
         )
     typer.echo("")
     typer.echo(f"verdict: {plan['verdict']}")

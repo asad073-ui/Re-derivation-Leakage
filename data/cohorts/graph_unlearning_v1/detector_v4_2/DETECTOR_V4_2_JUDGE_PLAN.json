@@ -20,35 +20,39 @@
   "judges": {
     "A": {
       "api_key_env": "GEMINI_API_KEY",
-      "billing": "paid",
-      "estimated_cost_usd": 1.0421,
+      "billing": "paid \u2014 Standard tier",
+      "estimated_cost_usd": 2.0842,
       "estimated_input_tokens": 1388499,
       "estimated_output_tokens": 278080,
       "estimated_total_tokens": 1666579,
       "family": "google-gemini",
       "free_tier": {
-        "billing": "paid",
-        "binding_constraint": "none \u2014 this model has no free tier and is billed per token",
+        "billing": "paid \u2014 Standard tier",
+        "binding_constraint": "none \u2014 this judge is billed per token, so money is the constraint and quota is not",
         "days_by_request_ceiling": null,
         "days_by_token_ceiling": null,
         "fits_in_one_free_day": null,
-        "free_tier_available": false,
         "free_tier_days_required": null,
+        "free_tier_exists": true,
+        "free_tier_used": false,
         "minimum_wall_clock_minutes_at_rpm": 173.8,
         "plan_limits": {
-          "billing": "paid",
-          "free_tier_available": false,
-          "quota_source": "no free tier is offered for this model; paid-tier ceilings are account-tier dependent and are NOT verified for this account. The run manifest's observed_rate_limits is the verified number.",
+          "billing": "paid \u2014 Standard tier",
+          "free_tier_exists": true,
+          "free_tier_used": false,
+          "quota_source": "paid Standard-tier ceilings are account-tier dependent and are NOT verified for this account. The run manifest's observed_rate_limits is the verified number.",
           "requests_per_day": null,
           "requests_per_minute": 10,
           "requests_per_minute_source": "self-imposed pacing floor, not a published ceiling",
           "tokens_per_day": null,
-          "tokens_per_minute": null
+          "tokens_per_minute": null,
+          "why_not_free": "Google states that free-tier content may be used to improve its products and that paid-tier content is not. The protocol asserts paid-tier handling, so a run on a free project would make the manifest false."
         },
-        "quota_source": "no free tier is offered for this model; paid-tier ceilings are account-tier dependent and are NOT verified for this account. The run manifest's observed_rate_limits is the verified number.",
-        "quota_verification": "plan documentation, NOT verified against this account. The run manifest records the provider's own x-ratelimit-* headers as observed_rate_limits, which is the account-verified figure."
+        "quota_source": "paid Standard-tier ceilings are account-tier dependent and are NOT verified for this account. The run manifest's observed_rate_limits is the verified number.",
+        "quota_verification": "plan documentation, NOT verified against this account. The run manifest records the provider's own x-ratelimit-* headers as observed_rate_limits, which is the account-verified figure.",
+        "why_not_free": "Google states that free-tier content may be used to improve its products and that paid-tier content is not. The protocol asserts paid-tier handling, so a run on a free project would make the manifest false."
       },
-      "list_price_cost_usd": 1.0421,
+      "list_price_cost_usd": 2.0842,
       "n_calls": 1738,
       "paid_fallback_cost_usd": null,
       "passes": {
@@ -88,21 +92,25 @@
         "days_by_request_ceiling": 2,
         "days_by_token_ceiling": 9,
         "fits_in_one_free_day": false,
-        "free_tier_available": true,
         "free_tier_days_required": 9,
+        "free_tier_exists": true,
+        "free_tier_used": true,
         "minimum_wall_clock_minutes_at_rpm": 57.9,
         "plan_limits": {
           "billing": "free plan",
-          "free_tier_available": true,
+          "free_tier_exists": true,
+          "free_tier_used": true,
           "quota_source": "Groq free-plan documented limits. Per-account limits can differ; the run manifest's observed_rate_limits records what this account was actually granted, from the provider's own x-ratelimit-* headers.",
           "requests_per_day": 1000,
           "requests_per_minute": 30,
           "requests_per_minute_source": "Groq free-plan documentation",
           "tokens_per_day": 200000,
-          "tokens_per_minute": null
+          "tokens_per_minute": null,
+          "why_not_free": null
         },
         "quota_source": "Groq free-plan documented limits. Per-account limits can differ; the run manifest's observed_rate_limits records what this account was actually granted, from the provider's own x-ratelimit-* headers.",
-        "quota_verification": "plan documentation, NOT verified against this account. The run manifest records the provider's own x-ratelimit-* headers as observed_rate_limits, which is the account-verified figure."
+        "quota_verification": "plan documentation, NOT verified against this account. The run manifest records the provider's own x-ratelimit-* headers as observed_rate_limits, which is the account-verified figure.",
+        "why_not_free": null
       },
       "list_price_cost_usd": 0.3751,
       "n_calls": 1738,
@@ -131,22 +139,22 @@
       "requested_model": "openai/gpt-oss-120b"
     }
   },
-  "price_note": "List prices as of 2026-08-15. gemini-3.7-flash has NO free tier \u2014 $0.375/M input and $1.875/M output \u2014 so the Gemini passes are billed and estimated_cost_usd is a real charge. openai/gpt-oss-120b runs on Groq's free plan, so its estimated_cost_usd is 0.0 by rate; paid_fallback_cost_usd is what the same token counts would cost at $0.15/$0.60 if the free plan's per-day ceiling is not worth waiting out. A null unit price means the rate was not established here.",
+  "price_note": "List prices as of 2026-08-15, read at the standard-synchronous tier because that is what the runner issues \u2014 one synchronous chat-completions request per row, never a Batch job. gemini-3.7-flash Standard is $0.75/M input and $3.75/M output; the $0.375/$1.875 recorded in v4.2.2 are the Batch/Flex rates, which this pipeline does not pay. A free tier exists for it and the protocol REFUSES it, for data handling rather than for money, so its cost is always billed. openai/gpt-oss-120b runs on Groq's free plan, so its estimated_cost_usd is 0.0 by plan; paid_fallback_cost_usd is what the same tokens cost at $0.15/$0.60 if the per-day ceiling is not worth waiting out. A null unit price means the rate was not established here.",
   "pricing_as_of": "2026-08-15",
   "protocol": "docs/graph_unlearning/DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md",
   "schema": "graph-detector-v4-2-judge-plan-v2",
   "token_estimate_method": "~4.0 characters per token over the real prompts, plus 160 output tokens per call (measured envelope for both judges at freeze was 42 and 130, the latter including 94 reasoning tokens). An estimate, not a measurement; the run manifest records the real counts.",
   "totals": {
     "budget_note": "twice the estimate. Retries, a re-run after a rubric fix, and the ~15% the 4-characters-per-token approximation can be out by all land on the same card.",
-    "budget_with_retries_usd": 2.08,
-    "cost_to_skip_the_free_plan_wait_usd": 1.4172,
-    "estimated_cost_usd": 1.0421,
+    "budget_with_retries_usd": 4.17,
+    "cost_to_skip_the_free_plan_wait_usd": 2.4593,
+    "estimated_cost_usd": 2.0842,
     "estimated_total_tokens": 3333158,
     "input_tokens": 2776998,
-    "list_price_cost_usd": 1.4172,
+    "list_price_cost_usd": 2.4593,
     "n_calls": 3476,
     "output_tokens": 556160,
     "paid_fallback_cost_usd": 0.3751
   },
-  "verdict": "the audit bills approximately $1.04 (budget $2.08 with retries). It needs 9 day(s) of free-plan quota on the judges that have one, or $1.42 to skip the wait \u2014 the free plan's per-day token ceiling is the binding constraint, not the money. Waiting is fine: the runner checkpoints every row, stops cleanly on a per-day ceiling, and `--resume` picks up where it stopped."
+  "verdict": "the audit bills approximately $2.08 (budget $4.17 with retries). It needs 9 day(s) of free-plan quota on the judges that have one, or $2.46 to skip the wait \u2014 the free plan's per-day token ceiling is the binding constraint, not the money. Waiting is fine: the runner checkpoints every row, stops cleanly on a per-day ceiling, and `--resume` picks up where it stopped."
 }

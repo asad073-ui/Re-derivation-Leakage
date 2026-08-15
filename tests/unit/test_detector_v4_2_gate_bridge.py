@@ -27,9 +27,12 @@ from rdl.cli.detector_v4_2_bundle import load_bundle
 from rdl.cli.detector_v4_gates import resolve_label_authority
 from rdl.eval.detector_v4_2 import (
     PRICES_USD_PER_MTOK,
+    PROVIDERS,
     RATE_LIMITS,
+    REQUEST_MODE,
     list_price_of,
     price_of,
+    rates_for,
 )
 
 REPO = Path(__file__).resolve().parents[2]
@@ -177,16 +180,53 @@ def test_a_manifest_of_an_unknown_schema_is_refused(tmp_path):
 # =====================================================================================
 
 
-def test_gemini_is_not_free_and_is_not_priced_as_if_it_were():
-    """The repository said free tier; Google's pricing page says otherwise."""
-    assert RATE_LIMITS["gemini-3.7-flash"]["free_tier_available"] is False
-    assert PRICES_USD_PER_MTOK["gemini-3.7-flash"] == {"input": 0.375, "output": 1.875}
-    # A million tokens each way is a real charge, not 0.0.
-    assert price_of("gemini-3.7-flash", 1_000_000, 1_000_000) == pytest.approx(2.25)
+def test_gemini_bills_at_the_standard_rate_because_that_is_what_the_runner_issues():
+    """Two corrections in one assertion.
+
+    v4.2.1 said Gemini was free. v4.2.2 said it had no free tier and priced it at
+    $0.375/$1.875 — which are the **Batch/Flex** rates, half of Standard. The runner sends
+    one synchronous chat-completions request per row and never a Batch job, so Standard is
+    what the card shows.
+    """
+    assert REQUEST_MODE == "standard-synchronous"
+    assert rates_for("gemini-3.7-flash") == {"input": 0.75, "output": 3.75}
+    assert PRICES_USD_PER_MTOK["gemini-3.7-flash"] == {"input": 0.75, "output": 3.75}
+    assert price_of("gemini-3.7-flash", 1_000_000, 1_000_000) == pytest.approx(4.50)
+
+
+def test_the_batch_rate_is_recorded_and_is_not_what_this_pipeline_pays():
+    """Kept, labelled, and not reachable by accident: it is the number v4.2.2 misreported."""
+    assert rates_for("gemini-3.7-flash", "batch") == {"input": 0.375, "output": 1.875}
+    assert list_price_of("gemini-3.7-flash", 1_000_000, 1_000_000, tier="batch") == pytest.approx(
+        2.25
+    )
+    # Half of Standard, which is exactly how the confusion arose.
+    assert (
+        rates_for("gemini-3.7-flash", "batch")["input"] * 2
+        == rates_for("gemini-3.7-flash")["input"]
+    )
+
+
+def test_geminis_free_tier_exists_and_is_refused_rather_than_denied():
+    """ "There is no free tier" was as wrong as "it is free"; the protocol refuses it."""
+    limits = RATE_LIMITS["gemini-3.7-flash"]
+    assert limits["free_tier_exists"] is True
+    assert limits["free_tier_used"] is False
+    assert "improve its products" in limits["why_not_free"]
+    # And the reason is data handling, so the cost is still billed in full.
+    assert price_of("gemini-3.7-flash", 1_000_000, 0) == pytest.approx(0.75)
+
+
+def test_the_provider_table_no_longer_calls_the_paid_judge_free():
+    """The stale field: PROVIDERS said "free tier" while the rate table said paid."""
+    google = PROVIDERS["google"]
+    assert "paid" in google["billing"]
+    assert google["free_tier_exists"] is True
+    assert google["free_tier_permitted_by_protocol"] is False
 
 
 def test_the_groq_judge_bills_nothing_and_records_what_it_would_cost():
-    assert RATE_LIMITS["openai/gpt-oss-120b"]["free_tier_available"] is True
+    assert RATE_LIMITS["openai/gpt-oss-120b"]["free_tier_used"] is True
     assert price_of("openai/gpt-oss-120b", 1_000_000, 1_000_000) == 0.0
     # The corrected output rate: 0.60, not the 0.75 the repository estimated.
     assert PRICES_USD_PER_MTOK["openai/gpt-oss-120b"] == {"input": 0.15, "output": 0.60}

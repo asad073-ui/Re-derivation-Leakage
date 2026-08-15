@@ -90,6 +90,7 @@ import os
 import random
 import sys
 import time
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -217,6 +218,9 @@ def require_label_audit(v4_1_dir: Path, v4_2_dir: Path) -> dict:
             "human_grounded": True,
             "publication_label_valid": bool(report.get("all_gates_passed")),
             "authorises": "engineering and publication claims",
+            "adjudicated_file": report.get("adjudicated_file")
+            or str(v4_1_dir / "LABEL_AUDIT_ADJUDICATED.jsonl"),
+            "adjudicated_sha256": report.get("adjudicated_sha256"),
         }
     elif model.exists():
         report = json.loads(model.read_text(encoding="utf-8"))
@@ -255,6 +259,9 @@ def require_label_audit(v4_1_dir: Path, v4_2_dir: Path) -> dict:
             "publication_label_valid": False,
             "judge_independence": independence,
             "authorises": "ENGINEERING training and evaluation only",
+            "adjudicated_file": report.get("adjudicated_file")
+            or str(v4_2_dir / "V4_2_ADJUDICATED.jsonl"),
+            "adjudicated_sha256": report.get("adjudicated_sha256"),
             "warning": (
                 "This run is authorised by MODEL judges. No result from it may be "
                 "described as a Goal A result or as publication-ready. See "
@@ -285,6 +292,34 @@ def require_label_audit(v4_1_dir: Path, v4_2_dir: Path) -> dict:
         .get("answer_attempt", {})
         .get("cohens_kappa")
     )
+
+    # The labels this authority vouches for, by hash — checked here rather than recorded
+    # and ignored. Before this, a passing report next to an edited (or simply different)
+    # adjudicated file trained the model on labels nothing had gated: the report carried
+    # `adjudicated_sha256` and no code ever compared it to a file. The natural rows then
+    # came from whichever adjudicated file happened to exist first, which could be the
+    # v4.1 human one while the authority was the v4.2 model report, or the reverse.
+    labels_path = Path(str(authority["adjudicated_file"]))
+    if not labels_path.exists():
+        raise SystemExit(
+            f"{authority['report']} vouches for {labels_path}, which does not exist. The "
+            "report and its labels travel together; re-run the label report."
+        )
+    recorded = authority.get("adjudicated_sha256")
+    if not recorded:
+        raise SystemExit(
+            f"{authority['report']} records no adjudicated_sha256, so it cannot vouch for "
+            f"{labels_path}. Re-run the label report — it writes the hash of the file it "
+            "produced, which is what binds the labels to the audit that passed."
+        )
+    actual = _sha256_path(labels_path)
+    if actual != str(recorded):
+        raise SystemExit(
+            f"{labels_path} hashes to {str(actual)[:16]}… and {authority['report']} "
+            f"vouches for {str(recorded)[:16]}…. The label file changed after the audit "
+            "passed. Refusing to train: these are not the labels that cleared the gate."
+        )
+    authority["adjudicated_sha256_verified"] = True
     return authority
 
 
@@ -297,6 +332,91 @@ def require_label_audit(v4_1_dir: Path, v4_2_dir: Path) -> dict:
 # seeds and three epochs, and nothing in the artifact said the plan had been left.
 PREREGISTERED_MODEL_REPO = "microsoft/deberta-v3-base"
 PREREGISTERED_EPOCHS = 3
+
+# The three commit SHAs the reportable run is pinned to, frozen into a committed artifact
+# by `rdl graph-detector-v4-2-freeze-model-pins` before any training. v4.2.2 required the
+# revisions to be NON-EMPTY and accepted whatever was typed, which pins the shape of the
+# claim and not the claim: two runs a month apart under a moved tag both satisfy it and are
+# different experiments. The file is read here and equality is enforced.
+MODEL_PINS_FILENAME = "DETECTOR_V4_2_MODEL_PINS.json"
+
+
+def load_model_pins(v4_2_dir: Path) -> dict:
+    """The frozen commit SHAs, or ``{}`` when they have not been frozen yet."""
+    path = v4_2_dir / MODEL_PINS_FILENAME
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else {}
+
+
+def enforce_model_pins(args, pins: "TrainingPins", frozen: Mapping) -> list[str]:
+    """Every revision this run uses that is not the one frozen for it."""
+    if not frozen:
+        return [
+            f"{MODEL_PINS_FILENAME} has not been frozen. A reportable run pins exact "
+            "commit SHAs for the encoder, its tokenizer and the NLI baseline; run "
+            "`rdl graph-detector-v4-2-freeze-model-pins` on a networked machine first. "
+            "Requiring a non-empty --model-revision only pins the SHAPE of the claim."
+        ]
+    wanted = {
+        "model_revision": (pins.model_revision, frozen.get("model_revision")),
+        "tokenizer_revision": (pins.tokenizer_revision, frozen.get("tokenizer_revision")),
+    }
+    if not args.skip_baseline:
+        wanted["baseline_revision"] = (args.baseline_revision, frozen.get("baseline_revision"))
+    failures = [
+        f"{name}: this run uses {have!r} and {MODEL_PINS_FILENAME} freezes {want!r}"
+        for name, (have, want) in wanted.items()
+        if not want or str(have) != str(want)
+    ]
+    for name, key in (
+        ("model repo", "model_repo_id"),
+        ("baseline repo", "baseline_repo_id"),
+    ):
+        frozen_repo = frozen.get(key)
+        used = pins.model_repo_id if key == "model_repo_id" else args.baseline_repo_id
+        if frozen_repo and str(used) != str(frozen_repo):
+            failures.append(f"{name}: this run uses {used!r} and the pins freeze {frozen_repo!r}")
+    return failures
+
+
+def git_state() -> dict:
+    """The commit this run was made from, and whether the tree was clean.
+
+    Package versions were recorded and the source revision was not, so two runs of
+    different code produced manifests that differed only in numbers. `dirty` is the field
+    that matters: a reportable run from an edited tree cannot be reproduced from any
+    commit, and the artifact would name one anyway.
+    """
+    import subprocess
+
+    def run(*argv: str) -> str | None:
+        try:
+            out = subprocess.run(
+                argv, cwd=REPO, capture_output=True, text=True, timeout=30, check=False
+            )
+        except Exception:  # pragma: no cover - reporting, not control flow
+            return None
+        return out.stdout.strip() if out.returncode == 0 else None
+
+    status = run("git", "status", "--porcelain")
+    sha = run("git", "rev-parse", "HEAD")
+    return {
+        "git_sha": sha,
+        "git_branch": run("git", "rev-parse", "--abbrev-ref", "HEAD"),
+        "git_dirty": None if status is None else bool(status.strip()),
+        "git_dirty_paths": (
+            sorted({line[3:].strip() for line in status.splitlines() if line.strip()})[:20]
+            if status
+            else []
+        ),
+        "why": (
+            "a manifest that records package versions but not the source revision cannot "
+            "be reproduced. A reportable run additionally refuses a dirty tree: the "
+            "recorded SHA would name a commit that is not what ran."
+        ),
+    }
 
 
 def enforce_preregistration(args, pins: "TrainingPins") -> dict:
@@ -355,6 +475,24 @@ def enforce_preregistration(args, pins: "TrainingPins") -> dict:
             "reportable run must name it deliberately, and its hash is recorded either way."
         )
 
+    # The exact weights, and the exact source. Both are conditions on a REPORTABLE run and
+    # both were previously unchecked: any commit SHA satisfied "the revision is pinned",
+    # and no field of the manifest said which revision of this repository produced it.
+    frozen_pins = load_model_pins(Path(args.v4_2_dir))
+    deviations.extend(enforce_model_pins(args, pins, frozen_pins))
+    git = git_state()
+    if git["git_dirty"]:
+        deviations.append(
+            f"the working tree is dirty ({len(git['git_dirty_paths'])} path(s), e.g. "
+            f"{git['git_dirty_paths'][:3]}). A reportable run records git_sha "
+            f"{str(git['git_sha'])[:12]}, and that commit is not what would run."
+        )
+    elif git["git_dirty"] is None:
+        deviations.append(
+            "the git state could not be read, so the run cannot record which revision "
+            "produced it"
+        )
+
     if deviations and args.reportable:
         raise SystemExit(
             "this run does not match the preregistration:\n  "
@@ -365,6 +503,9 @@ def enforce_preregistration(args, pins: "TrainingPins") -> dict:
         )
     return {
         "reportable": bool(args.reportable),
+        "model_pins": frozen_pins or None,
+        "model_pins_file": str(Path(args.v4_2_dir) / MODEL_PINS_FILENAME),
+        "git": git,
         "preregistered_seeds": list(PREREGISTERED_SEEDS),
         "preregistered_epochs": PREREGISTERED_EPOCHS,
         "preregistered_model_repo_id": PREREGISTERED_MODEL_REPO,
@@ -492,13 +633,37 @@ def natural_examples(
     split: str,
     *,
     alias_index: dict[str, list[str]] | None = None,
+    adjudicated_path: Path | None = None,
 ) -> tuple[list[dict], dict]:
     """Adjudicated natural rows joined to their blinded text and to their routed aliases.
 
-    Accepts either adjudication overlay — v4.1's human one or v4.2's model one. The
-    blinded judge file supplies the question and the candidate; neither overlay carries a
-    reference answer, which is why the join can be done here at all.
+    ``adjudicated_path`` is the file the LABEL AUTHORITY vouches for, and it is what a
+    real training run passes. Without it this function fell back to "whichever adjudicated
+    file exists first", which is a different question from "which labels authorised this
+    run": with both audits on disk it could train on the v4.1 human labels while
+    `require_label_audit` had returned the v4.2 model authority, and the manifest would
+    describe the wrong annotator. The fallback survives only for callers that have no
+    authority to hand — the tests that exercise the join itself.
+
+    The blinded judge file supplies the question and the candidate; neither overlay carries
+    a reference answer, which is why the join can be done here at all.
     """
+    if adjudicated_path is not None:
+        judge_path = v4_1_dir / "LABEL_AUDIT_JUDGE_A.jsonl"
+        if not (adjudicated_path.exists() and judge_path.exists()):
+            return [], {
+                "source": str(adjudicated_path),
+                "n_rows": 0,
+                "n_without_aliases": 0,
+                "why_empty": (
+                    f"{adjudicated_path} or {judge_path} is absent; the adjudicated labels "
+                    "cannot be joined to the blinded text they describe"
+                ),
+            }
+        return _natural_examples_from(
+            adjudicated_path, judge_path, v4_1_dir, split, alias_index=alias_index
+        )
+
     sources = (
         (v4_1_dir / "LABEL_AUDIT_ADJUDICATED.jsonl", v4_1_dir / "LABEL_AUDIT_JUDGE_A.jsonl"),
         (v4_2_dir / "V4_2_ADJUDICATED.jsonl", v4_1_dir / "LABEL_AUDIT_JUDGE_A.jsonl"),
@@ -508,6 +673,20 @@ def natural_examples(
     )
     if adjudicated_path is None:
         return [], {"source": None, "n_rows": 0, "n_without_aliases": 0}
+    return _natural_examples_from(
+        adjudicated_path, judge_path, v4_1_dir, split, alias_index=alias_index
+    )
+
+
+def _natural_examples_from(
+    adjudicated_path: Path,
+    judge_path: Path,
+    v4_1_dir: Path,
+    split: str,
+    *,
+    alias_index: dict[str, list[str]] | None = None,
+) -> tuple[list[dict], dict]:
+    """The join itself, over ONE named adjudicated file and its blinded judge file."""
 
     def load(path: Path) -> list[dict]:
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
@@ -1408,11 +1587,39 @@ def main() -> int:
 
     dataset = json.loads((args.data_dir / "DETECTOR_V4_DATASET.json").read_text(encoding="utf-8"))
     alias_index = natural_alias_index(args.policy_cohort, pins.max_aliases)
+
+    # ------------------------------------------------------------------- smoke --
+    # Before the label gate, deliberately: the smoke mode is what you run on a freshly
+    # rented box to find out whether CUDA works, and it must not require labels to exist.
+    # It therefore runs on the synthetic rows alone — the natural rows ARE the labels.
+    if args.smoke:
+        return run_smoke(
+            args,
+            pins,
+            budget,
+            tokenizer,
+            [*synthetic_examples(dataset, "train"), *extra_examples(list(args.extra_train))],
+            synthetic_examples(dataset, "development"),
+        )
+
+    # The gate runs BEFORE the natural rows are read, because it is what decides WHICH
+    # adjudicated file they come from. Reading them first and gating afterwards is how a
+    # run trained on the v4.1 human labels while its manifest named the v4.2 model report.
+    authority = require_label_audit(args.v4_1_dir, args.v4_2_dir)
+    labels_path = Path(str(authority["adjudicated_file"]))
     natural_train, natural_train_meta = natural_examples(
-        args.v4_1_dir, args.v4_2_dir, "train", alias_index=alias_index
+        args.v4_1_dir,
+        args.v4_2_dir,
+        "train",
+        alias_index=alias_index,
+        adjudicated_path=labels_path,
     )
     natural_dev, natural_dev_meta = natural_examples(
-        args.v4_1_dir, args.v4_2_dir, "development", alias_index=alias_index
+        args.v4_1_dir,
+        args.v4_2_dir,
+        "development",
+        alias_index=alias_index,
+        adjudicated_path=labels_path,
     )
     train_rows = [
         *synthetic_examples(dataset, "train"),
@@ -1428,14 +1635,6 @@ def main() -> int:
         raise SystemExit("a held-out row reached the training or development pool")
     if not train_rows:
         raise SystemExit("no training rows; check --data-dir")
-
-    # ------------------------------------------------------------------- smoke --
-    # Before the label gate, deliberately: the smoke mode is what you run on a freshly
-    # rented box to find out whether CUDA works, and it must not require labels to exist.
-    if args.smoke:
-        return run_smoke(args, pins, budget, tokenizer, train_rows, dev_rows)
-
-    authority = require_label_audit(args.v4_1_dir, args.v4_2_dir)
 
     baseline = {"skipped": True}
     if not args.skip_baseline:
@@ -1484,6 +1683,9 @@ def main() -> int:
         "checkpoint_selection_rule": CHECKPOINT_SELECTION_RULE,
         "development_fpr_ceiling": DEV_FPR_CEILING,
         "versions": _versions(),
+        # Which revision of this repository produced the numbers, and whether the tree was
+        # clean. Package versions alone cannot answer either question.
+        "git": preregistration["git"],
     }
 
     if args.baseline_only:

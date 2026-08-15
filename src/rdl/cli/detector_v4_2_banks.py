@@ -894,8 +894,10 @@ def detector_v4_2_final_gate(
     from .detector_v4_2_gate_bridge import (
         ALIGNMENT_REPORT_FILENAME,
         BANK_AUDIT_MANIFEST_FILENAME,
+        HELDOUT_MINIMA,
         OPERATING_POINT_FILENAME,
         bind_labels_to_bank,
+        check_heldout_minima,
         concept_index,
         labelled_rows_for_partition,
         load_label_map,
@@ -993,6 +995,22 @@ def detector_v4_2_final_gate(
             f"no labelled rows fall in partition {partition!r}. Nothing to score."
         )
 
+    # The denominators, BEFORE the model is loaded. The audit plan draws to these minima
+    # and the bank audit checks its own draw, but judging, adjudication and the PARTIAL
+    # class all remove rows between the draw and here — so the population the gate scores
+    # is not the population that was checked. Six rates over 40 retain rows are printed in
+    # the same shape as six rates over 400.
+    denominators, denominator_failures = check_heldout_minima(scored_rows)
+    if partition == "heldout" and denominator_failures:
+        for failure in denominator_failures:
+            typer.echo(f"  [DENOMINATOR] {failure}", err=True)
+        raise typer.BadParameter(
+            f"the held-out population is below its pre-registered minima "
+            f"{dict(HELDOUT_MINIMA)}. Refusing to open the bank: the response is a "
+            "pre-registered extension that judges more rows, not a gate read over fewer. "
+            "Nothing has been scored and the opening record has not been written."
+        )
+
     predictions, compute = score_with_backend(
         scored_rows,
         backend=backend,
@@ -1029,6 +1047,12 @@ def detector_v4_2_final_gate(
         "gpu_used": compute["gpu_used"],
         "compute": compute,
         "n_rows_scored": len(scored_rows),
+        # The populations every rate below is computed over, recorded beside the rates.
+        # A reader who sees micro recall 0.86 is entitled to know it came from 150 rows
+        # and not from 12.
+        "heldout_denominators": denominators,
+        "heldout_minima": dict(HELDOUT_MINIMA),
+        "heldout_denominators_met": not denominator_failures,
         "n_rows_by_population": {
             name: sum(1 for r in scored_rows if r["population"] == name)
             for name in sorted({r["population"] for r in scored_rows})

@@ -16,6 +16,7 @@ from ..studies.graph_leak.evidence import atomic_json
 from ..studies.graph_leak.runner import GraphRunner
 from .graph_common import (
     DEFAULT_LAUNCH,
+    apply_base_seed,
     apply_sample_budget,
     assert_control_arm_has_enough_items,
     build_backend,
@@ -46,6 +47,11 @@ def plan_graph_run(
     protocol: str = typer.Option(
         "end_to_end_safety", "--protocol", help="end_to_end_safety or graph_flow"
     ),
+    base_seed: int | None = typer.Option(
+        None,
+        "--base-seed",
+        help="plan the draw a --base-seed run would make. Only seeds a frozen manifest names are accepted.",
+    ),
     token: str | None = typer.Option(None, "--hf-token"),
     output: Path | None = typer.Option(None, "--output", help="write PLAN.json here"),
 ) -> None:
@@ -57,6 +63,9 @@ def plan_graph_run(
     overrides = [f"active_profile={profile}"] if profile else None
     cfg = load_config_or_fail(launch, overrides=overrides, topology=topology)
     cfg = apply_sample_budget(cfg, n_samples)
+    # The engineering bank's eight draws live here: the study file is frozen, so a
+    # second draw used to require editing it between runs.
+    cfg = apply_base_seed(cfg, base_seed)
     cohorts = resolve_run_cohorts(
         cfg,
         fixture=fixture,

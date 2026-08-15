@@ -30,12 +30,18 @@ measuring two different questions.
 
 Rate limits are the schedule, not an error
 ------------------------------------------
-Both judges run on free tiers with published per-minute and per-day ceilings. The runner
-paces itself against them, retries 429 and 5xx with exponential backoff, and stops
-cleanly with the partial file intact when a per-day ceiling is hit — which is a reason to
-run ``--resume`` tomorrow, not a reason to have lost today's work. Gemini's free tier in
-particular returns 503 UNAVAILABLE under load often enough that a runner without backoff
-mostly records failures.
+Judge B runs on Groq's free plan, with documented per-minute and per-day ceilings; judge A
+is BILLED, on Gemini's paid Standard tier, because the protocol refuses a free tier whose
+content may be used to improve the provider's products. The runner paces itself against the
+documented limits, records the provider's own ``x-ratelimit-*`` headers as the
+account-verified ones, retries 429 and 5xx with exponential backoff, and stops cleanly with
+the partial file intact when a per-day ceiling is hit — which is a reason to run
+``--resume`` tomorrow, not a reason to have lost today's work. Gemini returns 503
+UNAVAILABLE under load often enough that a runner without backoff mostly records failures.
+
+Because no API response names a project's billing tier, a reportable run on a provider whose
+free tier the protocol refuses requires ``--assert-paid-tier``. It detects nothing; it
+records who asserted it, which is the honest shape of a claim the machine cannot check.
 
 Smoke runs cannot touch a real run
 ----------------------------------
@@ -83,6 +89,7 @@ from ..eval.detector_v4_2 import (
     PROMPT_VERSION,
     PROVIDERS,
     RATE_LIMITS,
+    REQUEST_MODE,
     RUN_SCHEMA,
     V4_2_PROTOCOL,
     build_prompt,
@@ -91,6 +98,7 @@ from ..eval.detector_v4_2 import (
     parse_judgement,
     price_of,
     prompt_sha256,
+    rates_for,
     required_reference_label,
     response_schema,
     rubric_for,
@@ -136,8 +144,8 @@ DEFAULT_CONCURRENCY = 4
 MAX_CONCURRENCY = 16
 
 CHEAPER_JUDGE_NOTE = (
-    "The model is a frozen protocol parameter, recorded here and in the report. Both "
-    "judges are free-tier; what a weaker judge risks is not the bill but the gate. "
+    "The model is a frozen protocol parameter, recorded here and in the report. The whole "
+    "roster costs a few dollars; what a weaker judge risks is not the bill but the gate. "
     "kappa >= 0.70 between the two judges is the pre-registered condition the entire "
     "experiment is conditioned on, and a judge that applies the rubric less consistently "
     "fails it — or, worse, passes it while both judges share a systematic error the "
@@ -162,6 +170,12 @@ def _write_jsonl(path: Path, rows: Sequence[Mapping]) -> None:
         for row in rows:
             handle.write(json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n")
     temp.replace(path)
+
+
+def _namespace(bundle_id: str) -> str:
+    """A filesystem-safe directory name for one audit bundle."""
+    safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in str(bundle_id)).strip("-")
+    return safe or "audit"
 
 
 def _file_sha256(path: Path) -> str:
@@ -611,6 +625,24 @@ def detector_v4_2_llm_judge(
         "--dry-run",
         help="build and write the prompts, call nothing. Needs no API key.",
     ),
+    assert_paid_tier: bool = typer.Option(
+        False,
+        "--assert-paid-tier",
+        help=(
+            "assert that the credentials belong to a PAID project. Required for a "
+            "reportable run on a provider whose free tier the protocol refuses; the "
+            "runner cannot detect the tier, so it records that you asserted it."
+        ),
+    ),
+    audit_manifest: Path | None = typer.Option(
+        None,
+        "--audit-manifest",
+        help=(
+            "BANK_AUDIT_MANIFEST.json. Resolves the input file for this judge and pass, "
+            "and namespaces every output under the bundle id so a bank audit cannot "
+            "overwrite the training audit's overlays."
+        ),
+    ),
 ) -> None:
     """Run one judge over one pass. Writes an overlay keyed by ``audit_id``."""
     if judge not in JUDGES:
@@ -633,6 +665,19 @@ def detector_v4_2_llm_judge(
             "--limit requires --run-id: a limited run is a smoke run and must not share a "
             "directory with the pass it is smoke-testing. Try --run-id smoke-a-blind."
         )
+    # The bundle, if one was named. Its id namespaces every output: without this, running
+    # the bank audit's four passes writes V4_2_JUDGE_A_BLIND.jsonl and the run manifest,
+    # the disagreements and the adjudicated file straight over the training audit's — same
+    # directory, same filenames, different rows, and the overwritten files are the ones
+    # that authorised training.
+    base_output_dir = output_dir
+    bundle = None
+    if audit_manifest is not None:
+        from .detector_v4_2_bundle import load_bundle
+
+        bundle = load_bundle(audit_dir=audit_dir, manifest=audit_manifest)
+        output_dir = output_dir / _namespace(bundle.bundle_id)
+
     if run_id:
         if not run_id.replace("-", "").replace("_", "").isalnum():
             raise typer.BadParameter(f"--run-id must be alphanumeric/-/_ , got {run_id!r}")
@@ -642,7 +687,28 @@ def detector_v4_2_llm_judge(
     provider_spec = PROVIDERS[spec["provider"]]
     if model:
         spec["requested_model"] = model
-    source = input_file or (audit_dir / INPUT_FILENAME[judge_pass].format(judge=judge))
+
+    # A provider whose free tier the protocol refuses cannot be run reportably without
+    # someone saying, on the record, that these credentials are the paid project. The
+    # runner cannot see the project's billing tier — no field of the response carries it —
+    # so the honest thing is an assertion with a name on it rather than a silent default.
+    reportable_run = limit is None and not run_id
+    refuses_free_tier = provider_spec.get("free_tier_permitted_by_protocol") is False
+    if reportable_run and refuses_free_tier and not assert_paid_tier and not dry_run:
+        raise typer.BadParameter(
+            f"judge {judge} runs on {spec['provider']}, whose free tier this protocol "
+            "refuses for data-handling reasons: Google states that free-tier content may "
+            "be used to improve its products and that paid-tier content is not. The "
+            "runner cannot detect which project a key belongs to. Pass --assert-paid-tier "
+            "to state that it is the paid one — it is recorded in the manifest — or run "
+            "with --limit/--run-id, which is never reportable."
+        )
+
+    source = input_file or (
+        bundle.input_for(judge=judge, pass_name=judge_pass)
+        if bundle is not None
+        else audit_dir / INPUT_FILENAME[judge_pass].format(judge=judge)
+    )
     if not source.exists():
         raise typer.BadParameter(f"{source} is absent; run `rdl graph-detector-v4-label-audit`")
 
@@ -768,6 +834,26 @@ def detector_v4_2_llm_judge(
             **record,
         }
 
+    resume_command = " ".join(
+        [
+            "rdl graph-detector-v4-2-llm-judge",
+            f"--judge {judge}",
+            f"--pass {judge_pass}",
+            *([f"--audit-manifest {audit_manifest}"] if audit_manifest is not None else []),
+            *([f"--input {input_file}"] if input_file is not None else []),
+            *(
+                [f"--audit-dir {audit_dir}"]
+                if audit_manifest is None and input_file is None
+                else []
+            ),
+            f"--output-dir {base_output_dir}",
+            *([f"--run-id {run_id}"] if run_id else []),
+            *([f"--limit {limit}"] if limit is not None else []),
+            *(["--assert-paid-tier"] if assert_paid_tier else []),
+            "--resume",
+        ]
+    )
+
     def flush() -> None:
         """Append-safe checkpoint: rewrite the partial file and the progress manifest.
 
@@ -795,10 +881,11 @@ def detector_v4_2_llm_judge(
                 "n_rows_recorded": len(snapshot),
                 "n_rows_remaining": len(rows) - len(snapshot),
                 "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "resume_with": (
-                    f"rdl graph-detector-v4-2-llm-judge --judge {judge} "
-                    f"--pass {judge_pass} --resume"
-                ),
+                # Every flag this invocation used, not just --resume. A resume command
+                # that omits --audit-manifest resumes a DIFFERENT audit into a different
+                # directory and calls it the same pass; on a metered API that is a second
+                # bill and a silently mixed overlay.
+                "resume_with": resume_command,
             },
         )
 
@@ -975,8 +1062,30 @@ def detector_v4_2_llm_judge(
             if observed_limits
             else "not verified: the provider returned no x-ratelimit-* headers on this run"
         ),
-        "free_tier_available": plan_limits.get("free_tier_available"),
+        "free_tier_exists": plan_limits.get("free_tier_exists"),
+        "free_tier_used": plan_limits.get("free_tier_used"),
         "billing": plan_limits.get("billing"),
+        # What tier the prices below were read at, and what the runner actually issued.
+        # v4.2.2 recorded Gemini's Batch/Flex rate for a run made of synchronous
+        # single-row requests, which bill at Standard — a cost field that was half of what
+        # the card would show.
+        "request_mode": REQUEST_MODE,
+        "unit_prices_usd_per_mtok": rates_for(spec["requested_model"]) or None,
+        # The protocol asserts paid-tier data handling for this provider, and the runner
+        # cannot see a project's billing tier. This field records that a human asserted it
+        # for THIS run; a reportable run without the assertion is refused above.
+        "free_tier_refused_by_protocol": refuses_free_tier,
+        "paid_tier_asserted_by_operator": bool(assert_paid_tier),
+        "paid_tier_assertion_note": (
+            "the provider exposes no field naming a project's billing tier. This is an "
+            "operator assertion, recorded so that a paid-tier claim in a downstream "
+            "artifact can be traced to the person who made it."
+            if refuses_free_tier
+            else None
+        ),
+        "audit_manifest": str(audit_manifest) if audit_manifest else None,
+        "audit_bundle_id": bundle.bundle_id if bundle is not None else None,
+        "resume_command": resume_command,
         "input_file": str(source),
         "input_file_sha256": input_sha,
         "prompt_version": PROMPT_VERSION,
@@ -1047,13 +1156,28 @@ def detector_v4_2_llm_judge(
 
 
 def _require_frozen_blind_passes(output_dir: Path) -> None:
-    """Refuse a reference pass until both blind manifests exist and are complete.
+    """Refuse a reference pass until the blind labels are COMPLETE and FROZEN.
 
     The reference pass shows the judge the answer. If it can run first, then the blind
     labels can be produced afterwards by an operator who has already seen reference-pass
     output, and the blindness is a property of one prompt rather than of the procedure.
+
+    Through v4.2.2 this checked only that both blind API runs had *completed* — a
+    statement about the network. Two judges can disagree on 200 rows and still both be
+    "complete": the labels are not settled, adjudication has not happened, and every one of
+    those rows can still be resolved by someone who has by then read the reference pass's
+    output. §7 puts adjudication and freezing BEFORE the reference pass for that reason,
+    and until now nothing enforced it.
+
+    ``V4_2_BLIND_FREEZE.json`` is that enforcement. It is written by a blind-pass-only
+    label report with zero unresolved rows and zero provenance failures, and it carries the
+    hashes of the two blind overlays — which are re-computed here, so a blind pass re-run
+    after the freeze is caught rather than silently accepted.
     """
+    from .detector_v4_2_report import BLIND_FREEZE_FILENAME
+
     missing: list[str] = []
+    overlay_hashes: dict[str, str] = {}
     for role in JUDGES:
         path = output_dir / RUN_FILENAME.format(judge=role, pass_upper="BLIND")
         if not path.exists():
@@ -1069,13 +1193,53 @@ def _require_frozen_blind_passes(output_dir: Path) -> None:
                 f"{path} was produced under prompt version "
                 f"{manifest.get('prompt_version')!r}, this run is {PROMPT_VERSION!r}"
             )
+        overlay = output_dir / OUTPUT_FILENAME.format(judge=role, pass_upper="BLIND")
+        if overlay.exists():
+            overlay_hashes[role] = _rows_sha256(_read_jsonl(overlay))
+
+    freeze_path = output_dir / BLIND_FREEZE_FILENAME
+    if not freeze_path.exists():
+        missing.append(
+            f"{freeze_path} is absent — the blind labels have not been ADJUDICATED and "
+            "frozen. Run `rdl graph-detector-v4-2-label-report --blind-pass-only`, resolve "
+            "every disagreement it writes, and re-run it with --adjudication until it "
+            "writes this file"
+        )
+    else:
+        freeze = json.loads(freeze_path.read_text(encoding="utf-8"))
+        if freeze.get("prompt_version") != PROMPT_VERSION:
+            missing.append(
+                f"{freeze_path} froze prompt version {freeze.get('prompt_version')!r}, "
+                f"this run is {PROMPT_VERSION!r}"
+            )
+        if int(freeze.get("n_unresolved", 0) or 0):
+            missing.append(
+                f"{freeze_path} records {freeze['n_unresolved']} unresolved blind "
+                "disagreement(s); an unresolved row has two labels and no label"
+            )
+        frozen_overlays = dict(freeze.get("blind_overlays") or {})
+        for role, frozen_sha in sorted(frozen_overlays.items()):
+            actual = overlay_hashes.get(role)
+            if actual is None:
+                missing.append(f"the frozen blind overlay for judge {role} is not on disk")
+            elif actual != frozen_sha:
+                missing.append(
+                    f"judge {role}'s blind overlay hashes to {actual[:16]}… and the freeze "
+                    f"records {str(frozen_sha)[:16]}…. The blind pass was re-run after the "
+                    "labels were frozen, so these are not the labels the freeze describes"
+                )
+        for role in JUDGES:
+            if role not in frozen_overlays:
+                missing.append(f"{freeze_path} names no blind overlay for judge {role}")
+
     if missing:
         raise typer.BadParameter(
-            "the reference pass is refused until BOTH blind passes are complete and "
-            "frozen (DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md section 7): "
+            "the reference pass is refused until BOTH blind passes are complete, "
+            "adjudicated and frozen (DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md section 7): "
             + "; ".join(missing)
             + ". The reference pass shows the judge the answer; running it first would "
-            "let the blind labels be produced by an operator who has already seen it."
+            "let the blind labels be produced — or revised — by an operator who has "
+            "already seen it."
         )
 
 

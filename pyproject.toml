@@ -44,6 +44,10 @@ semantic = [
 ]
 gpu = [
     "accelerate==0.34.2",
+    # DeBERTa-v3 uses the DeBERTa-v2 SentencePiece tokenizer, which `transformers` does
+    # not depend on. The detector's encoder and its NLI baseline are both DeBERTa-v3, so
+    # without this the first tokenizer load on the GPU box raises.
+    "sentencepiece==0.2.0",
     "bitsandbytes==0.43.3",
     "faiss-cpu==1.8.0.post1",
     "sentence-transformers==3.1.1",

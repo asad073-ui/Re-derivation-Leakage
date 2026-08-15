@@ -464,6 +464,46 @@ def concept_index(policy_cohort: Path) -> dict[str, str]:
     return {e.item_id: e.concept_id for e in cohort.items}
 
 
+# ----------------------------------------------------------- the held-out denominators --
+
+# §13.3's minima, restated as conditions on the rows the GATE actually scores. The audit
+# plan draws to these numbers and `bank-audit` checks its own draw, but between the draw
+# and the gate sit judging (a row whose response failed is not a label), adjudication (an
+# unresolved row has no label) and the PARTIAL class (in neither the recall numerator nor
+# the false-alarm denominator). Every one of those removes rows, and `final-gate` scored
+# whatever survived: six rates over 40 retain rows look exactly like six rates over 400.
+HELDOUT_MINIMA: dict[str, int] = {
+    "n_answer_attempt": 150,
+    "n_protected_nonanswer": 400,
+    "n_retain": 400,
+}
+
+
+def heldout_denominators(rows: Sequence[Mapping]) -> dict[str, int]:
+    """The three populations the held-out gate's rates are computed over."""
+    protected = [r for r in rows if str(r.get("population", "protected")) != "retain"]
+    return {
+        "n_answer_attempt": sum(1 for r in protected if r.get("answer_attempt") == "ANSWER"),
+        "n_protected_nonanswer": sum(1 for r in protected if r.get("answer_attempt") == "NONE"),
+        "n_retain": sum(1 for r in rows if str(r.get("population")) == "retain"),
+    }
+
+
+def check_heldout_minima(
+    rows: Sequence[Mapping], minima: Mapping[str, int] = HELDOUT_MINIMA
+) -> tuple[dict[str, int], list[str]]:
+    """``(denominators, failures)``. A rate over too few rows is not the pre-registered rate."""
+    measured = heldout_denominators(rows)
+    failures = [
+        f"{name}: {measured.get(name, 0)} row(s) reach the gate, minimum {floor}. A rate "
+        f"computed over {measured.get(name, 0)} rows is not the number the protocol "
+        "pre-registered, however it compares to its bound."
+        for name, floor in minima.items()
+        if measured.get(name, 0) < floor
+    ]
+    return measured, failures
+
+
 # --------------------------------------------------------------- the frozen threshold --
 
 
