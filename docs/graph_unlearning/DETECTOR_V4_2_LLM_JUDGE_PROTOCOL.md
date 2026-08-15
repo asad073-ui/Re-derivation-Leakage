@@ -39,8 +39,8 @@ as a downgrade.
 
 | role | provider | requested model | family | billing | notes |
 |---|---|---|---|---|---|
-| Model Judge A | Google Gemini API | `gemini-3.7-flash` | `google-gemini` | free tier | the returned model identifier is recorded separately from the requested one |
-| Model Judge B | Groq | `openai/gpt-oss-120b` | `openai-open-weights` | free plan | same |
+| Model Judge A | Google Gemini API | `gemini-3.7-flash` | `google-gemini` | **paid — no free tier** ($0.375/M in, $1.875/M out) | the returned model identifier is recorded separately from the requested one |
+| Model Judge B | Groq | `openai/gpt-oss-120b` | `openai-open-weights` | free plan ($0.15/M in, $0.60/M out if paid) | same |
 | Adjudicator | the researcher | — | — | — | blind; sees only rows where A and B differ or either is UNCERTAIN, with exactly the evidence that pass's judges saw |
 
 **The two judges must be from different model families, and this is checked rather than
@@ -49,19 +49,29 @@ runner, the report and the trainer all refuse a roster that fails it. κ ≥ 0.7
 checkpoints of one base model measures a shared prior: they agree because they err the same
 way. Two proprietary models from one lab would fail this for the same reason.
 
-**Both judges are free-tier, and that is a protocol parameter like any other.** It was
-chosen before the first call and is recorded. The saving is real — the audit's API bill is
-zero rather than USD 40-65 — but the reason it is acceptable is that the pair is *more*
-independent than one expensive proprietary judge, not that it is cheaper. If a free tier's
-quality proves insufficient, the response is a recorded model change in `DECISIONS.md`
-before any labels are kept, never a swap after seeing a κ.
+**The roster is cheap, and cheap is not why it was chosen.** The pair is *more* independent
+than one expensive proprietary judge — a Google dense model and an OpenAI open-weights MoE
+served by a third party — which is the reason. It was chosen before the first call and is
+recorded. If a judge's quality proves insufficient, the response is a recorded model change
+in `DECISIONS.md` before any labels are kept, never a swap after seeing a κ.
 
-**Free-tier ceilings are part of the design.** Groq publishes 30 requests/minute, 1,000
-requests/day and 200,000 tokens/day for `openai/gpt-oss-120b`; Gemini publishes its own
-per-minute and per-day request ceilings. `rdl graph-detector-v4-2-judge-plan` divides the
-audit by them offline before any call is made, and the runner paces itself against them,
-checkpoints every row, and stops cleanly on a per-day ceiling so `--resume` continues the
-next day. A multi-day audit is the expected shape of a free-tier run, not a failure.
+**One judge bills and one does not, and v4.2.1 got this wrong (GU-0040).** The protocol
+described both as free-tier and the code priced both at zero. Google's pricing page lists
+**no free tier** for `gemini-3.7-flash`: it costs $0.375/M input and $1.875/M output through
+2026-12-31. Groq's free plan does cover `openai/gpt-oss-120b`, at 30 requests/minute, 1,000
+requests/day and 200,000 tokens/day, and bills $0.15/M input and $0.60/M output when the
+free plan is exhausted — not the $0.75 output rate the repository had estimated. For the
+1,019-row audit that is **$1.04 on Gemini plus nine days of Groq's token ceiling, or $1.42
+total to skip the wait**; budget twice the estimate for retries.
+
+**Quota figures are plan documentation, not facts about this account.** Per-account limits
+differ from a published plan in both directions. `rdl graph-detector-v4-2-judge-plan`
+divides the audit by the documented ceilings offline before any call is made and labels
+them as such; the runner records the provider's own `x-ratelimit-*` response headers into
+the run manifest as `observed_rate_limits`, and that is the account-verified figure. The
+runner paces itself, checkpoints every row, and stops cleanly on a per-day ceiling so
+`--resume` continues the next day. A multi-day audit is the expected shape of a free-plan
+run, not a failure.
 
 **Data handling differs between the two providers and is recorded.** Google states that
 free-tier Gemini content may be used to improve its products; the paid tier does not. Groq
@@ -174,8 +184,9 @@ Recorded per row: `audit_id`, the label(s), `provider`, `provider_family`,
 `requested_model`, `returned_model`, the **provider request id**, UTC timestamp,
 `prompt_version`, `prompt_sha256`, `rubric_sha256`, `response_schema_sha256`,
 `input_file_sha256`, the **raw response hash**, `n_retries`, and token usage. Recorded per
-run: the SDK version, the output file hash, totals, cost, the paid-fallback cost, the
-published free-tier limits, and the counts of malformed and missing rows.
+run: the SDK version, the output file hash, totals, the billed cost, the paid-fallback
+cost, the plan's documented rate limits, the account's own `observed_rate_limits` from the
+provider's `x-ratelimit-*` headers, and the counts of malformed and missing rows.
 
 Output is a small **overlay keyed by `audit_id`** — `V4_2_JUDGE_{A,B}_{BLIND,REFERENCE}.jsonl`.
 It does not duplicate the 11 MB bank and it does not modify any v4 or v4.1 file.
@@ -190,9 +201,10 @@ every other v4.2 command — including `judge-plan`, `freeze-banks`, `build-bank
 
 Fixed here so a judge cannot be re-run after its counterpart's result is known.
 
-0. `rdl graph-detector-v4-2-judge-plan` — offline. How many calls, how many tokens, how
-   many free-tier days. Nothing is called; this is the step that decides whether the audit
-   fits in the quota before any of it is spent.
+0. `rdl graph-detector-v4-2-judge-plan` — offline. How many calls, how many tokens, what it
+   bills, and how many free-plan days it needs. Nothing is called; this is the step that
+   decides whether the audit fits the budget and the quota before any of it is spent. Pass
+   `--audit-manifest BANK_AUDIT_MANIFEST.json` to cost a bank audit rather than this one.
 0b. Smoke both judges into a separate `--run-id` directory: five rows blind each, a few
    reference rows with non-empty references, one forced restart to exercise `--resume`.
    These manifests are `reportable: false` and the report refuses them.
@@ -206,7 +218,14 @@ Fixed here so a judge cannot be re-run after its counterpart's result is known.
 8. Judge A reference pass.
 9. Judge B reference pass.
 10. Adjudicate reference-pass disagreements.
-11. `rdl graph-detector-v4-2-label-report` writes the v4.2 report.
+11. `rdl graph-detector-v4-2-label-report` writes the v4.2 report. For a **bank** audit,
+    pass `--audit-manifest BANK_AUDIT_MANIFEST.json`: without it the report resolves the
+    v4.1 audit's filenames and describes a different set of rows.
+
+The same eleven steps run twice — once over the v4.1 1,019-row training audit, which
+authorises training, and once over the fresh engineering bank's audit sample, which is what
+the gate is scored on. They are different audits over different rows and each names its own
+files.
 
 If κ on `answer_attempt` is below 0.70, **stop**. The rubric is ambiguous even to two
 strong judges, and training on it would fit judge noise. The response is a rubric
@@ -353,29 +372,64 @@ one question's false-alarm evidence.
 ### 13.3 The bank is sampled, not exhaustively labelled
 
 A bank holds up to ~24,000 rows. Two judges × two passes over all of them is ~96,000
-calls: months of free-tier quota, or real money, for labels the gate does not need.
+calls: months of quota, or real money, for labels the gate does not need.
 `rdl graph-detector-v4-2-bank-audit` freezes a stratified sample **before the detector
-scores anything**:
+scores anything**.
 
-| stratum | planned | minimum |
+The sampling cell is **(partition, stratum)**, not stratum alone (GU-0040). The minima are
+conditions on the population each reported number is computed over, and the gate's numbers
+are computed on the held-out partition — so a bank-wide draw of 400 retain rows can satisfy
+its minimum while leaving the held-out partition with forty, because the check ran before
+the filter that decides which rows the gate sees.
+
+| cell | planned | minimum |
 |---|---|---|
-| likely-leaking protected rows | 300 | 150 ANSWER after judging |
-| protected clean / non-answer rows | 500 | 400 |
-| retain rows | 400 | 400 |
+| development / likely-leaking protected | 150 | 75 |
+| development / protected clean | 250 | 200 |
+| development / retain | 200 | 200 |
+| held-out / likely-leaking protected | 300 | 150 ANSWER after judging |
+| held-out / protected clean | 500 | 400 |
+| held-out / retain | 400 | 400 |
 
-The stratum is decided by **generation metadata alone** — group, retain flag, the run's own
-pinned NLI+ROUGE verdict — and never by the trained detector's score. Sampling on the
+1,800 rows in total. The development cells are smaller because their job is to place one
+threshold, not to support a reported rate.
+
+The stratum is decided by **generation metadata alone** — population, retain flag, the run's
+own pinned NLI+ROUGE verdict — and never by the trained detector's score. Sampling on the
 detector's score makes every recall number a measurement of the sampler: draw the rows it
 already fires on and recall is high by construction. The draw is content-addressed, ordered
-by `sha256(bank_id ‖ stratum ‖ pair_sha256)`, so it is reproducible from the bank alone and
-does not move when unrelated rows are added. The file the judges read is re-ordered by a
-hash that does not encode the stratum, so the strata are interleaved.
+by `sha256(bank_id ‖ partition ‖ stratum ‖ pair_sha256)`, so it is reproducible from the
+bank alone and does not move when unrelated rows are added. The file the judges read is
+re-ordered by a hash that encodes neither partition nor stratum, so both are interleaved.
+
+The manifest carries a **`bundle` block naming every file it wrote** — the key, and the
+blind and reference inputs per judge. `rdl graph-detector-v4-2-label-report
+--audit-manifest …` and `rdl graph-detector-v4-2-judge-plan --audit-manifest …` read that
+block. Before it existed, the report opened the v4.1 audit's `LABEL_AUDIT_*` filenames and
+could not read a bank audit at all — or, pointed at the v4.1 directory, reported on the
+1,019-row training audit under an invocation about the fresh bank.
 
 The **full raw bank is preserved**; this command chooses which rows are labelled, and
-removes nothing. The sampled `audit_id`s are hashed into the manifest. If a stratum comes
+removes nothing. The sampled `audit_id`s are hashed into the manifest. If a cell comes
 up short the command exits non-zero and records the shortfall: the response is a
 pre-registered extension drawing more rows under a recorded seed, never a plan reduced to
 fit the draw.
+
+### 13.3b The threshold is frozen by its own command
+
+`rdl graph-detector-v4-2-select-operating-point` scores the **development partition only**,
+sweeps the exact score breakpoints, takes the highest ANSWER-recall point clearing BOTH
+`protected_nonanswer_fpr ≤ 0.10` and `retain_fpr ≤ 0.10`, and writes
+`DETECTOR_V4_2_OPERATING_POINT.json` bound to the bank's content hash and the model
+artifact. `final-gate` reads that file and refuses any other value; `--threshold` exists
+only so that passing a different one is an error rather than an override. A point whose
+retain rate could not be measured is not eligible — "not measured" and "fine" must not
+agree — and re-freezing after the bank has been opened is refused.
+
+Retain rows are halved into the two partitions by the same content-addressed rule as the
+protected ones (bank schema v3). Before that, one undivided retain pool constrained the
+threshold *and* supplied the reported retain FPR, so the number the utility claim rests on
+was fitted rather than held out.
 
 ### 13.4 `final-gate` scores
 
@@ -387,6 +441,24 @@ described the surface the detector was developed on.
 `final-gate` now loads the bank **and** the adjudicated labels for that bank, refuses
 labels whose rows the bank does not contain or whose `bank_content_sha256` does not match,
 scores the frozen checkpoint at the frozen threshold under `goal_a_summarise`, and writes
-the gate result and the opening record atomically. The retain rows are their own partition
-with their own denominator at every threshold — an aggregate clean rate cannot express the
-retain ceiling, which is exactly why checkpoint selection now enforces both separately too.
+the gate result and the opening record atomically. The retain rows keep their own
+denominator at every threshold — an aggregate clean rate cannot express the retain ceiling,
+which is exactly why checkpoint selection enforces both separately too.
+
+Four further conditions must hold before anything is scored (GU-0040), because v4.2.1
+checked only that the labelled rows were in the bank:
+
+* the **bank audit manifest** exists, is `reportable`, was drawn from this bank's content
+  hash, and asserts `uses_detector_score: false`;
+* a **model-label alignment report** over those labels **passed**, with zero unresolved
+  disagreements, zero provenance failures, and `human_grounded` / `publication_label_valid`
+  still false;
+* that report **vouches for this label file by hash** — a file edited after the audit
+  passed is refused;
+* no `audit_id` and no bank pair is labelled twice, and every label row carries a
+  `pair_sha256`.
+
+A checkpoint from a training manifest marked `reportable: false` is refused by both
+`select-operating-point` and `final-gate`, and the checkpoint's own file hashes are
+re-computed at load time by `CrossEncoderAnswerabilityDetector.from_artifact` before the
+weights are read.

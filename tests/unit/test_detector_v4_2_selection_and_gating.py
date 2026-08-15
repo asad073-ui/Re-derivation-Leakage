@@ -173,11 +173,13 @@ def test_the_synthetic_rows_carry_their_population():
 
 
 def _bank(tmp_path: Path, *, content_sha: str, pairs: list[str]) -> Path:
+    """A schema-v3 bank: retain rows live INSIDE each partition, never in a third block."""
     payload = {
+        "schema": "graph-detector-v4-2-engineering-bank-v3",
         "bank_id": "detector_v4_2_engineering_v1",
         "content_sha256": content_sha,
         "partitions": {
-            "development": {"clean": [], "leaking": []},
+            "development": {"clean": [], "leaking": [], "retain": []},
             "heldout": {
                 "clean": [
                     {
@@ -191,8 +193,8 @@ def _bank(tmp_path: Path, *, content_sha: str, pairs: list[str]) -> Path:
                     for p in pairs
                 ],
                 "leaking": [],
+                "retain": [],
             },
-            "retain": {"all": []},
         },
     }
     path = tmp_path / "ENGINEERING_BANK.json"
@@ -200,8 +202,8 @@ def _bank(tmp_path: Path, *, content_sha: str, pairs: list[str]) -> Path:
     return path
 
 
-def _labels(tmp_path: Path, rows: list[dict]) -> Path:
-    path = tmp_path / "labels.jsonl"
+def _labels(tmp_path: Path, rows: list[dict], name: str = "labels.jsonl") -> Path:
+    path = tmp_path / name
     path.write_text("\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n", encoding="utf-8")
     return path
 
@@ -212,32 +214,104 @@ def _model_artifact(tmp_path: Path) -> Path:
     return path
 
 
-def test_labels_from_another_bank_are_refused(tmp_path):
-    """The v4.1 audit's audit_ids name content this bank does not contain."""
+def _audit_manifest(tmp_path: Path, *, content_sha: str, reportable: bool = True) -> Path:
+    path = tmp_path / "BANK_AUDIT_MANIFEST.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "graph-detector-v4-2-bank-audit-manifest-v2",
+                "bank_content_sha256": content_sha,
+                "reportable": reportable,
+                "uses_detector_score": False,
+                "shortfalls": {},
+                "below_minima": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _alignment_report(
+    tmp_path: Path,
+    *,
+    labels: Path,
+    content_sha: str,
+    passed: bool = True,
+    unresolved: float = 0.0,
+    provenance_failures: tuple[str, ...] = (),
+) -> Path:
+    import hashlib
+
+    path = tmp_path / "DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json"
+    path.write_text(
+        json.dumps(
+            {
+                "all_gates_passed": passed,
+                "failed_gates": [] if passed else ["answer_attempt_kappa"],
+                "gates": [
+                    {"gate": "n_unresolved_disagreements", "measured": unresolved},
+                ],
+                "provenance": {"failures": list(provenance_failures)},
+                "human_grounded": False,
+                "publication_label_valid": False,
+                "adjudicated_file": str(labels),
+                "adjudicated_sha256": hashlib.sha256(labels.read_bytes()).hexdigest(),
+                "bank_content_sha256": content_sha,
+                "judge_population": "two_independent_llm_judges",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _gate(tmp_path: Path, **overrides):
+    """Call `final-gate` with every argument named. Typer defaults are OptionInfo objects,
+    not values, so a direct call that omits one gets a sentinel rather than a default."""
     from rdl.cli.detector_v4_2_banks import detector_v4_2_final_gate
 
+    kwargs = {
+        "bank": "engineering",
+        "bank_dir": tmp_path / "bank",
+        "labels": tmp_path / "labels.jsonl",
+        "model_artifact": _model_artifact(tmp_path),
+        "operating_point": tmp_path / "DETECTOR_V4_2_OPERATING_POINT.json",
+        "threshold": None,
+        "audit_manifest": tmp_path / "BANK_AUDIT_MANIFEST.json",
+        "alignment_report": tmp_path / "DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json",
+        "policy_cohort": REPO / "data" / "cohorts" / "graph_unlearning_v1" / "discovery.json",
+        "backend": "lexical",
+        "device": "",
+        "partition": "heldout",
+        "output_dir": tmp_path / "out",
+        "reopen": False,
+    }
+    kwargs.update(overrides)
+    return detector_v4_2_final_gate(**kwargs)
+
+
+def test_labels_from_another_bank_are_refused(tmp_path):
+    """The v4.1 audit's audit_ids name content this bank does not contain."""
     bank_dir = tmp_path / "bank"
     bank_dir.mkdir()
     _bank(bank_dir, content_sha="a" * 64, pairs=["1" * 64, "2" * 64])
     stale = _labels(
         tmp_path,
-        [{"audit_id": "0008c30c51476aa7", "answer_attempt": "ANSWER", "text_sha256": "9" * 64}],
+        [
+            {
+                "audit_id": "0008c30c51476aa7",
+                "answer_attempt": "ANSWER",
+                "pair_sha256": "9" * 64,
+                "bank_content_sha256": "a" * 64,
+            }
+        ],
     )
+    _audit_manifest(tmp_path, content_sha="a" * 64)
+    _alignment_report(tmp_path, labels=stale, content_sha="a" * 64)
 
     with pytest.raises(typer.BadParameter) as excinfo:
-        detector_v4_2_final_gate(
-            bank="engineering",
-            bank_dir=bank_dir,
-            labels=stale,
-            model_artifact=_model_artifact(tmp_path),
-            threshold=0.5,
-            policy_cohort=REPO / "data" / "cohorts" / "graph_unlearning_v1" / "discovery.json",
-            backend="lexical",
-            device="",
-            partition="heldout",
-            output_dir=tmp_path / "out",
-            reopen=False,
-        )
+        _gate(tmp_path, labels=stale)
     message = str(excinfo.value)
     assert "name content this bank does not contain" in message
     assert "Gating a new bank on an old bank's labels" in message
@@ -245,8 +319,6 @@ def test_labels_from_another_bank_are_refused(tmp_path):
 
 def test_labels_produced_against_a_different_bank_revision_are_refused(tmp_path):
     """Right rows, wrong bank hash: the bank moved after the audit was drawn."""
-    from rdl.cli.detector_v4_2_banks import detector_v4_2_final_gate
-
     bank_dir = tmp_path / "bank"
     bank_dir.mkdir()
     _bank(bank_dir, content_sha="a" * 64, pairs=["1" * 64])
@@ -261,46 +333,333 @@ def test_labels_produced_against_a_different_bank_revision_are_refused(tmp_path)
             }
         ],
     )
+    _audit_manifest(tmp_path, content_sha="a" * 64)
+    _alignment_report(tmp_path, labels=moved, content_sha="a" * 64)
 
     with pytest.raises(typer.BadParameter, match="bank moved after the audit"):
-        detector_v4_2_final_gate(
-            bank="engineering",
-            bank_dir=bank_dir,
-            labels=moved,
-            model_artifact=_model_artifact(tmp_path),
-            threshold=0.5,
-            policy_cohort=REPO / "data" / "cohorts" / "graph_unlearning_v1" / "discovery.json",
-            backend="lexical",
-            device="",
-            partition="heldout",
-            output_dir=tmp_path / "out",
-            reopen=False,
-        )
+        _gate(tmp_path, labels=moved)
 
 
 def test_the_gate_refuses_to_run_with_no_labels_at_all(tmp_path):
     """The original defect: the command opened the bank without reading any label."""
-    from rdl.cli.detector_v4_2_banks import detector_v4_2_final_gate
-
     bank_dir = tmp_path / "bank"
     bank_dir.mkdir()
     _bank(bank_dir, content_sha="a" * 64, pairs=["1" * 64])
 
     with pytest.raises(typer.BadParameter) as excinfo:
-        detector_v4_2_final_gate(
-            bank="engineering",
-            bank_dir=bank_dir,
-            labels=tmp_path / "does-not-exist.jsonl",
-            model_artifact=_model_artifact(tmp_path),
-            threshold=0.5,
-            policy_cohort=REPO / "data" / "cohorts" / "graph_unlearning_v1" / "discovery.json",
-            backend="lexical",
-            device="",
-            partition="heldout",
-            output_dir=tmp_path / "out",
-            reopen=False,
-        )
+        _gate(tmp_path, labels=tmp_path / "does-not-exist.jsonl")
     assert "adjudicated model-judge labels for THIS bank" in str(excinfo.value)
+
+
+# =====================================================================================
+# Labels that never passed the judge gate cannot open a bank
+# =====================================================================================
+
+
+def _prepared(tmp_path) -> tuple[Path, Path]:
+    """A bank and a label file that match, so each test can break exactly one thing."""
+    bank_dir = tmp_path / "bank"
+    bank_dir.mkdir()
+    _bank(bank_dir, content_sha="a" * 64, pairs=["1" * 64])
+    labels = _labels(
+        tmp_path,
+        [
+            {
+                "audit_id": "0" * 16,
+                "answer_attempt": "ANSWER",
+                "pair_sha256": "1" * 64,
+                "bank_content_sha256": "a" * 64,
+            }
+        ],
+    )
+    return bank_dir, labels
+
+
+def test_an_absent_audit_manifest_refuses_the_gate(tmp_path):
+    """Without it, nothing shows the labelled rows were chosen before the detector ran."""
+    _, labels = _prepared(tmp_path)
+    _alignment_report(tmp_path, labels=labels, content_sha="a" * 64)
+    with pytest.raises(typer.BadParameter, match="frozen stratified audit sample"):
+        _gate(tmp_path, labels=labels, audit_manifest=tmp_path / "absent.json")
+
+
+def test_an_audit_that_missed_its_minima_refuses_the_gate(tmp_path):
+    _, labels = _prepared(tmp_path)
+    _audit_manifest(tmp_path, content_sha="a" * 64, reportable=False)
+    _alignment_report(tmp_path, labels=labels, content_sha="a" * 64)
+    with pytest.raises(typer.BadParameter, match="condition"):
+        _gate(tmp_path, labels=labels)
+
+
+def test_a_failing_alignment_report_refuses_the_gate(tmp_path):
+    """THE defect: --labels was accepted with no evidence the audit ever passed."""
+    _, labels = _prepared(tmp_path)
+    _audit_manifest(tmp_path, content_sha="a" * 64)
+    _alignment_report(tmp_path, labels=labels, content_sha="a" * 64, passed=False)
+    with pytest.raises(typer.BadParameter, match="condition"):
+        _gate(tmp_path, labels=labels)
+
+
+def test_unresolved_disagreements_refuse_the_gate(tmp_path):
+    _, labels = _prepared(tmp_path)
+    _audit_manifest(tmp_path, content_sha="a" * 64)
+    _alignment_report(tmp_path, labels=labels, content_sha="a" * 64, unresolved=4.0)
+    with pytest.raises(typer.BadParameter, match="condition"):
+        _gate(tmp_path, labels=labels)
+
+
+def test_a_label_file_edited_after_the_report_refuses_the_gate(tmp_path):
+    """The report vouches for a hash. Editing the file afterwards breaks the binding."""
+    _, labels = _prepared(tmp_path)
+    _audit_manifest(tmp_path, content_sha="a" * 64)
+    _alignment_report(tmp_path, labels=labels, content_sha="a" * 64)
+    labels.write_text(
+        json.dumps(
+            {
+                "audit_id": "0" * 16,
+                "answer_attempt": "NONE",
+                "pair_sha256": "1" * 64,
+                "bank_content_sha256": "a" * 64,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(typer.BadParameter, match="condition"):
+        _gate(tmp_path, labels=labels)
+
+
+# =====================================================================================
+# One row, one label
+# =====================================================================================
+
+
+def test_a_duplicate_audit_id_is_refused_rather_than_overwritten(tmp_path):
+    """The label map was a dict comprehension: the second row silently won."""
+    from rdl.cli.detector_v4_2_gate_bridge import load_label_map
+
+    path = _labels(
+        tmp_path,
+        [
+            {"audit_id": "0" * 16, "answer_attempt": "ANSWER", "pair_sha256": "1" * 64},
+            {"audit_id": "0" * 16, "answer_attempt": "NONE", "pair_sha256": "1" * 64},
+        ],
+    )
+    with pytest.raises(typer.BadParameter, match="duplicate audit_id"):
+        load_label_map(path)
+
+
+def test_two_audit_ids_naming_one_bank_row_are_refused(tmp_path):
+    """One bank row labelled twice makes the gate count it twice."""
+    from rdl.cli.detector_v4_2_gate_bridge import load_label_map
+
+    path = _labels(
+        tmp_path,
+        [
+            {"audit_id": "0" * 16, "answer_attempt": "ANSWER", "pair_sha256": "1" * 64},
+            {"audit_id": "1" * 16, "answer_attempt": "NONE", "pair_sha256": "1" * 64},
+        ],
+    )
+    with pytest.raises(typer.BadParameter, match="more than one audit_id"):
+        load_label_map(path)
+
+
+def test_a_label_with_no_pair_digest_is_refused(tmp_path):
+    """text_sha256 alone cannot address a bank keyed by (text, question)."""
+    from rdl.cli.detector_v4_2_gate_bridge import load_label_map
+
+    path = _labels(
+        tmp_path,
+        [{"audit_id": "0" * 16, "answer_attempt": "ANSWER", "text_sha256": "1" * 64}],
+    )
+    with pytest.raises(typer.BadParameter, match="no pair_sha256"):
+        load_label_map(path)
+
+
+# =====================================================================================
+# The threshold is read from a frozen artifact, never from the command line
+# =====================================================================================
+
+
+def _operating_point(tmp_path: Path, **overrides) -> Path:
+    from rdl.cli.detector_v4_2_gate_bridge import OPERATING_POINT_SCHEMA
+
+    payload = {
+        "schema": OPERATING_POINT_SCHEMA,
+        "bank_content_sha256": "a" * 64,
+        "model_artifact": str(tmp_path / "DETECTOR_V4_MODEL.json"),
+        "selected_threshold": 0.62,
+        "partition_selected_on": "development",
+        "utc": "2026-08-15T00:00:00Z",
+    }
+    payload.update(overrides)
+    path = tmp_path / "DETECTOR_V4_2_OPERATING_POINT.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_an_absent_operating_point_refuses_the_gate(tmp_path):
+    from rdl.cli.detector_v4_2_gate_bridge import load_operating_point
+
+    with pytest.raises(typer.BadParameter, match="threshold is not an argument"):
+        load_operating_point(
+            tmp_path / "absent.json",
+            bank_content_sha256="a" * 64,
+            model_artifact=tmp_path / "DETECTOR_V4_MODEL.json",
+        )
+
+
+def test_a_threshold_on_the_command_line_is_refused_not_applied(tmp_path):
+    """THE defect: --threshold was a required float and whatever was typed was used."""
+    from rdl.cli.detector_v4_2_gate_bridge import load_operating_point
+
+    path = _operating_point(tmp_path)
+    with pytest.raises(typer.BadParameter, match="does not authorise"):
+        load_operating_point(
+            path,
+            bank_content_sha256="a" * 64,
+            model_artifact=tmp_path / "DETECTOR_V4_MODEL.json",
+            requested_threshold=0.30,
+        )
+    # The frozen value itself is accepted: passing it is a no-op, not an override.
+    point = load_operating_point(
+        path,
+        bank_content_sha256="a" * 64,
+        model_artifact=tmp_path / "DETECTOR_V4_MODEL.json",
+        requested_threshold=0.62,
+    )
+    assert point["selected_threshold"] == 0.62
+
+
+def test_an_operating_point_from_another_bank_or_model_is_refused(tmp_path):
+    from rdl.cli.detector_v4_2_gate_bridge import load_operating_point
+
+    path = _operating_point(tmp_path)
+    with pytest.raises(typer.BadParameter, match="does not authorise"):
+        load_operating_point(
+            path,
+            bank_content_sha256="b" * 64,
+            model_artifact=tmp_path / "DETECTOR_V4_MODEL.json",
+        )
+    with pytest.raises(typer.BadParameter, match="does not authorise"):
+        load_operating_point(
+            path,
+            bank_content_sha256="a" * 64,
+            model_artifact=tmp_path / "other" / "DETECTOR_V4_MODEL.json",
+        )
+
+
+def test_an_operating_point_frozen_on_other_weights_is_refused(tmp_path):
+    """The artifact path is not the checkpoint: a re-trained epoch reuses the path."""
+    from rdl.cli.detector_v4_2_gate_bridge import load_operating_point
+
+    path = _operating_point(
+        tmp_path,
+        selected_checkpoint="runs/detector_v4/seed20260814-checkpoint-epoch2",
+        selected_checkpoint_hashes={"files_sha256": {"model.safetensors": "a" * 64}},
+    )
+    with pytest.raises(typer.BadParameter, match="does not authorise"):
+        load_operating_point(
+            path,
+            bank_content_sha256="a" * 64,
+            model_artifact=tmp_path / "DETECTOR_V4_MODEL.json",
+            model_manifest={
+                "selected_checkpoint": "runs/detector_v4/seed20260814-checkpoint-epoch2",
+                "selected_checkpoint_hashes": {"files_sha256": {"model.safetensors": "b" * 64}},
+            },
+        )
+
+
+def test_an_operating_point_that_selected_nothing_cannot_open_a_gate(tmp_path):
+    from rdl.cli.detector_v4_2_gate_bridge import load_operating_point
+
+    path = _operating_point(tmp_path, selected_threshold=None)
+    with pytest.raises(typer.BadParameter, match="does not authorise"):
+        load_operating_point(
+            path,
+            bank_content_sha256="a" * 64,
+            model_artifact=tmp_path / "DETECTOR_V4_MODEL.json",
+        )
+
+
+# =====================================================================================
+# Retain rows are held out, not reused
+# =====================================================================================
+
+
+def test_a_bank_whose_retain_pool_was_never_split_is_refused(tmp_path):
+    """Schema v2's `retain.all` selected the threshold AND reported the retain FPR."""
+    from rdl.cli.detector_v4_2_banks import _load_bank_rows
+
+    payload = {
+        "partitions": {
+            "development": {"clean": [], "leaking": []},
+            "heldout": {"clean": [], "leaking": []},
+            "retain": {"all": [{"text": "t", "request": "q", "pair_sha256": "1" * 64}]},
+        }
+    }
+    with pytest.raises(typer.BadParameter, match="never held out"):
+        _load_bank_rows(payload)
+
+
+def test_retain_rows_carry_a_partition_and_their_population(tmp_path):
+    from rdl.cli.detector_v4_2_banks import _load_bank_rows
+
+    def row(i: int) -> dict:
+        return {"text": f"t{i}", "request": "q", "pair_sha256": f"{i:064x}"}
+
+    rows = _load_bank_rows(
+        {
+            "partitions": {
+                "development": {"clean": [row(1)], "leaking": [], "retain": [row(2)]},
+                "heldout": {"clean": [], "leaking": [row(3)], "retain": [row(4)]},
+            }
+        }
+    )
+    by_pair = {r["pair_sha256"]: r for r in rows}
+    assert by_pair[f"{2:064x}"]["partition"] == "development"
+    assert by_pair[f"{2:064x}"]["population"] == "retain"
+    assert by_pair[f"{4:064x}"]["partition"] == "heldout"
+    assert by_pair[f"{4:064x}"]["population"] == "retain"
+    # The protected axis is unchanged, and orthogonal to it.
+    assert by_pair[f"{3:064x}"]["nli_leaking"] is True
+    assert by_pair[f"{3:064x}"]["population"] == "protected"
+
+
+def test_the_selection_partition_and_the_gate_partition_share_no_row():
+    """The property the split exists for, stated over the two readers that use it."""
+    from rdl.cli.detector_v4_2_banks import _load_bank_rows
+    from rdl.cli.detector_v4_2_gate_bridge import labelled_rows_for_partition
+
+    rows = _load_bank_rows(
+        {
+            "partitions": {
+                "development": {
+                    "clean": [],
+                    "leaking": [],
+                    "retain": [{"text": "d", "request": "q", "pair_sha256": "1" * 64}],
+                },
+                "heldout": {
+                    "clean": [],
+                    "leaking": [],
+                    "retain": [{"text": "h", "request": "q", "pair_sha256": "2" * 64}],
+                },
+            }
+        }
+    )
+    by_pair = {str(r["pair_sha256"]): r for r in rows}
+    labels = {
+        "aaaa": {"pair_sha256": "1" * 64, "answer_attempt": None},
+        "bbbb": {"pair_sha256": "2" * 64, "answer_attempt": None},
+    }
+    development = labelled_rows_for_partition(
+        labels, by_pair, partition="development", concept_of={}
+    )
+    heldout = labelled_rows_for_partition(labels, by_pair, partition="heldout", concept_of={})
+    assert [r["text"] for r in development] == ["d"]
+    assert [r["text"] for r in heldout] == ["h"]
+    assert not {r["audit_id"] for r in development} & {r["audit_id"] for r in heldout}
 
 
 def test_the_final_bank_is_still_sealed_against_building():

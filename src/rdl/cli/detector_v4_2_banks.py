@@ -79,6 +79,9 @@ __all__ = [
 ]
 
 ENGINEERING_MANIFEST_FILENAME = "ENGINEERING_BANK_MANIFEST.json"
+# v3: the retain pool is halved into the two partitions instead of sitting in a third
+# block that both selected the threshold and reported the rate.
+BANK_SCHEMA = "graph-detector-v4-2-engineering-bank-v3"
 FINAL_BUDGET_FILENAME = "FINAL_GATE_BANK_BUDGET.json"
 BANK_FILENAME = {"engineering": "ENGINEERING_BANK.json", "final": "FINAL_GATE_BANK.json"}
 OPENING_RECORD_FILENAME = {
@@ -147,6 +150,24 @@ GENERATION_BUDGET: dict[str, object] = {
         "false-alarm evidence."
     ),
     "split_rule": "sha256(text || question)[:2] parity — content-addressed, before inspection",
+    # New in v4.2.2, and the fix for a number that was not held out. The retain pool was
+    # one undivided block: the threshold sweep read it to enforce the retain ceiling, and
+    # the gate then reported the retain FPR over the same rows. A rate measured on the rows
+    # that chose the threshold is a description of the choice. The retain rows are halved
+    # by the same content-addressed rule as the protected ones, and the two halves are
+    # separate partitions everywhere downstream.
+    "retain_split_rule": (
+        "the same sha256(text || question)[:2] parity as the protected rows. Retain rows "
+        "live inside `development` and `heldout` rather than in a third block, so 'the "
+        "held-out partition' means the same thing for both populations and no reader can "
+        "select on one and report on the other."
+    ),
+    "why_retain_is_split": (
+        "retain/all supplied the retain ceiling that constrained threshold selection AND "
+        "the retain FPR the gate reported. Those are the same rows, so the reported "
+        "false-alarm rate was fitted, not held out — and it is the number the utility "
+        "claim rests on."
+    ),
     "unlabelled_policy": (
         "texts with no cached scorer verdict are counted and are in neither pool. "
         "Treating them as clean would understate the false-alarm rate."
@@ -154,8 +175,12 @@ GENERATION_BUDGET: dict[str, object] = {
     "labelling_policy": (
         "the bank is NOT labelled row by row by the model judges. A ~24,000-row bank is "
         "~96,000 judge calls across two judges and two passes. A deterministic stratified "
-        "audit sample is frozen first by `rdl graph-detector-v4-2-bank-audit`, on "
-        "generation metadata only and never on a detector score."
+        "audit sample of 1,800 rows is frozen first by "
+        "`rdl graph-detector-v4-2-bank-audit`, per (partition, stratum) cell, on "
+        "generation metadata only and never on a detector score. The cell includes the "
+        "partition because the pre-registered minima are conditions on the held-out gate "
+        "population, and a bank-wide draw can meet every one of them while leaving the "
+        "held-out partition below all of them."
     ),
     "why_a_budget_is_part_of_the_freeze": (
         "seeds fix WHICH trajectories are drawn; the budget fixes HOW MANY. A bank whose "
@@ -270,7 +295,7 @@ def detector_v4_2_freeze_banks(
         )
 
     engineering = {
-        "schema": "graph-detector-v4-2-engineering-bank-manifest-v2",
+        "schema": "graph-detector-v4-2-engineering-bank-manifest-v3",
         "protocol": V4_2_PROTOCOL,
         "status": "PRE-REGISTERED, NOT YET GENERATED",
         "purpose": (
@@ -338,7 +363,7 @@ def detector_v4_2_freeze_banks(
     typer.echo(f"wrote {output_dir / ENGINEERING_MANIFEST_FILENAME}")
 
     budget = {
-        "schema": "graph-detector-v4-2-final-bank-budget-v2",
+        "schema": "graph-detector-v4-2-final-bank-budget-v3",
         "protocol": V4_2_PROTOCOL,
         "status": "PRE-REGISTERED, NOT YET GENERATED",
         "completes": str(final_manifest_path),
@@ -617,7 +642,7 @@ def detector_v4_2_build_bank(
     # Assembly reuses the v4 collector so the bank's row shape is identical to the one the
     # detector was developed against — a bank whose rows are built by a second code path
     # would make the comparison a comparison of collectors.
-    from .detector_v4_data import _collect, _halve, _question_bank
+    from .detector_v4_data import _collect, _question_bank
 
     questions, _answers, provenance = _question_bank(v4_1_dir.parent / "discovery.json")
 
@@ -662,8 +687,26 @@ def detector_v4_2_build_bank(
     leaking = [r for r in natural_rows if r["leaking"] is True]
     clean = [r for r in natural_rows if r["leaking"] is False]
     unlabelled = [r for r in natural_rows if r["leaking"] is None]
-    clean_dev, clean_gate = _halve(clean)
-    leak_dev, leak_gate = _halve(leaking)
+
+    def halve(subset: Sequence[Mapping]) -> tuple[list[dict], list[dict]]:
+        """Content-addressed halving on the PAIR digest, which is the declared split rule.
+
+        ``_halve`` splits on the text hash. The budget's ``split_rule`` says
+        ``sha256(text || question)``, and the two disagree for any text that appears under
+        more than one protected question — which is exactly what the pair digest exists to
+        keep apart. Splitting on the text alone would put the same text's two rows on the
+        same side and make the two halves correlated through it.
+        """
+        dev = [dict(r) for r in subset if int(str(r["pair_sha256"])[:2], 16) % 2 == 0]
+        gate = [dict(r) for r in subset if int(str(r["pair_sha256"])[:2], 16) % 2 == 1]
+        return dev, gate
+
+    clean_dev, clean_gate = halve(clean)
+    leak_dev, leak_gate = halve(leaking)
+    # The retain pool is halved by the SAME rule and lands inside the two partitions. It
+    # used to be one block that both selected the threshold and supplied the reported
+    # retain FPR, which made that FPR a description of the selection.
+    retain_dev, retain_gate = halve(retain_rows)
 
     def strip(subset: Sequence[Mapping]) -> list[dict]:
         return [
@@ -679,7 +722,7 @@ def detector_v4_2_build_bank(
         ]
 
     payload = {
-        "schema": "graph-detector-v4-2-engineering-bank-v2",
+        "schema": BANK_SCHEMA,
         "bank_id": "detector_v4_2_engineering_v1",
         "protocol": V4_2_PROTOCOL,
         "judge_population": "two_independent_llm_judges",
@@ -692,26 +735,28 @@ def detector_v4_2_build_bank(
             "development": {
                 "clean": strip(clean_dev),
                 "leaking": strip(leak_dev),
-                "usage": "threshold selection ONLY",
+                # Retain rows sit INSIDE the partition, keeping their own key so the
+                # retain denominator stays separate from the protected-clean one — two
+                # ceilings, two pools — while "development" means the same set of rows for
+                # both populations.
+                "retain": strip(retain_dev),
+                "usage": "threshold selection ONLY, protected and retain alike",
             },
             "heldout": {
                 "clean": strip(clean_gate),
                 "leaking": strip(leak_gate),
+                "retain": strip(retain_gate),
                 "usage": "opened once per frozen checkpoint+threshold, and recorded",
             },
-            # A separate partition, never halved into the other two. The retain
-            # false-alarm rate is its own gate and its own denominator; mixing retain rows
-            # into `clean` is what makes an aggregate FPR able to hide a retain failure.
-            "retain": {
-                "all": strip(retain_rows),
-                "usage": "the retain false-alarm denominator, in full, at every threshold",
-            },
             "split_rule": budget["split_rule"],
+            "retain_split_rule": budget["retain_split_rule"],
         },
         "counts": {
             "n_texts": len(rows),
             "n_natural": len(natural_rows),
             "n_retain": len(retain_rows),
+            "n_retain_development": len(retain_dev),
+            "n_retain_heldout": len(retain_gate),
             "n_leaking": len(leaking),
             "n_clean": len(clean),
             "n_unlabelled": len(unlabelled),
@@ -734,7 +779,8 @@ def detector_v4_2_build_bank(
     typer.echo(
         f"wrote {output_dir / BANK_FILENAME[bank]}  "
         f"(natural {len(natural_rows)}: leaking {len(leaking)}, clean {len(clean)}; "
-        f"retain {len(retain_rows)}; dropped {n_duplicates} duplicate pairs)"
+        f"retain {len(retain_rows)} = {len(retain_dev)} development + {len(retain_gate)} "
+        f"heldout; dropped {n_duplicates} duplicate pairs)"
     )
     typer.echo("")
     typer.echo(
@@ -746,16 +792,40 @@ def detector_v4_2_build_bank(
 
 
 def _load_bank_rows(payload: Mapping) -> list[dict]:
-    """Every row of a bank, flattened, carrying its partition and population."""
-    out: list[dict] = []
+    """Every row of a bank, flattened, carrying its partition and population.
+
+    Two axes, deliberately orthogonal: ``partition`` is development/held-out and
+    ``population`` is protected/retain. A v2 bank encoded the retain rows as a *third
+    partition*, which is what let one undivided retain pool both constrain the threshold
+    and supply the reported retain FPR. Such a bank is refused rather than reinterpreted:
+    guessing which of its retain rows were "held out" would invent the split it never had.
+    """
     partitions = payload.get("partitions", {})
+    legacy = partitions.get("retain")
+    if isinstance(legacy, Mapping) and "all" in legacy:
+        raise typer.BadParameter(
+            "this bank carries one undivided `partitions.retain.all` block (schema v2). "
+            "Its retain rows chose the threshold and then reported the retain false-alarm "
+            "rate, so that rate was never held out. Rebuild it with "
+            "`rdl graph-detector-v4-2-build-bank`, which halves the retain pool by the "
+            "same content-addressed rule as the protected rows. The split cannot be "
+            "applied retroactively here without inventing which half was which."
+        )
+    out: list[dict] = []
     for partition in ("development", "heldout"):
         block = partitions.get(partition, {})
-        for key in ("clean", "leaking"):
+        for key, leaking in (("clean", False), ("leaking", True), ("retain", None)):
             for row in block.get(key, ()):
-                out.append({**row, "partition": partition, "nli_leaking": key == "leaking"})
-    for row in partitions.get("retain", {}).get("all", ()):
-        out.append({**row, "partition": "retain", "nli_leaking": None})
+                out.append(
+                    {
+                        **row,
+                        "partition": partition,
+                        "population": row.get(
+                            "population", "retain" if key == "retain" else "protected"
+                        ),
+                        "nli_leaking": leaking,
+                    }
+                )
     return out
 
 
@@ -764,13 +834,29 @@ def detector_v4_2_final_gate(
     bank_dir: Path = typer.Option(DEFAULT_V4_2_OUT, "--bank-dir"),
     labels: Path = typer.Option(..., "--labels", help="the adjudicated bank-audit labels, JSONL"),
     model_artifact: Path = typer.Option(..., "--model-artifact"),
-    threshold: float = typer.Option(..., "--threshold", help="frozen BEFORE this runs"),
+    operating_point: Path | None = typer.Option(
+        None,
+        "--operating-point",
+        help="DETECTOR_V4_2_OPERATING_POINT.json. The threshold comes from here.",
+    ),
+    threshold: float | None = typer.Option(
+        None,
+        "--threshold",
+        help="refused unless it equals the frozen operating point. Kept only so that "
+        "passing one is an error rather than an override.",
+    ),
+    audit_manifest: Path | None = typer.Option(
+        None, "--audit-manifest", help="BANK_AUDIT_MANIFEST.json for this bank"
+    ),
+    alignment_report: Path | None = typer.Option(
+        None, "--alignment-report", help="the passing model-label alignment report"
+    ),
     policy_cohort: Path = typer.Option(
         Path("data/cohorts/graph_unlearning_v1/discovery.json"), "--policy-cohort"
     ),
     backend: str = typer.Option("cross_encoder", "--backend"),
     device: str = typer.Option("", "--device"),
-    partition: str = typer.Option("heldout", "--partition", help="heldout | development | all"),
+    partition: str = typer.Option("heldout", "--partition", help="heldout | development"),
     output_dir: Path = typer.Option(DEFAULT_V4_2_OUT, "--output-dir"),
     reopen: bool = typer.Option(
         False,
@@ -778,7 +864,7 @@ def detector_v4_2_final_gate(
         help="engineering bank only; records that the bank is now development data",
     ),
 ) -> None:
-    """Score a bank once, at a frozen threshold, and record that it was opened.
+    """Score a bank once, at the FROZEN threshold, and record that it was opened.
 
     This command *scores*. The first version only wrote an opening record and printed the
     name of another command to run, which meant the bank could be marked opened while
@@ -787,23 +873,45 @@ def detector_v4_2_final_gate(
     audit, not this bank at all. A gate that does not read the surface it gates is not a
     gate.
 
+    Four things must hold before anything is scored, and none of them held before:
+
+    * the labels came from an audit of THIS bank that met its pre-registered minima;
+    * an alignment report over those labels PASSED, with zero unresolved disagreements and
+      zero provenance failures, and vouches for this exact label file by hash;
+    * no ``audit_id`` and no bank pair is labelled twice;
+    * the threshold is the one frozen in ``DETECTOR_V4_2_OPERATING_POINT.json`` by
+      ``select-operating-point`` on the DEVELOPMENT partition — not a float typed here.
+
     The opening record is the enforcement of "once". Without it, that phrase is a sentence
     in a protocol that nothing checks, and the second open — the one after a disappointing
     first — is the one that would never be mentioned.
     """
-    from ..defenses.concept_registry import ConceptPolicy, ConceptRegistry
-    from ..defenses.identity_router import alias_index
     from ..eval.detector_v4_1 import (
         goal_a_gate_inputs,
         goal_a_summarise,
         score_goal_a,
     )
-    from .detector_v4_gates import _natural_scores, _protected_questions, build_backend
+    from .detector_v4_2_gate_bridge import (
+        ALIGNMENT_REPORT_FILENAME,
+        BANK_AUDIT_MANIFEST_FILENAME,
+        OPERATING_POINT_FILENAME,
+        bind_labels_to_bank,
+        concept_index,
+        labelled_rows_for_partition,
+        load_label_map,
+        load_operating_point,
+        require_audit_gate,
+        score_with_backend,
+    )
 
     if bank not in BANK_FILENAME:
         raise typer.BadParameter(f"--bank must be engineering or final, got {bank!r}")
-    if partition not in ("heldout", "development", "all"):
-        raise typer.BadParameter(f"--partition must be heldout|development|all, got {partition!r}")
+    if partition not in ("heldout", "development"):
+        raise typer.BadParameter(
+            f"--partition must be heldout or development, got {partition!r}. There is no "
+            "`all`: pooling the partition the threshold was chosen on with the one it is "
+            "reported on produces a number that is neither."
+        )
     bank_path = bank_dir / BANK_FILENAME[bank]
     if not bank_path.exists():
         raise typer.BadParameter(
@@ -846,123 +954,58 @@ def detector_v4_2_final_gate(
             f"{model_artifact} records no selected_checkpoint. A gate opened against an "
             "unselected checkpoint is a gate against whatever was on disk."
         )
-
-    # ---------------------------------------------------------------- the labels --
-    label_rows = {
-        str(r.get("audit_id", "")): r
-        for r in (
-            json.loads(line)
-            for line in labels.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        )
-    }
-    bank_rows = _load_bank_rows(payload)
-    by_pair = {str(r.get("pair_sha256") or r.get("text_sha256")): r for r in bank_rows}
-
-    # The labels must belong to THIS bank. A label file keyed to another bank's rows would
-    # score this checkpoint against a surface it may already have been developed on.
-    unmatched = [
-        audit_id
-        for audit_id, row in label_rows.items()
-        if str(row.get("pair_sha256") or row.get("text_sha256")) not in by_pair
-    ]
-    if unmatched:
+    if model_manifest.get("reportable") is False:
         raise typer.BadParameter(
-            f"{len(unmatched)} label row(s) name content this bank does not contain "
-            f"(e.g. {unmatched[:3]}). These labels were produced for a different bank. "
-            "Gating a new bank on an old bank's labels is the failure this check exists "
-            "for: every number would describe the old surface."
-        )
-    declared_bank = {
-        str(r.get("bank_content_sha256"))
-        for r in label_rows.values()
-        if r.get("bank_content_sha256")
-    }
-    if declared_bank and declared_bank != {str(payload.get("content_sha256"))}:
-        raise typer.BadParameter(
-            f"{labels} was produced against bank content {sorted(declared_bank)} and this "
-            f"bank hashes to {payload.get('content_sha256')}. The bank moved after the "
-            "audit; the labels describe rows that are no longer these rows."
+            f"{model_artifact} records reportable=false — the training run left the "
+            "preregistration (see its `preregistration.deviations`). Opening a gate at "
+            "its checkpoint would produce numbers nothing may report."
         )
 
-    wanted_partitions = (
-        {"heldout", "retain"}
-        if partition == "heldout"
-        else (
-            {"development", "retain"}
-            if partition == "development"
-            else {"development", "heldout", "retain"}
-        )
+    # --------------------------------------------------- the labels, and their gate --
+    gate_record = require_audit_gate(
+        audit_manifest=audit_manifest or (bank_dir / BANK_AUDIT_MANIFEST_FILENAME),
+        alignment_report=alignment_report or (output_dir / ALIGNMENT_REPORT_FILENAME),
+        labels=labels,
+        bank_payload=payload,
     )
+    label_rows = load_label_map(labels)
+    bank_rows = _load_bank_rows(payload)
+    by_pair = bind_labels_to_bank(label_rows, bank_rows, payload, labels_path=labels)
 
-    from ..studies.graph_leak.cohort import load_cohort
+    # --------------------------------------------------------- the frozen threshold --
+    point = load_operating_point(
+        operating_point or (output_dir / OPERATING_POINT_FILENAME),
+        bank_content_sha256=str(payload.get("content_sha256")),
+        model_artifact=model_artifact,
+        requested_threshold=threshold,
+        model_manifest=model_manifest,
+    )
+    frozen_threshold = float(point["selected_threshold"])
 
-    cohort = load_cohort(policy_cohort, exclusions_path=None)
-    concept_of = {e.item_id: e.concept_id for e in cohort.items}
-
-    scored_rows: list[dict] = []
-    for audit_id, label in sorted(label_rows.items()):
-        source = by_pair[str(label.get("pair_sha256") or label.get("text_sha256"))]
-        if source["partition"] not in wanted_partitions:
-            continue
-        if label.get("answer_attempt") is None and source["partition"] != "retain":
-            continue
-        scored_rows.append(
-            {
-                "audit_id": audit_id,
-                "request": source["request"],
-                "text": source["text"],
-                "item_id": source["item_id"],
-                "concept_id": concept_of.get(str(source.get("item_id", "")), ""),
-                "population": source.get("population", "protected"),
-                "partition": source["partition"],
-                "nli_leaking": source.get("nli_leaking"),
-                "answer_attempt": label.get("answer_attempt"),
-                "reference_content": label.get("reference_content"),
-                "question_type": label.get("question_type"),
-            }
-        )
+    scored_rows = labelled_rows_for_partition(
+        label_rows,
+        by_pair,
+        partition=partition,
+        concept_of=concept_index(policy_cohort),
+    )
     if not scored_rows:
         raise typer.BadParameter(
             f"no labelled rows fall in partition {partition!r}. Nothing to score."
         )
 
-    registry = ConceptRegistry.from_questions(
-        [
-            {"item_id": e.item_id, "concept_id": e.concept_id, "question": q}
-            for e, q in (
-                (e, next((r["request"] for r in scored_rows if r["item_id"] == e.item_id), ""))
-                for e in cohort.items
-            )
-            if q
-        ],
-        policy=ConceptPolicy(),
+    predictions, compute = score_with_backend(
+        scored_rows,
+        backend=backend,
+        model_artifact=model_artifact if backend == "cross_encoder" else None,
+        device=device,
+        policy_cohort=policy_cohort,
     )
-    questions_by_concept: dict[str, list[str]] = {}
-    for row in scored_rows:
-        concept = row["concept_id"]
-        if concept:
-            questions_by_concept.setdefault(concept, []).append(row["request"])
-    protected_questions = _protected_questions(registry, questions_by_concept)
-    index = alias_index(registry)
-
-    detector = build_backend(
-        backend, model_artifact if backend == "cross_encoder" else None, device=device
-    )
-    parameter_device = str(detector.to_dict().get("device_of_parameters") or "unknown")
-    if device.startswith("cuda") and not parameter_device.startswith("cuda"):
-        raise typer.BadParameter(
-            f"--device {device} was requested but the model's parameters are on "
-            f"{parameter_device!r}. Refusing to open the bank: the record would assert a "
-            "GPU that never ran."
-        )
-
-    predictions = _natural_scores(scored_rows, detector, protected_questions, index)
-    summary = goal_a_summarise(scored_rows, predictions, threshold=threshold)
+    summary = goal_a_summarise(scored_rows, predictions, threshold=frozen_threshold)
     gate = score_goal_a(goal_a_gate_inputs(summary))
+    parameter_device = str(compute["device_of_parameters"])
 
     result = {
-        "schema": "graph-detector-v4-2-bank-gate-result-v1",
+        "schema": "graph-detector-v4-2-bank-gate-result-v2",
         "protocol": V4_2_PROTOCOL,
         "bank": bank,
         "bank_path": str(bank_path),
@@ -970,19 +1013,25 @@ def detector_v4_2_final_gate(
         "labels_file": str(labels),
         "labels_sha256": _sha_file(labels),
         "partition": partition,
-        "threshold": threshold,
+        "threshold": frozen_threshold,
         "threshold_frozen_before_opening": True,
+        "threshold_source": str(operating_point or (output_dir / OPERATING_POINT_FILENAME)),
+        "threshold_selected_on": point.get("partition_selected_on"),
+        "operating_point_utc": point.get("utc"),
+        "label_gate": gate_record,
         "backend": backend,
         "model_artifact": str(model_artifact),
         "selected_checkpoint": model_manifest.get("selected_checkpoint"),
         "checkpoint_hashes": model_manifest.get("selected_checkpoint_hashes"),
+        "checkpoint_hashes_verified_at_load": compute["checkpoint_hashes_verified"],
         "device_requested": device or None,
         "device_of_parameters": parameter_device,
-        "gpu_used": parameter_device.startswith("cuda"),
+        "gpu_used": compute["gpu_used"],
+        "compute": compute,
         "n_rows_scored": len(scored_rows),
-        "n_rows_by_partition": {
-            name: sum(1 for r in scored_rows if r["partition"] == name)
-            for name in sorted({r["partition"] for r in scored_rows})
+        "n_rows_by_population": {
+            name: sum(1 for r in scored_rows if r["population"] == name)
+            for name in sorted({r["population"] for r in scored_rows})
         },
         "summary": summary,
         "judge_population": "two_independent_llm_judges",
@@ -994,14 +1043,16 @@ def detector_v4_2_final_gate(
     atomic_json(output_dir / GATE_RESULT_FILENAME[bank], result)
 
     record = {
-        "schema": "graph-detector-v4-2-bank-opening-record-v2",
+        "schema": "graph-detector-v4-2-bank-opening-record-v3",
         "protocol": V4_2_PROTOCOL,
         "bank": bank,
         "bank_path": str(bank_path),
         "bank_content_sha256": payload.get("content_sha256"),
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "threshold": threshold,
+        "threshold": frozen_threshold,
         "threshold_frozen_before_opening": True,
+        "threshold_source": result["threshold_source"],
+        "label_gate": gate_record,
         "partition": partition,
         "labels_file": str(labels),
         "labels_sha256": result["labels_sha256"],

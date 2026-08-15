@@ -534,10 +534,16 @@ def _bank_row(i: int, *, population="protected", nli_leaking=False, partition="h
     }
 
 
+def _plan(**by_stratum: int) -> dict[str, dict[str, int]]:
+    """The same cell counts in both partitions, for tests that are not about the split."""
+    cells = {"protected_likely_answer": 0, "protected_clean": 0, "retain": 0, **by_stratum}
+    return {"development": dict(cells), "heldout": dict(cells)}
+
+
 def test_the_stratum_comes_from_generation_metadata_only():
     assert assign_stratum(_bank_row(0, nli_leaking=True)) == "protected_likely_answer"
     assert assign_stratum(_bank_row(0, nli_leaking=False)) == "protected_clean"
-    assert assign_stratum(_bank_row(0, population="retain", partition="retain")) == "retain"
+    assert assign_stratum(_bank_row(0, population="retain")) == "retain"
     # An unlabelled protected row is in NEITHER protected stratum.
     assert assign_stratum(_bank_row(0, nli_leaking=None)) is None
 
@@ -548,36 +554,75 @@ def test_the_draw_is_deterministic_and_independent_of_row_order():
             i,
             nli_leaking=i % 3 == 0,
             population="retain" if i % 5 == 0 else "protected",
-            partition="retain" if i % 5 == 0 else "heldout",
+            partition="development" if i % 2 == 0 else "heldout",
         )
         for i in range(200)
     ]
-    plan = {"protected_likely_answer": 10, "protected_clean": 20, "retain": 15}
+    plan = _plan(protected_likely_answer=5, protected_clean=10, retain=5)
     first, _ = draw_sample(rows, bank_id="bank-x", plan=plan)
     second, _ = draw_sample(list(reversed(rows)), bank_id="bank-x", plan=plan)
-    for stratum in plan:
-        assert [r["pair_sha256"] for r in first[stratum]] == [
-            r["pair_sha256"] for r in second[stratum]
-        ]
+    for partition, cells in plan.items():
+        for stratum in cells:
+            assert [r["pair_sha256"] for r in first[partition][stratum]] == [
+                r["pair_sha256"] for r in second[partition][stratum]
+            ]
 
 
 def test_a_different_bank_draws_a_different_sample():
     rows = [_bank_row(i, nli_leaking=False) for i in range(100)]
-    plan = {"protected_likely_answer": 0, "protected_clean": 10, "retain": 0}
+    plan = _plan(protected_clean=10)
     a, _ = draw_sample(rows, bank_id="bank-a", plan=plan)
     b, _ = draw_sample(rows, bank_id="bank-b", plan=plan)
-    assert [r["pair_sha256"] for r in a["protected_clean"]] != [
-        r["pair_sha256"] for r in b["protected_clean"]
+    assert [r["pair_sha256"] for r in a["heldout"]["protected_clean"]] != [
+        r["pair_sha256"] for r in b["heldout"]["protected_clean"]
     ]
 
 
-def test_a_short_stratum_is_reported_rather_than_quietly_filled():
+def test_a_short_cell_is_reported_rather_than_quietly_filled():
     rows = [_bank_row(i, nli_leaking=False) for i in range(5)]
-    plan = {"protected_likely_answer": 10, "protected_clean": 10, "retain": 10}
+    plan = _plan(protected_likely_answer=10, protected_clean=10, retain=10)
     drawn, shortfalls = draw_sample(rows, bank_id="bank-x", plan=plan)
-    assert len(drawn["protected_clean"]) == 5
-    assert shortfalls["protected_clean"] == 5
-    assert shortfalls["retain"] == 10
+    assert len(drawn["heldout"]["protected_clean"]) == 5
+    assert shortfalls["heldout/protected_clean"] == 5
+    assert shortfalls["heldout/retain"] == 10
+
+
+def test_the_draw_is_per_partition_so_a_starved_heldout_cell_cannot_hide():
+    """THE defect: minima checked bank-wide, before the filter that decides the gate rows.
+
+    400 retain rows in the bank, 390 of them in development. A per-stratum draw of 400 is
+    satisfied and reports no shortfall, while the held-out partition — the one the gate's
+    retain false-alarm rate is computed on — has ten.
+    """
+    rows = [
+        _bank_row(i, population="retain", partition="development" if i < 390 else "heldout")
+        for i in range(400)
+    ]
+    drawn, shortfalls = draw_sample(rows, bank_id="bank-x", plan=_plan(retain=200))
+    assert len(drawn["development"]["retain"]) == 200
+    assert len(drawn["heldout"]["retain"]) == 10
+    assert shortfalls["heldout/retain"] == 190, shortfalls
+    assert "development/retain" not in shortfalls
+
+
+def test_a_cell_below_its_minimum_is_a_failure_even_when_the_plan_is_short():
+    from rdl.cli.detector_v4_2_bank_audit import check_minima
+
+    drawn = {
+        "development": {
+            "protected_likely_answer": [1] * 80,
+            "protected_clean": [1] * 200,
+            "retain": [1] * 200,
+        },
+        "heldout": {
+            "protected_likely_answer": [1] * 300,
+            "protected_clean": [1] * 500,
+            "retain": [1] * 40,
+        },
+    }
+    failures = check_minima(drawn)
+    assert any("heldout/retain" in f for f in failures), failures
+    assert not any("development" in f for f in failures), failures
 
 
 # =====================================================================================

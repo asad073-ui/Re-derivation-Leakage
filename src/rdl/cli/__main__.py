@@ -18,6 +18,7 @@ from .detector_v4_2_banks import (
     detector_v4_2_freeze_banks,
 )
 from .detector_v4_2_llm_judge import detector_v4_2_llm_judge
+from .detector_v4_2_operating_point import detector_v4_2_select_operating_point
 from .detector_v4_2_plan import detector_v4_2_judge_plan
 from .detector_v4_2_report import detector_v4_2_label_report
 from .detector_v4_data import detector_v4_build_data
@@ -124,10 +125,16 @@ app.command("graph-detector-v4-2-label-report")(detector_v4_2_label_report)
 #   freeze-banks  the engineering bank's manifest, and the budget the final one lacks
 #   build-bank    assemble a bank, REFUSING runs that do not match the pre-registration
 #   bank-audit    freeze a stratified audit sample of a bank and write the judge inputs
-#   final-gate    SCORE a bank once, at a frozen threshold, and record that it was opened
+#   select-operating-point
+#                 choose the threshold on the DEVELOPMENT partition and freeze it. The
+#                 threshold used to be a `--threshold` float on the gate, which is the
+#                 protocol's one number supplied by whoever ran the command.
+#   final-gate    SCORE a bank once, at that frozen threshold, and record that it was
+#                 opened. Refuses labels that never passed the judge gate.
 app.command("graph-detector-v4-2-freeze-banks")(detector_v4_2_freeze_banks)
 app.command("graph-detector-v4-2-build-bank")(detector_v4_2_build_bank)
 app.command("graph-detector-v4-2-bank-audit")(detector_v4_2_bank_audit)
+app.command("graph-detector-v4-2-select-operating-point")(detector_v4_2_select_operating_point)
 app.command("graph-detector-v4-2-final-gate")(detector_v4_2_final_gate)
 
 

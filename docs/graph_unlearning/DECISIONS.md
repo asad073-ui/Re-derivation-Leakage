@@ -1480,3 +1480,144 @@ final gate bank is still sealed. No engineering bank has been generated, because
 one needs the GPU. Two model judges agreeing remains consistency evidence and not
 correctness, and the human validation of §10 is deferred, not cancelled.
 
+
+---
+
+## GU-0040 — v4.2.2: the gate bridge — labels a gate could not read, and a threshold nobody chose
+
+**Status:** accepted. CPU only. No model trained, no GPU used, no bank generated, no frozen
+v1/v2/v3/v4/v4.1 artifact modified, and the final gate bank is still sealed.
+
+v4.2.1 fixed twelve defects inside individual commands. This entry fixes the gaps *between*
+them: the v4.2 pipeline produced labels the GPU gate could not read, under filenames the
+report could not open, keyed by a hash the bank could not match, at a threshold supplied on
+the command line. Each gap was filled by a default, and every default was plausible enough
+that the resulting artifact looked like a measurement.
+
+### The GPU gate could not see the audit the whole pipeline produces
+
+`rdl graph-detector-v4-gates` read `LABEL_AUDIT_ADJUDICATED.jsonl` — the **v4.1 human**
+audit — and nothing else. A completed v4.2 model-judge audit left the Goal A arm reporting
+`measured: false`, and the only way forward was to copy model labels into the human audit's
+filename, which is exactly the artifact confusion E4 forbids. The gate now takes
+`--label-source auto|human|model`, resolves whichever adjudication exists, and records the
+authority in the artifact: `judge_population`, `human_grounded`, `publication_label_valid`,
+and the report's own κ. The human audit wins when both exist — the stronger authority, not
+the more recent file — and a label report that did not clear its own gate blocks the arm
+rather than being scored over.
+
+### The report and the bank audit did not share filenames
+
+`bank-audit` writes `BANK_AUDIT_KEY.json` and `BANK_AUDIT_JUDGE_{A,B}.jsonl`;
+`label-report` opened `LABEL_AUDIT_KEY.json` and `LABEL_AUDIT_JUDGE_{A,B}.jsonl`. Pointed at
+the bank audit it reported the key absent; pointed at the v4.1 directory it produced a
+complete, passing report about the 1,019-row **training** audit under an invocation whose
+purpose was the fresh bank. Every audit now writes a `bundle` block naming its own files,
+and `--audit-manifest` is how a consumer says which audit it is reading. The v4.1 layout
+remains resolvable as one named legacy case.
+
+### The adjudicated labels could not be bound to a bank
+
+They carried `text_sha256` alone. The bank is keyed by `pair_sha256 = sha256(text ||
+question)`, because one candidate text legitimately appears under two protected questions —
+so matching on the text hash matches the wrong row or no row. `V4_2_ADJUDICATED.jsonl` now
+carries `pair_sha256`, `bank_content_sha256`, `text_sha256` and the stratum, and the report
+records the label file's own hash so a gate can check that the file it was handed is the one
+the audit passed on.
+
+### The final gate accepted labels that had never passed the judge gate
+
+`--labels` was checked for membership in the bank and nothing else. A κ of 0.2, four
+unresolved disagreements and a five-row smoke pass would all have sailed through. The gate
+now requires the bank audit manifest (reportable, drawn from this bank's content hash, not
+drawn on a detector score) and a passing alignment report (zero unresolved, zero provenance
+failures, `human_grounded: false` unedited) that vouches for the label file by hash.
+
+### One row could be labelled twice
+
+The label map was a dict comprehension keyed by `audit_id`: a duplicated row, or two
+`audit_id`s naming one bank pair, silently kept whichever came last. Both are refused, along
+with a label row carrying no pair digest at all.
+
+### The threshold was an argument
+
+`final-gate --threshold 0.42`. The one number the protocol is organised around — chosen on
+development, frozen, used once — was whatever the operator typed, and a second attempt at a
+different value left nothing behind. `rdl graph-detector-v4-2-select-operating-point` now
+sweeps the **development partition only**, applies the frozen rule, and writes
+`DETECTOR_V4_2_OPERATING_POINT.json` bound to the bank's content hash and the model
+artifact. `final-gate` reads that file; `--threshold` survives only so that passing a
+different value is an error rather than an override. Re-freezing after the bank has been
+opened is refused.
+
+### The retain false-alarm rate was not held out
+
+`partitions.retain.all` was one undivided block. The sweep read it to enforce the retain
+ceiling and the gate then reported the retain FPR over the same rows — a rate fitted rather
+than held out, and it is the number the utility claim rests on. Retain rows are now halved by
+the same content-addressed rule as the protected ones and live *inside* `development` and
+`heldout`. Bank schema v3; a v2 bank is refused rather than reinterpreted, because guessing
+which of its retain rows were "held out" would invent the split it never had. The protected
+halving also moved onto the pair digest, which is what the budget's `split_rule` always said.
+
+### The audit minima were checked before the partition filter
+
+The plan drew 300/500/400 across the whole bank and checked the pre-registered minima
+against that draw. The minima are conditions on the **held-out gate population**, so a draw
+satisfying every one of them could leave the held-out partition with forty retain rows. The
+sampling cell is now `(partition, stratum)`: 150/250/200 in development and 300/500/400 in
+held-out, with per-cell minima checked on the drawn rows.
+
+### Checkpoint hashes were recorded and never verified
+
+`DETECTOR_V4_MODEL.json` carried `selected_checkpoint_hashes` and every loader then opened
+the directory by path. `rdl.defenses.checkpoint_digest` is now the one implementation, shared
+by the trainer that writes them and `from_artifact` which re-computes them **before**
+`transformers` is imported and refuses a mismatch. There is no bypass flag: a verification
+with an escape hatch is a verification nobody runs. A manifest recording no hashes is refused
+for the same reason — "never hashed" must not read the same as "matches". The trainer also
+re-hashes the selected checkpoint from disk after training rather than echoing what it
+computed at save time.
+
+### The accumulation tail was still under-scaled
+
+v4.1 discarded the epoch's final partial accumulation. v4.2.1 stopped discarding it and
+still divided it by the full accumulation factor, so one optimizer step per epoch ran on a
+gradient scaled to half — or a third — of every other step's. Each batch's loss is now
+divided by the size of *its own* window, and `accumulation_windows()` is a pure function so
+the arithmetic is testable without a GPU, which is why both versions of the bug survived.
+
+### "Preregistered" training settings were defaults
+
+`--seeds`, `--epochs` and the model pins were flags whose defaults happened to be the
+preregistered values. A run with other seeds wrote a manifest recording them beside a
+selection rule describing the preregistered ones. They are enforced for reportable runs;
+`--non-reportable` does not skip the check, it marks the run, and both
+`select-operating-point` and `final-gate` refuse a checkpoint from a manifest with
+`reportable: false`. Every `--extra-train` file is hashed whether or not the run is
+reportable, and a reportable run must declare them.
+
+### The provider cost plan was wrong in the cheap direction
+
+The repository priced both judges at 0.0 "by rate and not by omission". That is true of
+Groq's free plan and false of Gemini: Google's pricing page lists **no free tier** for
+`gemini-3.7-flash`, which bills $0.375/M input and $1.875/M output through 2026-12-31. Groq
+lists GPT-OSS-120B at $0.15/$0.60, not the $0.75 output the repository estimated, with free
+limits of 30 RPM / 1,000 RPD / 200,000 TPD. `price_of()` reads the plan and the rate
+separately; the planner reports what the audit bills, what it would cost at list rate, and
+what skipping the free-plan wait costs.
+
+For the current 1,019-row audit that is **$1.04 on Gemini, $0.00 on Groq's free plan across
+nine days of its 200k/day token ceiling, or $1.42 total to skip the wait** — and the budget
+line is twice the estimate. Quota figures are now marked as plan documentation rather than
+as facts about this account, and the runner records the provider's own `x-ratelimit-*`
+response headers into the run manifest as `observed_rate_limits`, which is the
+account-verified number.
+
+### What is still not true
+
+`publication_label_valid` is still `false` and there is still no argument that sets it. The
+final gate bank is still sealed, no engineering bank has been generated, and no model has
+been trained. `GraphDetectorConfig` still permits only `hashing64` and `arms.py` still
+constructs `SemanticConceptDetector`, so the v4 detector cannot run inside GraphForget: the
+runtime integration is a separate PR that follows the detector's own gate, not this one.

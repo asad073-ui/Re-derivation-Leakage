@@ -240,12 +240,19 @@ def test_the_gate_command_cannot_overwrite_the_frozen_v4_artifact(tmp_path):
 
 
 def test_the_gate_command_blocks_until_goal_a_labels_exist(tmp_path):
-    """ "We did not measure it" and "it was fine" must not exit the same way."""
-    from rdl.cli.detector_v4_gates import _goal_a_arm, build_backend
+    """ "We did not measure it" and "it was fine" must not exit the same way.
 
-    arm = _goal_a_arm(tmp_path, build_backend("lexical", None), [], {})
+    The authority is resolved first and comes back empty here — neither the v4.1 human
+    adjudication nor the v4.2 model one exists in an empty directory — and an arm with no
+    label source blocks rather than falling back to the NLI label.
+    """
+    from rdl.cli.detector_v4_gates import _goal_a_arm, build_backend, resolve_label_authority
+
+    authority = resolve_label_authority(tmp_path, tmp_path, "auto")
+    assert authority["label_source"] is None
+    arm = _goal_a_arm(tmp_path, build_backend("lexical", None), [], {}, authority=authority)
     assert arm["measured"] is False
-    assert "label audit has not produced" in arm["reason"]
+    assert "no adjudicated label file exists" in arm["reason"]
     assert "wrong answer attempt" in arm["why_this_blocks"]
 
 

@@ -6,6 +6,23 @@ Writes ``DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json``. **Not**
 the v4.1 path would leave an artifact whose schema says "human judges" and whose contents
 are two LLMs, and every downstream reader would inherit the mistake.
 
+Which audit is being reported on
+--------------------------------
+``--audit-manifest BANK_AUDIT_MANIFEST.json`` names it. Without that, the reader resolved
+the **v4.1 human audit's** filenames — ``LABEL_AUDIT_KEY.json``,
+``LABEL_AUDIT_JUDGE_{A,B}.jsonl`` — which are not the files
+``rdl graph-detector-v4-2-bank-audit`` writes. Pointed at a bank audit it reported the key
+absent; pointed at the v4.1 directory it produced a complete, passing report about the
+1,019-row *training* audit under an invocation whose purpose was the fresh bank. The v4.1
+layout is still resolvable from ``--audit-dir`` alone, as one named legacy case.
+
+The adjudicated file carries every identifier a gate binds on
+------------------------------------------------------------
+``pair_sha256`` (the bank is keyed by ``sha256(text || question)``, not by the text hash),
+``bank_content_sha256``, ``text_sha256`` and the stratum. The report also records its own
+output's hash, so ``final-gate`` can check that the label file it was handed is the one this
+report passed on rather than one edited afterwards.
+
 Four manifests, or no report
 ----------------------------
 The report requires all four run manifests — A/blind, B/blind, A/reference, B/reference —
@@ -57,9 +74,9 @@ from ..eval.detector_v4_2 import (
 )
 from ..studies.graph_leak.evidence import atomic_json
 from .detector_v4_1_freeze import DEFAULT_V4_1_OUT
+from .detector_v4_2_bundle import load_bundle
 from .detector_v4_2_llm_judge import (
     DEFAULT_V4_2_OUT,
-    INPUT_FILENAME,
     OUTPUT_FILENAME,
     RUN_FILENAME,
     _file_sha256,
@@ -67,7 +84,6 @@ from .detector_v4_2_llm_judge import (
     _rows_sha256,
     _write_jsonl,
 )
-from .detector_v4_label_audit import KEY_FILENAME
 
 __all__ = ["detector_v4_2_label_report"]
 
@@ -220,6 +236,15 @@ def verify_run(
 def detector_v4_2_label_report(
     judge_dir: Path = typer.Option(DEFAULT_V4_2_OUT, "--judge-dir"),
     audit_dir: Path = typer.Option(DEFAULT_V4_1_OUT, "--audit-dir"),
+    audit_manifest: Path | None = typer.Option(
+        None,
+        "--audit-manifest",
+        help=(
+            "BANK_AUDIT_MANIFEST.json. Required to report on a BANK audit: its files are "
+            "named BANK_AUDIT_*, and --audit-dir alone resolves the v4.1 LABEL_AUDIT_* "
+            "names, which are a different audit over different rows."
+        ),
+    ),
     output_dir: Path = typer.Option(DEFAULT_V4_2_OUT, "--output-dir"),
     adjudication: Path | None = typer.Option(
         None, "--adjudication", help="the resolved disagreement file(s), JSONL"
@@ -227,10 +252,17 @@ def detector_v4_2_label_report(
     require_reference_pass: bool = typer.Option(True, "--require-reference-pass/--blind-pass-only"),
 ) -> None:
     """Adjudicate the two model judges and write the v4.2 model-label report."""
-    key_path = audit_dir / KEY_FILENAME
-    if not key_path.exists():
-        raise typer.BadParameter(f"{key_path} is absent; run `rdl graph-detector-v4-label-audit`")
-    key = json.loads(key_path.read_text(encoding="utf-8")).get("rows", {})
+    # Which audit is being reported on, named rather than assumed. Pointed at a bank
+    # audit's directory with no manifest, the previous version reported that
+    # LABEL_AUDIT_KEY.json was absent; pointed at the v4.1 directory, it silently reported
+    # on the 1,019-row training audit under a header about the fresh bank.
+    bundle = load_bundle(
+        audit_dir=audit_dir,
+        manifest=audit_manifest,
+        require_reference=require_reference_pass,
+    )
+    key_path = bundle.key_path
+    key = bundle.key_rows()
 
     wanted = ["blind"] + (["reference"] if require_reference_pass else [])
     labels: dict[str, dict[str, dict]] = {"A": {}, "B": {}}
@@ -263,7 +295,7 @@ def detector_v4_2_label_report(
             manifest = json.loads(run_path.read_text(encoding="utf-8"))
             runs.append(manifest)
 
-            input_path = audit_dir / INPUT_FILENAME[pass_name].format(judge=role)
+            input_path = bundle.input_for(judge=role, pass_name=pass_name)
             input_rows = _read_jsonl(input_path) if input_path.exists() else []
             input_ids = [str(r.get("audit_id", "")) for r in input_rows]
             if input_path.exists():
@@ -368,12 +400,42 @@ def detector_v4_2_label_report(
                 entry[field] = value
 
     adjudicated, unresolved = adjudicate(labels["A"], labels["B"], resolutions)
-    _write_jsonl(
-        output_dir / ADJUDICATED_FILENAME,
-        [
-            {**row, "text_sha256": key.get(row["audit_id"], {}).get("text_sha256", "")}
-            for row in adjudicated
-        ],
+
+    # Every identifier the downstream gate binds on, carried from the key onto the label.
+    #
+    # The previous version carried `text_sha256` alone. The bank is keyed by
+    # `pair_sha256` — sha256(text || question) — because one candidate text legitimately
+    # appears under two protected questions, so a label naming only the text hash either
+    # fails to match any bank row or matches the wrong one. `bank_content_sha256` is what
+    # ties the file to one revision of one bank; without it, `final-gate` cannot tell a
+    # label file for this bank from a label file for its predecessor.
+    identifier_fields = ("text_sha256", "pair_sha256", "bank_content_sha256")
+    adjudicated_rows = []
+    n_without_pair = 0
+    for row in adjudicated:
+        hidden = key.get(row["audit_id"], {})
+        carried = {field: hidden.get(field, "") for field in identifier_fields}
+        n_without_pair += int(not carried["pair_sha256"])
+        adjudicated_rows.append({**row, **carried, "stratum": hidden.get("stratum", "")})
+    adjudicated_path = output_dir / ADJUDICATED_FILENAME
+    _write_jsonl(adjudicated_path, adjudicated_rows)
+    # A missing pair digest is a provenance failure for a BANK audit and not for the v4.1
+    # training audit, which predates the digest and whose labels are consumed by the
+    # trainer through `audit_id` rather than bound to a bank. Charging it against the v4.1
+    # audit would block the labels that authorise training in order to protect a gate they
+    # are never read by.
+    binds_a_bank = bundle.manifest_path is not None
+    if n_without_pair and binds_a_bank:
+        failures.append(
+            f"{n_without_pair} adjudicated row(s) carry no pair_sha256, because "
+            f"{key_path} does not record one for them. A label that cannot name the "
+            "(text, question) pair it describes cannot be bound to a bank row, and the "
+            "gate that reads this file will refuse it."
+        )
+    adjudicated_sha = _file_sha256(adjudicated_path)
+    bank_sha = bundle.bank_content_sha256 or next(
+        (str(v) for v in (row.get("bank_content_sha256") for row in key.values()) if v),
+        None,
     )
 
     n_returned = len(set(labels["A"]) & set(labels["B"]))
@@ -423,7 +485,23 @@ def detector_v4_2_label_report(
         "key": str(key_path),
         "adjudication": str(adjudication) if adjudication else None,
         "passes": wanted,
+        "audit_bundle": bundle.to_dict(),
     }
+    # What this report vouches for, by hash. `final-gate` refuses a label file the report
+    # does not name: a passing report that says nothing about which file it produced
+    # authorises every file the operator points at, including one edited afterwards.
+    report["adjudicated_file"] = str(adjudicated_path)
+    report["adjudicated_sha256"] = adjudicated_sha
+    report["bank_content_sha256"] = bank_sha
+    report["n_adjudicated_rows"] = len(adjudicated_rows)
+    report["identifiers_carried"] = list(identifier_fields)
+    report["binds_a_bank"] = binds_a_bank
+    report["n_rows_without_pair_sha256"] = n_without_pair
+    report["why_identifiers_are_carried"] = (
+        "the bank is keyed by sha256(text || question). A label file carrying only "
+        "text_sha256 cannot be bound to it: the same candidate text under two protected "
+        "questions is two bank rows and one label hash."
+    )
     report["excluded_from_agreement"] = {
         "protocol_forced_reference_rows": sum(
             int(run.get("n_forced_by_protocol_rule", 0))
