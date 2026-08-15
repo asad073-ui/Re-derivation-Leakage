@@ -287,6 +287,10 @@ class CrossEncoderAnswerabilityDetector:
         self.n_accumulated_tags = 0
         self.n_forward_pairs = 0
         self.n_candidate_truncations = 0
+        # Set by `from_artifact` after it re-hashes the checkpoint. Empty means the
+        # detector was constructed from objects in memory — the unit tests' fakes — and
+        # `to_dict` reports that as False rather than as a verification that passed.
+        self.verified_checkpoint_hashes: dict = {}
 
     # ------------------------------------------------------------------ loading --
 
@@ -306,6 +310,14 @@ class CrossEncoderAnswerabilityDetector:
         ``"gpu_used": backend == "cross_encoder"`` — so a gate could claim GPU use for a
         model that ran entirely on CPU. The device is now explicit and
         :meth:`parameter_device` reports where the weights actually ended up.
+
+        The checkpoint's hashes are RE-COMPUTED here and compared against the ones the
+        trainer recorded, BEFORE the weights are loaded. v4.2 wrote those hashes and never
+        checked them, so a re-exported, partially copied or later-overwritten directory
+        loaded silently and every number it produced was attributed to bytes it was not.
+        There is no flag that skips the check: a verification with a bypass is a
+        verification nobody runs. A manifest that records no hashes is refused for the
+        same reason — "never hashed" must not read the same as "matches".
         """
         manifest = json.loads(Path(artifact).read_text(encoding="utf-8"))
         pins = manifest.get("pins", {})
@@ -321,6 +333,16 @@ class CrossEncoderAnswerabilityDetector:
                 "tokenizer cannot be named is not eligible for a study."
             )
         checkpoint = str(manifest.get("selected_checkpoint") or Path(artifact).parent)
+
+        # Before `transformers` is imported, before anything is loaded onto a device, and
+        # before a minute of rented time is spent: the bytes on disk are the bytes the
+        # manifest names, or this is not the checkpoint the numbers belong to.
+        from .checkpoint_digest import verify_checkpoint_hashes
+
+        verified_hashes = verify_checkpoint_hashes(
+            manifest.get("selected_checkpoint_hashes"), Path(checkpoint)
+        )
+
         from transformers import (
             AutoModelForSequenceClassification,
             AutoTokenizer,
@@ -348,7 +370,11 @@ class CrossEncoderAnswerabilityDetector:
             "device": device,
         }
         kwargs.update(overrides)
-        return cls(model, tokenizer, **kwargs)
+        detector = cls(model, tokenizer, **kwargs)
+        # What was verified, not what the manifest claimed. A gate that records this is
+        # recording a check it performed rather than a field it copied.
+        detector.verified_checkpoint_hashes = verified_hashes
+        return detector
 
     def with_thresholds(
         self, *, answer_threshold: float, partial_threshold: float | None = None
@@ -359,7 +385,7 @@ class CrossEncoderAnswerabilityDetector:
         make the sweep an hour of I/O, and — worse — would let two points in the same grid
         sit on different bytes if a cache were repopulated mid-run.
         """
-        return CrossEncoderAnswerabilityDetector(
+        copy = CrossEncoderAnswerabilityDetector(
             self.model,
             self.tokenizer,
             model_repo_id=self.model_repo_id,
@@ -378,6 +404,11 @@ class CrossEncoderAnswerabilityDetector:
             # while the manifest still named the device the first point ran on.
             device=self.device,
         )
+        # Carried for the same reason: the copy is the same weights at another threshold,
+        # and a sweep whose points reported an unverified checkpoint would be reporting
+        # that the verification did not happen.
+        copy.verified_checkpoint_hashes = self.verified_checkpoint_hashes
+        return copy
 
     # --------------------------------------------------------------- provenance --
 
@@ -417,6 +448,16 @@ class CrossEncoderAnswerabilityDetector:
             "model_revision": self.model_revision,
             "tokenizer_revision": self.tokenizer_revision,
             "selected_checkpoint": self.checkpoint,
+            # Whether THIS object's weights were re-hashed against the manifest at load
+            # time, and what they hashed to. False for an in-memory model, which is the
+            # honest answer and is never a passed verification.
+            "checkpoint_hashes_verified": bool(self.verified_checkpoint_hashes),
+            "verified_checkpoint_files_sha256": (
+                self.verified_checkpoint_hashes.get("files_sha256") or None
+            ),
+            "verified_label_map_sha256": (
+                self.verified_checkpoint_hashes.get("label_map_sha256") or None
+            ),
             "answer_threshold": self.answer_threshold,
             "partial_threshold": self.partial_threshold,
             "segmentation_version": SEGMENTATION_VERSION,

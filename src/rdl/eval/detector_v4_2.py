@@ -43,12 +43,15 @@ __all__ = [
     "BLIND_RUBRIC",
     "ENGINEERING_BANK_SEEDS",
     "FORBIDDEN_IN_PROMPT",
-    "FREE_TIER_LIMITS",
     "JUDGES",
     "MODEL_JUDGE_GATE",
     "MODEL_REPORT_SCHEMA",
+    "PAID_FALLBACK_USD_PER_MTOK",
+    "PRICES_USD_PER_MTOK",
+    "PRICE_NOTE",
     "PROMPT_VERSION",
     "PROVIDERS",
+    "RATE_LIMITS",
     "REFERENCE_FIELDS",
     "REFERENCE_RUBRIC",
     "SEALED_FINAL_BANK_SEEDS",
@@ -148,29 +151,123 @@ PROVIDERS: dict[str, dict] = {
     },
 }
 
-# Published free-tier ceilings, recorded at protocol freeze (2026-08-14). These are what
-# `rdl graph-detector-v4-2-judge-plan` divides the audit by; a run that ignores them does
-# not fail cheaply, it fails 40 minutes in with half a pass written.
-FREE_TIER_LIMITS: dict[str, dict[str, int | None]] = {
+# Rate ceilings, corrected 2026-08-15 (GU-0040). The previous table said both judges ran
+# on free tiers with published per-day ceilings. That is true of Groq's free plan and is
+# NOT true of Gemini: Google's pricing page lists no free tier for gemini-3.7-flash, so the
+# audit's Gemini pass is a PAID pass and its per-day "quota" was a number for a tier that
+# does not exist.
+#
+# `quota_source` is the field that matters. Per-account limits differ from a plan's
+# documented ones — a new account is often below them and a paid account above — so a
+# ceiling copied from a docs page is a plan-level claim, not a statement about this
+# account. The runner records the provider's own `x-ratelimit-*` response headers into the
+# run manifest under `observed_rate_limits`, and THAT is the account-verified number. This
+# table is what the planner divides by before any call has been made.
+RATE_LIMITS: dict[str, dict] = {
     "gemini-3.7-flash": {
+        "free_tier_available": False,
+        "billing": "paid",
         "requests_per_minute": 10,
-        "requests_per_day": 250,
-        "tokens_per_minute": 250_000,
+        "requests_per_day": None,
+        "tokens_per_minute": None,
         "tokens_per_day": None,
+        # Deliberately not a published ceiling. Gemini's paid-tier limits are account-tier
+        # dependent; 10 RPM is a self-imposed pacing floor, low enough to be safe on any
+        # tier and recorded as what it is rather than as a measurement.
+        "requests_per_minute_source": "self-imposed pacing floor, not a published ceiling",
+        "quota_source": (
+            "no free tier is offered for this model; paid-tier ceilings are account-tier "
+            "dependent and are NOT verified for this account. The run manifest's "
+            "observed_rate_limits is the verified number."
+        ),
     },
     "openai/gpt-oss-120b": {
+        "free_tier_available": True,
+        "billing": "free plan",
         "requests_per_minute": 30,
         "requests_per_day": 1_000,
         "tokens_per_minute": None,
         "tokens_per_day": 200_000,
+        "requests_per_minute_source": "Groq free-plan documentation",
+        "quota_source": (
+            "Groq free-plan documented limits. Per-account limits can differ; the run "
+            "manifest's observed_rate_limits records what this account was actually "
+            "granted, from the provider's own x-ratelimit-* headers."
+        ),
     },
     "llama-3.3-70b-versatile": {
+        "free_tier_available": True,
+        "billing": "free plan",
         "requests_per_minute": 30,
         "requests_per_day": 1_000,
         "tokens_per_minute": None,
         "tokens_per_day": 100_000,
+        "requests_per_minute_source": "Groq free-plan documentation",
+        "quota_source": "Groq free-plan documented limits; not verified for this account",
     },
 }
+
+# USD per million tokens. Corrected 2026-08-15 (GU-0040): the previous table recorded both
+# judges at 0.0 "by rate and not by omission", which was wrong for Gemini and made the
+# audit look free. A price that is wrong in the cheap direction is the one that gets a run
+# started without a budget.
+#
+# A null unit price means the rate was not established here; the token counts are always
+# recorded, so a price can be applied afterwards.
+PRICING_AS_OF = "2026-08-15"
+PRICES_USD_PER_MTOK: dict[str, dict[str, float | None]] = {
+    # No free tier. Google's published rate through 2026-12-31.
+    "gemini-3.7-flash": {"input": 0.375, "output": 1.875},
+    # Free plan available and used; this is what the same tokens cost if the free plan's
+    # per-day ceiling is not worth waiting out.
+    "openai/gpt-oss-120b": {"input": 0.15, "output": 0.60},
+    "llama-3.3-70b-versatile": {"input": 0.59, "output": 0.79},
+    "claude-sonnet-5": {"input": 2.00, "output": 10.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+    "claude-opus-5": {"input": 5.00, "output": 25.00},
+    "gpt-5.6-sol": {"input": 5.00, "output": 30.00},
+}
+# What a model that IS on a free plan bills at when the free plan is exhausted. Same rate
+# as above for Groq; kept as a separate table because "what this run cost" and "what it
+# would cost without the free plan" are different questions and were being answered with
+# one number.
+PAID_FALLBACK_USD_PER_MTOK: dict[str, dict[str, float]] = {
+    "openai/gpt-oss-120b": {"input": 0.15, "output": 0.60},
+    "llama-3.3-70b-versatile": {"input": 0.59, "output": 0.79},
+}
+PRICE_NOTE = (
+    f"List prices as of {PRICING_AS_OF}. gemini-3.7-flash has NO free tier — $0.375/M "
+    "input and $1.875/M output — so the Gemini passes are billed and estimated_cost_usd "
+    "is a real charge. openai/gpt-oss-120b runs on Groq's free plan, so its "
+    "estimated_cost_usd is 0.0 by rate; paid_fallback_cost_usd is what the same token "
+    "counts would cost at $0.15/$0.60 if the free plan's per-day ceiling is not worth "
+    "waiting out. A null unit price means the rate was not established here."
+)
+
+
+def price_of(model: str, input_tokens: int, output_tokens: int) -> float | None:
+    """Billed USD for one model's token counts, or ``None`` if its rate is unknown.
+
+    A model on a free plan bills nothing, which is why this reads
+    :data:`RATE_LIMITS` for the plan and :data:`PRICES_USD_PER_MTOK` for the rate. The two
+    were conflated before: every judge was priced at 0.0 because one of them was free.
+    """
+    if RATE_LIMITS.get(model, {}).get("free_tier_available"):
+        return 0.0
+    prices = PRICES_USD_PER_MTOK.get(model, {})
+    per_input, per_output = prices.get("input"), prices.get("output")
+    if per_input is None or per_output is None:
+        return None
+    return round(input_tokens / 1e6 * per_input + output_tokens / 1e6 * per_output, 4)
+
+
+def list_price_of(model: str, input_tokens: int, output_tokens: int) -> float | None:
+    """What the tokens cost at list rate, ignoring any free plan. Never ``0.0`` by plan."""
+    prices = PRICES_USD_PER_MTOK.get(model, {})
+    per_input, per_output = prices.get("input"), prices.get("output")
+    if per_input is None or per_output is None:
+        return None
+    return round(input_tokens / 1e6 * per_input + output_tokens / 1e6 * per_output, 4)
 
 
 def judge_families_are_independent(
@@ -236,26 +333,61 @@ ENGINEERING_RETAIN_SEEDS: tuple[int, ...] = (51241, 51242, 51243, 51244)
 # needs enough labelled rows per stratum, not every row. The audit sample is frozen BEFORE
 # the detector scores anything, and is drawn on generation metadata alone — never on a
 # detector score, which would make the evaluation a measurement of its own selection.
-AUDIT_SAMPLE_PLAN: dict[str, int] = {
-    "protected_likely_answer": 300,
-    "protected_clean": 500,
-    "retain": 400,
+#
+# The plan is per (PARTITION, stratum) and not per stratum. A plan that draws 400 retain
+# rows across the whole bank says nothing about how many land in the partition the gate is
+# read on: the pre-registered minima are conditions on the HELD-OUT gate population, and a
+# draw checked before the partition filter can satisfy every minimum and still leave the
+# gate with 40 rows. The development cells are smaller because their job is to place one
+# threshold, not to support a reported rate.
+AUDIT_SAMPLE_PLAN: dict[str, dict[str, int]] = {
+    "development": {
+        "protected_likely_answer": 150,
+        "protected_clean": 250,
+        "retain": 200,
+    },
+    "heldout": {
+        "protected_likely_answer": 300,
+        "protected_clean": 500,
+        "retain": 400,
+    },
 }
-AUDIT_SAMPLE_MINIMA: dict[str, int] = {
-    "protected_likely_answer": 150,
-    "protected_clean": 400,
-    "retain": 400,
+# Conditions on the rows that actually reach each gate population, checked after the
+# partition filter and after judging. The held-out row counts are the ones the protocol
+# names; the development minima exist so a threshold is not chosen on 20 rows.
+AUDIT_SAMPLE_MINIMA: dict[str, dict[str, int]] = {
+    "development": {
+        "protected_likely_answer": 75,
+        "protected_clean": 200,
+        "retain": 200,
+    },
+    "heldout": {
+        "protected_likely_answer": 150,
+        "protected_clean": 400,
+        "retain": 400,
+    },
 }
+AUDIT_STRATA: tuple[str, ...] = ("protected_likely_answer", "protected_clean", "retain")
+AUDIT_PARTITIONS: tuple[str, ...] = ("development", "heldout")
 AUDIT_SAMPLE_RULE = (
-    "Stratified without replacement, ordered by sha256(bank_id || audit stratum || "
-    "text_sha256) — content-addressed, so the draw is reproducible from the bank alone and "
-    "does not move when unrelated rows are added. The stratum assignment uses generation "
-    "metadata (arm, retain flag, the run's pinned NLI+ROUGE verdict) and NEVER the trained "
-    "detector's score. Sampling on the detector's own score would make every recall number "
-    "a measurement of the sampler. If a stratum yields fewer than its minimum after "
-    "judging, the response is a pre-registered extension drawing more rows under a "
-    "recorded seed, not a quiet change to this plan."
+    "Stratified without replacement within each (partition, stratum) cell, ordered by "
+    "sha256(bank_id || partition || audit stratum || pair_sha256) — content-addressed, so "
+    "the draw is reproducible from the bank alone and does not move when unrelated rows "
+    "are added. The stratum assignment uses generation metadata (arm, retain flag, the "
+    "run's pinned NLI+ROUGE verdict) and NEVER the trained detector's score. Sampling on "
+    "the detector's own score would make every recall number a measurement of the sampler. "
+    "The cell is (partition, stratum) rather than stratum alone because the pre-registered "
+    "minima are conditions on the held-out gate population, and a bank-wide draw can meet "
+    "every one of them while leaving the held-out partition below all of them. If a cell "
+    "yields fewer than its minimum, the response is a pre-registered extension drawing "
+    "more rows under a recorded seed, not a quiet change to this plan."
 )
+
+
+def audit_sample_total(plan: Mapping[str, Mapping[str, int]] | None = None) -> int:
+    """Rows the plan draws in total. The number the judge bill is proportional to."""
+    return sum(sum(cell.values()) for cell in (plan or AUDIT_SAMPLE_PLAN).values())
+
 
 # §5. Verbatim in both system prompts. The candidate is data that an adversary — or an
 # ordinary agent transcript quoting one — may have written, and a judge that took an

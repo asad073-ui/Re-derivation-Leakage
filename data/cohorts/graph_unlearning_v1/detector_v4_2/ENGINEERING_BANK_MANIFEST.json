@@ -54,12 +54,14 @@
         ]
       }
     },
-    "labelling_policy": "the bank is NOT labelled row by row by the model judges. A ~24,000-row bank is ~96,000 judge calls across two judges and two passes. A deterministic stratified audit sample is frozen first by `rdl graph-detector-v4-2-bank-audit`, on generation metadata only and never on a detector score.",
+    "labelling_policy": "the bank is NOT labelled row by row by the model judges. A ~24,000-row bank is ~96,000 judge calls across two judges and two passes. A deterministic stratified audit sample of 1,800 rows is frozen first by `rdl graph-detector-v4-2-bank-audit`, per (partition, stratum) cell, on generation metadata only and never on a detector score. The cell includes the partition because the pre-registered minima are conditions on the held-out gate population, and a bank-wide draw can meet every one of them while leaving the held-out partition below all of them.",
     "max_rows_total": 24000,
+    "retain_split_rule": "the same sha256(text || question)[:2] parity as the protected rows. Retain rows live inside `development` and `heldout` rather than in a third block, so 'the held-out partition' means the same thing for both populations and no reader can select on one and report on the other.",
     "split_rule": "sha256(text || question)[:2] parity \u2014 content-addressed, before inspection",
     "unlabelled_policy": "texts with no cached scorer verdict are counted and are in neither pool. Treating them as clean would understate the false-alarm rate.",
     "why_a_budget_is_part_of_the_freeze": "seeds fix WHICH trajectories are drawn; the budget fixes HOW MANY. A bank whose size is decided at generation time can be grown until a gate passes, and nothing in the artifact would show it. FINAL_GATE_BANK_MANIFEST.json froze the seeds and the minimum label counts and not this, which is the gap these commands close.",
-    "why_n_samples_equals_primary_k": "primary_k is the number of samples the success-at-k statistic is read over. n_samples < primary_k cannot be measured at all: the estimate has no draws to read. The previous freeze said 8 samples and k=32, which is why this file now validates the budget instead of only recording it."
+    "why_n_samples_equals_primary_k": "primary_k is the number of samples the success-at-k statistic is read over. n_samples < primary_k cannot be measured at all: the estimate has no draws to read. The previous freeze said 8 samples and k=32, which is why this file now validates the budget instead of only recording it.",
+    "why_retain_is_split": "retain/all supplied the retain ceiling that constrained threshold selection AND the retain FPR the gate reported. Those are the same rows, so the reported false-alarm rate was fitted, not held out \u2014 and it is the number the utility claim rests on."
   },
   "human_grounded": false,
   "judge_population": "two_independent_llm_judges",
@@ -69,7 +71,7 @@
     "sample": "a deterministic stratified audit sample, frozen by `rdl graph-detector-v4-2-bank-audit` before the detector scores anything",
     "secondary": "reference_content, with the reference answer visible"
   },
-  "manifest_sha256": "26894047946f9b48a65c5cf458e3a97617ccd0f9391b8b3c5e9488411e05cef8",
+  "manifest_sha256": "29cfbc037336b25034477bc922ed6226ced38ebd242ddf0e518f390343ec1a49",
   "opening_rule": {
     "on_failure": "diagnose and iterate. This bank is ENGINEERING: re-opening it after a change makes it development data, which is acceptable here and is not acceptable for the final bank.",
     "opened": "once per frozen checkpoint+threshold pair, and recorded"
@@ -78,7 +80,7 @@
   "protocol_name": "graph_flow",
   "publication_label_valid": false,
   "purpose": "the surface the v4.2 engineering experiment is evaluated on. Disjoint from the final gate bank by construction, so a run authorised by MODEL judges never spends the one unopened surface reserved for a human-validated result.",
-  "schema": "graph-detector-v4-2-engineering-bank-manifest-v2",
+  "schema": "graph-detector-v4-2-engineering-bank-manifest-v3",
   "seeds": {
     "disjoint_from_final": true,
     "natural": [

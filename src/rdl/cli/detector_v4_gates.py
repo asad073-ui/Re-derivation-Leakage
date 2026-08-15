@@ -33,9 +33,20 @@ The natural arm below scores against the run's NLI+ROUGE ``leaking`` label, whic
 "does this reproduce the reference answer?". Goal A asks "does this attempt to answer?", and
 those disagree on every wrong answer attempt — which the old ``generated_clean_fpr``
 therefore charged as a false alarm while Goal A requires the tag. So the NLI arm is now
-DIAGNOSTIC, and the arm that decides is scored against the adjudicated human labels from
-``LABEL_AUDIT_ADJUDICATED.jsonl``. Until those labels exist the Goal A arm reports
-``measured: false`` and blocks, which is the correct state and not an absence.
+DIAGNOSTIC, and the arm that decides is scored against the adjudicated labels. Until those
+labels exist the Goal A arm reports ``measured: false`` and blocks, which is the correct
+state and not an absence.
+
+Which adjudication, and what it authorises
+------------------------------------------
+``--label-source auto|human|model``. v4.2.1 read ``LABEL_AUDIT_ADJUDICATED.jsonl`` — the
+**v4.1 human** audit — and nothing else, so a completed v4.2 model-judge audit left this
+arm reporting ``measured: false`` and the only way forward was to copy model labels into
+the human audit's filename. The gate now resolves whichever adjudication exists and records
+the authority in the artifact: ``judge_population``, ``human_grounded``,
+``publication_label_valid`` and the audit's own κ. ``auto`` prefers the human audit when
+both exist — the stronger authority, not the more recent file — and an audit whose own
+report did not pass blocks the arm rather than being scored over.
 """
 
 from __future__ import annotations
@@ -44,6 +55,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -340,35 +352,138 @@ def _natural_measure(
     }
 
 
+V4_2_ADJUDICATED_FILENAME = "V4_2_ADJUDICATED.jsonl"
+V4_2_REPORT_FILENAME = "DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json"
+LABEL_SOURCES = ("auto", "human", "model")
+
+
+def resolve_label_authority(v4_1_dir: Path, v4_2_dir: Path, label_source: str) -> dict:
+    """Which adjudicated labels this gate is scored against, and what they authorise.
+
+    The v4.1 human audit and the v4.2 model audit annotate the SAME 1,019 blinded rows, so
+    the question is only which overlay is read — and the answer has to be recorded, because
+    the two license different claims. A human-judged pass can back a publication claim; a
+    model-judged pass authorises engineering and nothing else, and the gate artifact says
+    so in three fields rather than in a comment.
+
+    This is the P0 the previous version shipped: the arm read ``LABEL_AUDIT_ADJUDICATED``
+    and nothing else, so a completed v4.2 model-judge audit — the audit the whole v4.2
+    pipeline exists to produce — left the GPU gate reporting ``measured: false``. The only
+    way forward was to hand-copy model labels into the human audit's filename, which is
+    exactly the artifact confusion E4 forbids.
+    """
+    if label_source not in LABEL_SOURCES:
+        raise typer.BadParameter(f"--label-source must be one of {LABEL_SOURCES}")
+    human: dict[str, Any] = {
+        "label_source": "human",
+        "adjudicated": v4_1_dir / ADJUDICATED_FILENAME,
+        "report": v4_1_dir / "LABEL_ALIGNMENT_REPORT.json",
+        "judge_population": "two_human_judges",
+        "human_grounded": True,
+        "authorises": "engineering and publication claims",
+    }
+    model: dict[str, Any] = {
+        "label_source": "model",
+        "adjudicated": v4_2_dir / V4_2_ADJUDICATED_FILENAME,
+        "report": v4_2_dir / V4_2_REPORT_FILENAME,
+        "judge_population": "two_independent_llm_judges",
+        "human_grounded": False,
+        "authorises": "ENGINEERING training and evaluation only",
+    }
+    if label_source == "human":
+        candidates = [human]
+    elif label_source == "model":
+        candidates = [model]
+    else:
+        # The human audit wins when both exist, for the same reason the trainer prefers
+        # it: it is the stronger authority, and preferring the weaker one because it was
+        # written more recently is how a publication claim acquires model labels.
+        candidates = [human, model]
+    for candidate in candidates:
+        if candidate["adjudicated"].exists():
+            report = (
+                json.loads(candidate["report"].read_text(encoding="utf-8"))
+                if candidate["report"].exists()
+                else {}
+            )
+            return {
+                **candidate,
+                "adjudicated": candidate["adjudicated"],
+                "report_exists": candidate["report"].exists(),
+                "report_all_gates_passed": bool(report.get("all_gates_passed")),
+                "publication_label_valid": bool(
+                    candidate["human_grounded"] and report.get("all_gates_passed")
+                ),
+                "answer_attempt_kappa": (
+                    report.get("inter_judge", {}).get("per_field", {}).get("answer_attempt", {})
+                ).get("cohens_kappa"),
+            }
+    return {
+        "label_source": None,
+        "adjudicated": None,
+        "searched": [str(c["adjudicated"]) for c in candidates],
+    }
+
+
+def _authority_record(authority: Mapping) -> dict:
+    """The label authority as it appears in the artifact. Paths as strings, flags intact."""
+    return {
+        key: (str(value) if isinstance(value, Path) else value) for key, value in authority.items()
+    }
+
+
 def _goal_a_arm(
     v4_1_dir: Path,
     base: ConceptDetector,
     questions: Sequence[ProtectedQuestion],
     index: Mapping[str, Sequence[frozenset[str]]],
+    *,
+    authority: Mapping,
 ) -> dict:
-    """Goal A rates against ADJUDICATED HUMAN labels. The arm the v4.1 verdict rests on.
+    """Goal A rates against ADJUDICATED labels — human, or model and marked as such.
 
     Absent labels report ``measured: false`` and block. "We did not measure it" and "it was
     fine" must not produce the same verdict — the rule the v4 gate table already applies to
     a missing number, applied here to a missing label source.
     """
-    adjudicated_path = v4_1_dir / ADJUDICATED_FILENAME
+    adjudicated_path = authority.get("adjudicated")
     key_path = v4_1_dir / KEY_FILENAME
     judge_path = v4_1_dir / "LABEL_AUDIT_JUDGE_A.jsonl"
+    if adjudicated_path is None:
+        return {
+            "measured": False,
+            "reason": (
+                "no adjudicated label file exists. Searched " f"{authority.get('searched')}"
+            ),
+            "next": (
+                "human:  rdl graph-detector-v4-label-audit, two judges, then "
+                "rdl graph-detector-v4-label-report\n"
+                "model:  rdl graph-detector-v4-2-llm-judge x4, then "
+                "rdl graph-detector-v4-2-label-report"
+            ),
+            "why_this_blocks": (
+                "Goal A's target is adjudicated answer_attempt. Scoring the detector "
+                "against the NLI+ROUGE leaking label instead is the v4 error: it charges "
+                "a false alarm for every wrong answer attempt, which Goal A requires the "
+                "detector to tag."
+            ),
+        }
+    if authority.get("report_exists") and not authority.get("report_all_gates_passed"):
+        return {
+            "measured": False,
+            "reason": (
+                f"{authority['report']} did not clear its decision gate. Labels that "
+                "failed the audit gate are not labels; the arm is blocked rather than "
+                "computed over them."
+            ),
+            "label_authority": _authority_record(authority),
+        }
     missing = [str(p) for p in (adjudicated_path, key_path, judge_path) if not p.exists()]
     if missing:
         return {
             "measured": False,
             "reason": f"the blinded label audit has not produced {missing}",
-            "next": (
-                "rdl graph-detector-v4-label-audit, two judges, then "
-                "rdl graph-detector-v4-label-report"
-            ),
-            "why_this_blocks": (
-                "Goal A's target is human answer_attempt. Scoring the detector against the "
-                "NLI+ROUGE leaking label instead is the v4 error: it charges a false alarm "
-                "for every wrong answer attempt, which Goal A requires the detector to tag."
-            ),
+            "label_authority": _authority_record(authority),
         }
 
     def load(path: Path) -> list[dict]:
@@ -428,6 +543,7 @@ def _goal_a_arm(
         "measured": True,
         "is_one_shot_gate": False,
         "status": "ENGINEERING ONLY",
+        "label_authority": _authority_record(authority),
         "why_not_a_gate": (
             "these rows are drawn from DETECTOR_V4_NATURAL_BANK.json, which both the "
             "oracle and the lexical detector have already been run on. V4_1_DECISION.json "
@@ -464,12 +580,25 @@ def detector_v4_gates(
         None, "--model-artifact", help="DETECTOR_V4_MODEL.json, for --backend cross_encoder"
     ),
     v4_1_dir: Path = typer.Option(DEFAULT_V4_1_OUT, "--v4-1-dir"),
+    v4_2_dir: Path = typer.Option(
+        Path("data/cohorts/graph_unlearning_v1/detector_v4_2"),
+        "--v4-2-dir",
+        help="where V4_2_ADJUDICATED.jsonl and the model-label report live",
+    ),
+    label_source: str = typer.Option(
+        "auto",
+        "--label-source",
+        help=f"one of {LABEL_SOURCES}. `auto` prefers the human audit when both exist.",
+    ),
     device: str = typer.Option(
         "", "--device", help="cuda | cuda:0 | cpu, for --backend cross_encoder"
     ),
     output: Path | None = typer.Option(None, "--output"),
 ) -> None:
     """Select an operating point on development, open held-out once, write the gates."""
+    # Resolved first: an invalid --label-source, or a completed audit the gate cannot see,
+    # should be reported before a model is loaded rather than after the sweep.
+    authority = resolve_label_authority(v4_1_dir, v4_2_dir, label_source)
     # Checked BEFORE any work: a run that computes for a minute and then refuses to write
     # has spent the minute, and on a GPU box that minute is a model load.
     out = output or (v4_1_dir / V4_1_GATES_FILENAME)
@@ -642,7 +771,7 @@ def detector_v4_gates(
             ),
             **score_rows(measured, ORACLE_GATES),
         }
-        goal_a = _goal_a_arm(v4_1_dir, base, questions, index)
+        goal_a = _goal_a_arm(v4_1_dir, base, questions, index, authority=authority)
     else:
         goal_a = {"measured": False, "reason": f"{bank_path} is absent"}
 
@@ -716,6 +845,11 @@ def detector_v4_gates(
             **synthetic,
         },
         "goal_a_arm": goal_a,
+        # Hoisted out of the arm so a reader who stops at the top level still sees who
+        # produced the labels every Goal A number is computed against.
+        "label_authority": _authority_record(authority),
+        "human_grounded": bool(authority.get("human_grounded")),
+        "publication_label_valid": bool(authority.get("publication_label_valid")),
         "natural_arm": {
             "role": (
                 "DIAGNOSTIC under v4.1. Scored against the run's NLI+ROUGE leaking label, "
@@ -732,10 +866,12 @@ def detector_v4_gates(
             "audit is the next step"
             if not goal_a.get("measured")
             else (
-                "the detector clears the Goal A bounds on the adjudicated labels "
+                "the detector clears the Goal A bounds on the adjudicated "
+                f"{'HUMAN' if authority.get('human_grounded') else 'MODEL-JUDGE'} labels "
                 "(ENGINEERING ONLY — the one-shot gate opens the fresh bank)"
                 if goal_a.get("all_gates_passed")
-                else "the detector does NOT clear the Goal A bounds on the adjudicated labels"
+                else "the detector does NOT clear the Goal A bounds on the adjudicated "
+                f"{'HUMAN' if authority.get('human_grounded') else 'MODEL-JUDGE'} labels"
             )
         ),
         "runtime_reads_gold_answers": False,

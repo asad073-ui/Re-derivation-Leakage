@@ -28,23 +28,23 @@ from pathlib import Path
 import typer
 
 from ..eval.detector_v4_2 import (
-    FREE_TIER_LIMITS,
     JUDGES,
+    PAID_FALLBACK_USD_PER_MTOK,
     PASSES,
+    PRICE_NOTE,
+    PRICING_AS_OF,
     PROVIDERS,
+    RATE_LIMITS,
     V4_2_PROTOCOL,
     build_prompt,
+    list_price_of,
+    price_of,
     required_reference_label,
 )
 from ..studies.graph_leak.evidence import atomic_json
 from .detector_v4_1_freeze import DEFAULT_V4_1_OUT
-from .detector_v4_2_llm_judge import (
-    DEFAULT_V4_2_OUT,
-    INPUT_FILENAME,
-    PAID_FALLBACK_USD_PER_MTOK,
-    PRICES_USD_PER_MTOK,
-    _read_jsonl,
-)
+from .detector_v4_2_bundle import load_bundle
+from .detector_v4_2_llm_judge import DEFAULT_V4_2_OUT, _read_jsonl
 
 __all__ = ["detector_v4_2_judge_plan", "estimate_tokens"]
 
@@ -85,35 +85,61 @@ def _pass_load(rows: Sequence[Mapping], pass_name: str) -> dict:
 
 
 def _feasibility(model: str, n_calls: int, n_tokens: int) -> dict:
-    limits = FREE_TIER_LIMITS.get(model, {})
-    rpd = limits.get("requests_per_day")
-    tpd = limits.get("tokens_per_day")
+    """Days of quota this judge needs, and whether it has a free tier at all.
+
+    A model with no free tier has no per-day ceiling to wait out: it is billed and it runs
+    in one sitting. The previous version divided every judge by a free-tier quota, which
+    for Gemini meant dividing by a tier that does not exist — a schedule computed from a
+    number that was not real, presented beside a cost of zero that was also not real.
+    """
+    limits = dict(RATE_LIMITS.get(model, {}))
+    free = bool(limits.get("free_tier_available"))
+    rpd = limits.get("requests_per_day") if free else None
+    tpd = limits.get("tokens_per_day") if free else None
     rpm = limits.get("requests_per_minute")
-    days_by_requests = math.ceil(n_calls / rpd) if rpd else 1
-    days_by_tokens = math.ceil(n_tokens / tpd) if tpd else 1
+    days_by_requests = math.ceil(n_calls / int(rpd)) if rpd else 1
+    days_by_tokens = math.ceil(n_tokens / int(tpd)) if tpd else 1
     days = max(days_by_requests, days_by_tokens, 1)
     return {
-        "published_limits": limits or None,
+        "free_tier_available": free,
+        "billing": limits.get("billing"),
+        "plan_limits": limits or None,
+        "quota_source": limits.get("quota_source"),
+        "quota_verification": (
+            "plan documentation, NOT verified against this account. The run manifest "
+            "records the provider's own x-ratelimit-* headers as observed_rate_limits, "
+            "which is the account-verified figure."
+        ),
         "days_by_request_ceiling": days_by_requests if rpd else None,
         "days_by_token_ceiling": days_by_tokens if tpd else None,
-        "free_tier_days_required": days,
-        "minimum_wall_clock_minutes_at_rpm": round(n_calls / rpm, 1) if rpm else None,
+        "free_tier_days_required": days if free else None,
+        "minimum_wall_clock_minutes_at_rpm": round(n_calls / int(rpm), 1) if rpm else None,
         "binding_constraint": (
-            "tokens_per_day"
-            if tpd and days_by_tokens >= days_by_requests
-            else "requests_per_day" if rpd else "none published"
+            "none — this model has no free tier and is billed per token"
+            if not free
+            else (
+                "tokens_per_day"
+                if tpd and days_by_tokens >= days_by_requests
+                else "requests_per_day" if rpd else "none published"
+            )
         ),
-        "fits_in_one_free_day": days <= 1,
+        "fits_in_one_free_day": days <= 1 if free else None,
     }
 
 
 def detector_v4_2_judge_plan(
     audit_dir: Path = typer.Option(DEFAULT_V4_1_OUT, "--audit-dir"),
+    audit_manifest: Path | None = typer.Option(
+        None,
+        "--audit-manifest",
+        help="BANK_AUDIT_MANIFEST.json, to cost a BANK audit rather than the v4.1 one",
+    ),
     blind_input: Path | None = typer.Option(None, "--blind-input", help="override, per judge"),
     reference_input: Path | None = typer.Option(None, "--reference-input"),
     output_dir: Path = typer.Option(DEFAULT_V4_2_OUT, "--output-dir"),
 ) -> None:
-    """Cost the four judge passes against the published free-tier ceilings. Calls nothing."""
+    """Cost the four judge passes: money first, then quota days. Calls nothing."""
+    bundle = load_bundle(audit_dir=audit_dir, manifest=audit_manifest, require_reference=False)
     per_judge: dict[str, dict] = {}
     totals = {"n_calls": 0, "input_tokens": 0, "output_tokens": 0}
 
@@ -126,7 +152,7 @@ def detector_v4_2_judge_plan(
         judge_output = 0
         for pass_name in PASSES:
             override = blind_input if pass_name == "blind" else reference_input
-            path = override or (audit_dir / INPUT_FILENAME[pass_name].format(judge=role))
+            path = override or bundle.input_for(judge=role, pass_name=pass_name)
             if not path.exists():
                 passes[pass_name] = {"input_file": str(path), "present": False}
                 continue
@@ -138,28 +164,23 @@ def detector_v4_2_judge_plan(
             judge_input += load["estimated_input_tokens"]
             judge_output += load["estimated_output_tokens"]
 
-        prices = PRICES_USD_PER_MTOK.get(model, {})
         paid = PAID_FALLBACK_USD_PER_MTOK.get(model)
         per_judge[role] = {
             "provider": spec["provider"],
             "family": provider["family"],
             "requested_model": model,
-            "billing": provider["billing"],
+            "billing": RATE_LIMITS.get(model, {}).get("billing", provider["billing"]),
             "api_key_env": provider["api_key_env"],
             "passes": passes,
             "n_calls": judge_calls,
             "estimated_input_tokens": judge_input,
             "estimated_output_tokens": judge_output,
             "estimated_total_tokens": judge_input + judge_output,
-            "estimated_cost_usd": (
-                round(
-                    judge_input / 1e6 * (prices.get("input") or 0.0)
-                    + judge_output / 1e6 * (prices.get("output") or 0.0),
-                    4,
-                )
-                if prices.get("input") is not None
-                else None
-            ),
+            # What this judge actually bills: zero on a free plan, list rate otherwise.
+            "estimated_cost_usd": price_of(model, judge_input, judge_output),
+            # What it would cost at list rate regardless of plan. For Gemini these two are
+            # the same number, which is the point: it has no free tier.
+            "list_price_cost_usd": list_price_of(model, judge_input, judge_output),
             "paid_fallback_cost_usd": (
                 round(judge_input / 1e6 * paid["input"] + judge_output / 1e6 * paid["output"], 4)
                 if paid
@@ -171,11 +192,23 @@ def detector_v4_2_judge_plan(
         totals["input_tokens"] += judge_input
         totals["output_tokens"] += judge_output
 
-    days = max((j["free_tier"]["free_tier_days_required"] for j in per_judge.values()), default=1)
+    days = max(
+        (j["free_tier"]["free_tier_days_required"] or 1 for j in per_judge.values()),
+        default=1,
+    )
+    billed = round(sum(j["estimated_cost_usd"] or 0.0 for j in per_judge.values()), 4)
+    # What it costs to not wait: the billed total plus the paid rate for every judge whose
+    # free plan is the thing making the audit take days.
+    fallback = round(
+        billed + sum(j["paid_fallback_cost_usd"] or 0.0 for j in per_judge.values()), 4
+    )
     plan = {
-        "schema": "graph-detector-v4-2-judge-plan-v1",
+        "schema": "graph-detector-v4-2-judge-plan-v2",
         "protocol": V4_2_PROTOCOL,
         "calls_nothing": True,
+        "audit_bundle": bundle.to_dict(),
+        "pricing_as_of": PRICING_AS_OF,
+        "price_note": PRICE_NOTE,
         "token_estimate_method": (
             f"~{CHARS_PER_TOKEN} characters per token over the real prompts, plus "
             f"{ASSUMED_OUTPUT_TOKENS} output tokens per call (measured envelope for both "
@@ -186,31 +219,47 @@ def detector_v4_2_judge_plan(
         "totals": {
             **totals,
             "estimated_total_tokens": totals["input_tokens"] + totals["output_tokens"],
-            "estimated_cost_usd": sum(j["estimated_cost_usd"] or 0.0 for j in per_judge.values()),
-            "paid_fallback_cost_usd": sum(
-                j["paid_fallback_cost_usd"] or 0.0 for j in per_judge.values()
+            "estimated_cost_usd": billed,
+            "list_price_cost_usd": round(
+                sum(j["list_price_cost_usd"] or 0.0 for j in per_judge.values()), 4
+            ),
+            "paid_fallback_cost_usd": round(
+                sum(j["paid_fallback_cost_usd"] or 0.0 for j in per_judge.values()), 4
+            ),
+            "budget_with_retries_usd": round(billed * 2.0, 2),
+            "cost_to_skip_the_free_plan_wait_usd": fallback,
+            "budget_note": (
+                "twice the estimate. Retries, a re-run after a rubric fix, and the ~15% "
+                "the 4-characters-per-token approximation can be out by all land on the "
+                "same card."
             ),
         },
         "free_tier_days_required": days,
         "verdict": (
-            "the whole audit fits inside one day of both free tiers"
-            if days <= 1
-            else f"the audit needs {days} day(s) of free-tier quota. Run it with --resume: "
-            "the runner checkpoints every row, stops cleanly on a per-day ceiling, and "
-            "picks up where it stopped. The paid fallback rate is recorded beside each "
-            "judge if waiting is not worth it."
+            f"the audit bills approximately ${billed:.2f} "
+            f"(budget ${billed * 2:.2f} with retries)"
+            + (
+                ". It fits inside one day of every free plan involved"
+                if days <= 1
+                else f". It needs {days} day(s) of free-plan quota on the judges that have "
+                f"one, or ${fallback:.2f} to skip the wait — the free plan's per-day token "
+                "ceiling is the binding constraint, not the money. Waiting is fine: the "
+                "runner checkpoints every row, stops cleanly on a per-day ceiling, and "
+                "`--resume` picks up where it stopped."
+            )
         ),
     }
     atomic_json(output_dir / PLAN_FILENAME, plan)
     typer.echo(f"wrote {output_dir / PLAN_FILENAME}")
     typer.echo("")
     for role, entry in sorted(per_judge.items()):
+        free_days = entry["free_tier"]["free_tier_days_required"]
         typer.echo(
             f"  judge {role} {entry['requested_model']:<24} "
             f"{entry['n_calls']:>6} calls  "
             f"{entry['estimated_total_tokens']:>9,} tok  "
-            f"{entry['free_tier']['free_tier_days_required']:>2} free day(s)  "
-            f"paid fallback ${entry['paid_fallback_cost_usd'] or 0.0:.2f}"
+            f"bills ${entry['estimated_cost_usd'] or 0.0:>6.2f}  "
+            + (f"{free_days:>2} free day(s)" if free_days else "no free tier")
         )
     typer.echo("")
     typer.echo(f"verdict: {plan['verdict']}")

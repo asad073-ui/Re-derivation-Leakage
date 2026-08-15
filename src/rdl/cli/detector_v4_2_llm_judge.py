@@ -75,18 +75,21 @@ from typing import Any
 import typer
 
 from ..eval.detector_v4_2 import (
-    FREE_TIER_LIMITS,
     JUDGE_SCHEMA,
     JUDGES,
+    PAID_FALLBACK_USD_PER_MTOK,
     PASSES,
+    PRICE_NOTE,
     PROMPT_VERSION,
     PROVIDERS,
+    RATE_LIMITS,
     RUN_SCHEMA,
     V4_2_PROTOCOL,
     build_prompt,
     fields_for,
     judge_families_are_independent,
     parse_judgement,
+    price_of,
     prompt_sha256,
     required_reference_label,
     response_schema,
@@ -131,33 +134,6 @@ MAX_MAX_OUTPUT_TOKENS = 2048
 # pacing. Unbounded fan-out over a free tier is a way to spend a day's quota on 429s.
 DEFAULT_CONCURRENCY = 4
 MAX_CONCURRENCY = 16
-
-# Recorded, not billed. USD per million tokens, as published at protocol freeze
-# (2026-08-14). A model whose list price was not established here is left None rather than
-# guessed: a fabricated unit price would make the cost field look like a measurement.
-# Token counts are always recorded, so a price can be applied afterwards.
-PRICES_USD_PER_MTOK: dict[str, dict[str, float | None]] = {
-    # Free tier. Zero is the actual rate paid, not an unknown rate rendered as zero, and
-    # the paid fallback rate is recorded beside it so the decision to pay is costed.
-    "gemini-3.7-flash": {"input": 0.0, "output": 0.0},
-    "openai/gpt-oss-120b": {"input": 0.0, "output": 0.0},
-    "llama-3.3-70b-versatile": {"input": 0.0, "output": 0.0},
-    "claude-sonnet-5": {"input": 2.00, "output": 10.00},
-    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
-    "claude-opus-5": {"input": 5.00, "output": 25.00},
-    "gpt-5.6-sol": {"input": 5.00, "output": 30.00},
-}
-# What the same run would cost if the free tier's per-day ceiling is not worth waiting out.
-PAID_FALLBACK_USD_PER_MTOK: dict[str, dict[str, float]] = {
-    "openai/gpt-oss-120b": {"input": 0.15, "output": 0.75},
-}
-PRICE_NOTE = (
-    "list prices recorded at protocol freeze (2026-08-14). Both v4.2 judges run on free "
-    "tiers, so estimated_cost_usd is 0.0 by rate and not by omission; "
-    "paid_fallback_cost_usd is what the same token counts would cost at the provider's "
-    "paid rate, for deciding whether a per-day ceiling is worth waiting out. A null unit "
-    "price means the rate was not established here."
-)
 
 CHEAPER_JUDGE_NOTE = (
     "The model is a frozen protocol parameter, recorded here and in the report. Both "
@@ -343,6 +319,14 @@ class OpenAIWireAdapter(_Adapter):
             request_id = response.headers.get("x-request-id") or response.headers.get(
                 "x-groq-request-id"
             )
+            # The account's actual ceilings, as the provider reports them. A plan's
+            # documented limits are a claim about the plan; these are a measurement of
+            # this key, and they are what the manifest calls account-verified.
+            rate_limit_headers = {
+                name: value
+                for name, value in response.headers.items()
+                if name.lower().startswith("x-ratelimit")
+            }
             parsed = response.parse()
         except Exception as exc:
             status = getattr(exc, "status_code", None)
@@ -365,6 +349,7 @@ class OpenAIWireAdapter(_Adapter):
             "text": text,
             "returned_model": str(getattr(parsed, "model", "") or self.model),
             "provider_request_id": str(request_id or getattr(parsed, "id", "") or ""),
+            "rate_limit_headers": rate_limit_headers,
             "usage": {
                 "input_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
                 "output_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
@@ -479,6 +464,7 @@ def judge_row(
             **labels,
             "returned_model": result["returned_model"],
             "provider_request_id": result["provider_request_id"] or None,
+            "rate_limit_headers": result.get("rate_limit_headers") or {},
             "n_retries": attempt,
             "usage": result["usage"],
             "raw_response_sha256": sha256_text(result["text"]),
@@ -499,15 +485,17 @@ def judge_row(
 
 
 def _cost(model: str, input_tokens: int, output_tokens: int) -> float | None:
-    """Estimated USD, or ``None`` when this model's list price was not frozen here."""
-    prices = PRICES_USD_PER_MTOK.get(model, {})
-    per_input, per_output = prices.get("input"), prices.get("output")
-    if per_input is None or per_output is None:
-        return None
-    return round(input_tokens / 1e6 * per_input + output_tokens / 1e6 * per_output, 4)
+    """Billed USD, or ``None`` when this model's list price was not established.
+
+    Reads the plan and the rate separately. The previous table priced every judge at 0.0
+    "by rate, not by omission", which was true of Groq's free plan and false of Gemini —
+    which has no free tier — so the artifact said the audit was free while it was billing.
+    """
+    return price_of(model, input_tokens, output_tokens)
 
 
 def _paid_fallback_cost(model: str, input_tokens: int, output_tokens: int) -> float | None:
+    """What the same tokens cost without the free plan, for models that have one."""
     prices = PAID_FALLBACK_USD_PER_MTOK.get(model)
     if not prices:
         return None
@@ -742,9 +730,13 @@ def detector_v4_2_llm_judge(
         temperature=temperature,
         timeout=timeout,
     )
-    published = FREE_TIER_LIMITS.get(spec["requested_model"], {})
-    rpm = requests_per_minute or published.get("requests_per_minute") or 0
+    plan_limits = dict(RATE_LIMITS.get(spec["requested_model"], {}))
+    rpm = requests_per_minute or int(plan_limits.get("requests_per_minute") or 0)
     limiter = RateLimiter(rpm or None)
+    # The provider's own account-level ceilings, as it reports them on the responses. This
+    # is the account-verified number; the table above is a plan-level claim that can be
+    # wrong in either direction for any particular key.
+    observed_limits: dict[str, str] = {}
 
     started = time.time()
     lock = threading.Lock()
@@ -898,6 +890,12 @@ def detector_v4_2_llm_judge(
                         returned_models.add(str(record["returned_model"]))
                     if record.get("provider_request_id"):
                         request_ids.append(str(record["provider_request_id"]))
+                    # Last writer wins: the provider's remaining-quota headers change
+                    # every call, and what the manifest records is the ceiling, which does
+                    # not.
+                    observed_limits.update(
+                        {k: str(v) for k, v in (record.get("rate_limit_headers") or {}).items()}
+                    )
                     if record.get("source") == "failed":
                         n_malformed += 1
                         typer.echo(f"  [FAIL] {audit_id}: {record['error']}", err=True)
@@ -966,7 +964,19 @@ def detector_v4_2_llm_judge(
         ),
         "concurrency": concurrency,
         "requests_per_minute": rpm or None,
-        "published_free_tier_limits": published or None,
+        # Two different kinds of claim, kept apart. The plan limits are documentation; the
+        # observed ones came off this account's own responses. Before v4.2.2 there was one
+        # field called `published_free_tier_limits`, which asserted a free tier Gemini does
+        # not offer and account limits nobody had checked.
+        "plan_rate_limits": plan_limits or None,
+        "observed_rate_limits": observed_limits or None,
+        "rate_limit_verification": (
+            "account-verified from the provider's x-ratelimit-* response headers"
+            if observed_limits
+            else "not verified: the provider returned no x-ratelimit-* headers on this run"
+        ),
+        "free_tier_available": plan_limits.get("free_tier_available"),
+        "billing": plan_limits.get("billing"),
         "input_file": str(source),
         "input_file_sha256": input_sha,
         "prompt_version": PROMPT_VERSION,

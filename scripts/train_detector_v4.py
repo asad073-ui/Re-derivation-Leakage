@@ -14,6 +14,13 @@ multiple of the accumulation factor threw away its last partial accumulation —
 every epoch. ``steps_per_epoch`` also used floor division, so the LR schedule was built
 for a different number of steps than the loop takes. Both use the tail-inclusive form now.
 
+**...and then the recovered tail was under-scaled** (GU-0040). Taking the step was only
+half the fix: every batch's loss was still divided by the full accumulation factor, so a
+one-batch remainder stepped on a gradient of half — or a third — the intended size. Each
+batch is now divided by the size of *its own* window, computed by
+:func:`accumulation_windows`, which is pure so the arithmetic can be tested without a GPU.
+That it could not be is why the bug survived two revisions.
+
 **The NLI entailment index was hard-coded.** ``BASELINE_ENTAILMENT_INDEX = 1``, with a
 comment claiming it was confirmed on the box. A moved checkpoint, or a different NLI repo,
 silently turns the baseline into a measurement of the contradiction head. It is resolved
@@ -25,9 +32,19 @@ while runtime inference receives routed identity aliases — training-serving sk
 one field routing contributes. The natural rows are joined to the offline concept registry
 and carry the same permitted aliases the runtime will pass.
 
-**A checkpoint could not be verified.** The manifest recorded a path. It now records
-SHA-256 of the weights, the tokenizer files, the config and the label map, so a copied or
-released checkpoint can be checked against the one that produced the numbers.
+**A checkpoint could not be verified — and then was not.** The manifest recorded a path.
+It records SHA-256 of the weights, the tokenizer files, the config and the label map; and
+from v4.2.2 those hashes are *re-computed* rather than trusted, by the shared
+``rdl.defenses.checkpoint_digest``: here, from disk, after training, and again inside
+``CrossEncoderAnswerabilityDetector.from_artifact`` before the weights are loaded. A hash
+written once and never checked is a comment.
+
+**The preregistration was a set of defaults.** ``--seeds``, ``--epochs`` and the model pins
+were flags whose defaults happened to be the preregistered values, so a run that left the
+plan wrote a manifest recording its own settings beside a selection rule describing the
+plan's. :func:`enforce_preregistration` refuses that for a reportable run;
+``--non-reportable`` marks the run instead of skipping the check, and every downstream gate
+refuses the checkpoint it selects. Every ``--extra-train`` file is hashed either way.
 
 **Selection was not the objective, and was not frozen.** The trainer picked the best epoch
 on general macro F1 while the stated objective is ANSWER-recall under two false-alarm
@@ -55,8 +72,10 @@ Order of operations on the box
 3. ``--baseline-only`` — record the pinned zero-shot cross-encoder.
 4. Fine-tune the three preregistered seeds.
 5. Select the operating point on development (``rdl graph-detector-v4-gates --backend
-   cross_encoder --device cuda``).
-6. Generate the engineering bank and evaluate. The FINAL bank stays sealed.
+   cross_encoder --device cuda --label-source model``).
+6. Generate the engineering bank, audit it, freeze its operating point with
+   ``rdl graph-detector-v4-2-select-operating-point``, then open the held-out partition
+   once with ``rdl graph-detector-v4-2-final-gate``. The FINAL bank stays sealed.
 
 Never tune on the v4 held-out data — it is engineering-only — and never on either bank.
 """
@@ -267,6 +286,108 @@ def require_label_audit(v4_1_dir: Path, v4_2_dir: Path) -> dict:
         .get("cohens_kappa")
     )
     return authority
+
+
+# ------------------------------------------------------- the preregistration, enforced --
+
+# Frozen before training and, from v4.2.2, ENFORCED rather than defaulted. Every one of
+# these was a `--flag` with a preregistered default, which is a preregistration in the same
+# sense that an unlocked door is a lock: a run with `--seeds 7 --epochs 12` produced a
+# manifest that recorded 7 and 12 under a `checkpoint_selection_rule` describing three
+# seeds and three epochs, and nothing in the artifact said the plan had been left.
+PREREGISTERED_MODEL_REPO = "microsoft/deberta-v3-base"
+PREREGISTERED_EPOCHS = 3
+
+
+def enforce_preregistration(args, pins: "TrainingPins") -> dict:
+    """Refuse a REPORTABLE run whose pins are not the preregistered ones. Returns the record.
+
+    ``--non-reportable`` is the escape hatch, and it is an honest one: it does not skip the
+    check, it marks the run. The manifest carries ``reportable: false``, every downstream
+    gate refuses a checkpoint selected under it, and the reason is written down. A flag
+    that silently permitted the change would leave a manifest that reads exactly like a
+    preregistered run.
+    """
+    deviations: list[str] = []
+    if tuple(pins.seeds) != PREREGISTERED_SEEDS:
+        deviations.append(
+            f"seeds {list(pins.seeds)} != preregistered {list(PREREGISTERED_SEEDS)}. All "
+            "three are trained and all three are reported; one seed is a draw from a "
+            "distribution nobody showed."
+        )
+    if int(args.epochs) != PREREGISTERED_EPOCHS:
+        deviations.append(f"epochs {args.epochs} != preregistered {PREREGISTERED_EPOCHS}")
+    if str(args.model_repo_id) != PREREGISTERED_MODEL_REPO:
+        deviations.append(
+            f"model repo {args.model_repo_id!r} != preregistered "
+            f"{PREREGISTERED_MODEL_REPO!r}. A different encoder is a different experiment."
+        )
+    if str(args.baseline_repo_id) != DEFAULT_BASELINE_REPO and not args.skip_baseline:
+        deviations.append(
+            f"baseline repo {args.baseline_repo_id!r} != preregistered "
+            f"{DEFAULT_BASELINE_REPO!r}. The floor the fine-tune is compared against is "
+            "part of the claim."
+        )
+
+    # Every extra training file is hashed, whether or not the run is reportable. A
+    # reportable run additionally has to declare them: extra data changes what the model
+    # learned, and `--extra-train some.jsonl` left no trace beyond a row count.
+    extras = [
+        {
+            "path": str(path),
+            "sha256": _sha256_path(path),
+            "n_bytes": path.stat().st_size if path.exists() else None,
+            "n_rows": (
+                sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+                if path.exists()
+                else None
+            ),
+        }
+        for path in [Path(p) for p in (args.extra_train or ())]
+    ]
+    missing = [e["path"] for e in extras if e["n_rows"] is None]
+    if missing:
+        raise SystemExit(f"--extra-train file(s) do not exist: {missing}")
+    if extras and args.reportable and not args.declare_extra_train:
+        deviations.append(
+            f"{len(extras)} --extra-train file(s) were supplied without "
+            "--declare-extra-train. Extra data is a change to what the model learned; a "
+            "reportable run must name it deliberately, and its hash is recorded either way."
+        )
+
+    if deviations and args.reportable:
+        raise SystemExit(
+            "this run does not match the preregistration:\n  "
+            + "\n  ".join(deviations)
+            + "\nEither run it as preregistered, or pass --non-reportable — which does not "
+            "skip the check, it records that no result from this run may be reported and "
+            "makes every downstream gate refuse the checkpoint it selects."
+        )
+    return {
+        "reportable": bool(args.reportable),
+        "preregistered_seeds": list(PREREGISTERED_SEEDS),
+        "preregistered_epochs": PREREGISTERED_EPOCHS,
+        "preregistered_model_repo_id": PREREGISTERED_MODEL_REPO,
+        "preregistered_baseline_repo_id": DEFAULT_BASELINE_REPO,
+        "deviations": deviations,
+        "extra_train_files": extras,
+        "extra_train_declared": bool(args.declare_extra_train),
+        "why_enforced": (
+            "a preregistration with an override flag and no record is a default. These "
+            "are checked, and a run that leaves them is marked non-reportable rather than "
+            "quietly recorded as one that did not."
+        ),
+    }
+
+
+def _sha256_path(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def set_seed(seed: int) -> None:
@@ -793,69 +914,45 @@ def baseline_zero_shot(
 
 
 # ------------------------------------------------------------------ checkpoint hashes --
-
-HASHED_FILE_GLOBS = (
-    "*.safetensors",
-    "pytorch_model.bin",
-    "config.json",
-    "tokenizer.json",
-    "tokenizer_config.json",
-    "spm.model",
-    "sentencepiece.bpe.model",
-    "vocab.txt",
-    "special_tokens_map.json",
-    "added_tokens.json",
+#
+# One implementation, in `rdl.defenses.checkpoint_digest`, shared with the loader that
+# VERIFIES these hashes. A second copy here would drift, and a verifier that hashes a
+# different file set than the writer reports a mismatch on every honest checkpoint — which
+# is how verification gets turned off.
+from rdl.defenses.checkpoint_digest import (  # noqa: E402
+    checkpoint_hashes as _checkpoint_hashes,
+)
+from rdl.defenses.checkpoint_digest import (  # noqa: E402
+    verify_checkpoint_hashes,
 )
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def checkpoint_hashes(path: Path) -> dict:
-    """SHA-256 of everything that makes the checkpoint what it is.
-
-    v4.1 recorded a local path. A path is not a checkpoint: a copied, re-exported or
-    re-uploaded directory has the same path in a manifest and different bytes on disk, and
-    nobody could tell which one produced the numbers. The label map is hashed separately
-    because a permuted ``id2label`` changes every score at a fixed threshold while leaving
-    the weights byte-identical.
-    """
-    files: dict[str, str] = {}
-    for pattern in HASHED_FILE_GLOBS:
-        for candidate in sorted(path.glob(pattern)):
-            if candidate.is_file():
-                files[candidate.name] = _sha256_file(candidate)
-    label_map = None
-    config_path = path / "config.json"
-    if config_path.exists():
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        label_map = {
-            "id2label": config.get("id2label"),
-            "label2id": config.get("label2id"),
-        }
-    return {
-        "files_sha256": files,
-        "n_files_hashed": len(files),
-        "label_map": label_map,
-        "label_map_sha256": (
-            hashlib.sha256(json.dumps(label_map, sort_keys=True).encode("utf-8")).hexdigest()
-            if label_map
-            else None
-        ),
-        "expected_label_order": list(LABELS),
-        "why": (
-            "a path is not a checkpoint. These hashes let a copied or released directory "
-            "be checked against the one that produced the reported numbers."
-        ),
-    }
+    """SHA-256 of everything that makes the checkpoint what it is, under this label order."""
+    return _checkpoint_hashes(Path(path), labels=LABELS)
 
 
 # ---------------------------------------------------------------------- one seed --
+
+
+def accumulation_windows(n_batches: int, accumulation: int) -> list[int]:
+    """The divisor for each batch's loss: the size of the window that batch belongs to.
+
+    All windows hold ``accumulation`` batches except the last, which holds the remainder.
+    Dividing every batch by ``accumulation`` — which is what v4.1 and v4.2.1 both did — is
+    correct for every full window and wrong for the tail: with 101 batches and a factor of
+    2, the 101st batch is a window of one, and dividing it by two halves the gradient of
+    that epoch's final optimizer step. v4.1 discarded that step entirely, v4.2.1 took it at
+    half the intended learning rate, and neither shows up anywhere but here.
+
+    Pure and separate from the training loop so the arithmetic is testable without a GPU,
+    which is the only reason either version of the bug survived.
+    """
+    accumulation = max(1, int(accumulation))
+    n_batches = max(0, int(n_batches))
+    tail = n_batches % accumulation
+    n_full = n_batches - tail
+    return [accumulation] * n_full + [tail] * tail
 
 
 def train_one_seed(
@@ -927,23 +1024,24 @@ def train_one_seed(
     history: list[dict] = []
     n_optimizer_steps = 0
     started = time.time()
+    n_batches = len(train_loader)
     for epoch in range(1, epochs + 1):
         model.train()
         running = 0.0
         optimizer.zero_grad(set_to_none=True)
-        n_batches = len(train_loader)
+        accumulation = max(1, int(pins.gradient_accumulation_steps))
+        windows = accumulation_windows(n_batches, accumulation)
         for step, batch in enumerate(train_loader, start=1):
+            window = windows[step - 1]
             labels = batch.pop("labels").to(device)
             batch = {k: v.to(device) for k, v in batch.items()}
             with torch.autocast("cuda", enabled=pins.fp16 and device.startswith("cuda")):
                 logits = model(**batch).logits
-                loss = loss_fn(logits.float(), labels) / pins.gradient_accumulation_steps
+                loss = loss_fn(logits.float(), labels) / window
             scaler.scale(loss).backward()
-            running += float(loss.item()) * pins.gradient_accumulation_steps
-            # The tail. An epoch whose batch count is not a multiple of the accumulation
-            # factor ended with gradients in the buffer and no step; they were discarded
-            # at the next zero_grad, every epoch, invisibly.
-            should_step = (step % pins.gradient_accumulation_steps == 0) or (step == n_batches)
+            running += float(loss.item()) * window
+            # The tail steps, and it steps on a correctly normalized gradient.
+            should_step = (step % accumulation == 0) or (step == n_batches)
             if should_step:
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), pins.max_grad_norm)
@@ -987,6 +1085,18 @@ def train_one_seed(
         "n_optimizer_steps": n_optimizer_steps,
         "steps_per_epoch": steps_per_epoch,
         "planned_total_optimizer_steps": total_steps,
+        "n_batches_per_epoch": n_batches,
+        "gradient_accumulation": {
+            "steps": int(pins.gradient_accumulation_steps),
+            "tail_window_batches": n_batches % max(1, int(pins.gradient_accumulation_steps)),
+            "normalization": (
+                "each batch's loss is divided by the number of batches in ITS accumulation "
+                "window, so the epoch's final partial window steps on a gradient of the "
+                "same scale as every full one. Dividing the tail by the full factor — "
+                "which v4.2.1 did — takes one optimizer step per epoch at a fraction of "
+                "the intended learning rate."
+            ),
+        },
         "wall_clock_seconds": round(time.time() - started, 1),
         "class_weights": dict(zip(LABELS, weights.detach().cpu().tolist(), strict=True)),
         "n_candidate_truncations": train_set.n_candidate_truncations,
@@ -1247,6 +1357,21 @@ def main() -> int:
     )
     parser.add_argument("--smoke-train-rows", type=int, default=128)
     parser.add_argument("--smoke-dev-rows", type=int, default=64)
+    # Reportable by default, because the default has to be the strict one. A
+    # non-reportable run is allowed to leave the preregistration and is marked as having
+    # done so; the checkpoint it selects is refused by every downstream gate.
+    parser.add_argument(
+        "--reportable",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="enforce the preregistered seeds, epochs and model pins (default: enforced)",
+    )
+    parser.add_argument(
+        "--declare-extra-train",
+        action="store_true",
+        help="acknowledge that --extra-train changes what the model learned; hashes are "
+        "recorded either way",
+    )
     args = parser.parse_args()
 
     device_name = require_cuda(args.device)
@@ -1265,6 +1390,10 @@ def main() -> int:
         seeds=tuple(args.seeds),
         num_train_epochs=args.epochs,
     )
+    # Before the tokenizer is downloaded and before anything is encoded: a run that is
+    # going to be refused should be refused in the first second, not after the corpus is
+    # built on a rented box.
+    preregistration = enforce_preregistration(args, pins)
 
     from transformers import AutoTokenizer
 
@@ -1335,6 +1464,8 @@ def main() -> int:
         "pins": pins.to_dict(),
         "encoding_budget": budget.to_dict(),
         "dataset_content_sha256": dataset["content_sha256"],
+        "reportable": bool(args.reportable),
+        "preregistration": preregistration,
         "label_authority": authority,
         "human_grounded": bool(authority.get("human_grounded")),
         "publication_label_valid": bool(authority.get("publication_label_valid")),
@@ -1377,6 +1508,16 @@ def main() -> int:
     selection = select_checkpoint(seed_results)
     best = selection.get("selected")
 
+    # Re-hash the selected checkpoint NOW, from disk, rather than copying the hashes
+    # computed when it was saved. Three seeds x three epochs write nine directories; a
+    # crash, a full disk or a later run can leave the selected one different from what it
+    # was at save time, and the manifest is what every downstream gate verifies against.
+    selected_hashes = None
+    if best:
+        selected_hashes = verify_checkpoint_hashes(
+            best["checkpoint_hashes"], Path(best["checkpoint"])
+        )
+
     manifest.update(
         {
             "training": {"seeds": seed_results},
@@ -1384,7 +1525,8 @@ def main() -> int:
             "selected_checkpoint": best["checkpoint"] if best else None,
             "selected_seed": best["seed"] if best else None,
             "selected_epoch": best["epoch"] if best else None,
-            "selected_checkpoint_hashes": best["checkpoint_hashes"] if best else None,
+            "selected_checkpoint_hashes": selected_hashes,
+            "selected_checkpoint_hashes_reverified_after_training": bool(best),
             "development_selection_answer_recall": (
                 best["development"]["selection_answer_recall"] if best else None
             ),
