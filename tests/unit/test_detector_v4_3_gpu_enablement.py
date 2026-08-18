@@ -322,3 +322,28 @@ def test_a_healthy_ablation_table_passes():
         }
     )
     assert not failures
+
+
+# =====================================================================================
+# the gpu extra
+#
+# The loader's Mistral branch needs mistral-common, so the extra that provisions the box
+# must carry it. Asserted here rather than in the integration file because it reads
+# pyproject.toml and imports nothing -- it must hold on a machine with no gpu extra at all.
+#
+# The dispatch itself, and both judge tokenizers actually loading, live in
+# tests/integration/test_detector_v4_3_judge_tokenizers.py, which runs in the CI job that
+# installs transformers.
+# =====================================================================================
+
+
+def test_the_gpu_extra_pins_mistral_common():
+    """Mistral-Small-3.2 ships only tekken.json; AutoTokenizer raises KeyError on it."""
+    from pathlib import Path
+
+    import tomllib
+
+    root = Path(__file__).resolve().parents[2]
+    extras = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    gpu = extras["project"]["optional-dependencies"]["gpu"]
+    assert any(d.startswith("mistral-common") for d in gpu), gpu

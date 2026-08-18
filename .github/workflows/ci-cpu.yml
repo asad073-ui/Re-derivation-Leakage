@@ -111,9 +111,16 @@ jobs:
           # reason the GPU requirements declare them — the alternative is finding out on a
           # rented box. This job caught the missing protobuf; that is what it is for.
           pip install sentencepiece==0.2.0 protobuf==4.25.8
+          # Mistral-Small-3.2 publishes tekken.json and no tokenizer.json, and transformers
+          # has no Mistral3Config entry in its tokenizer mapping, so AutoTokenizer raises
+          # KeyError on judge B. Same reasoning as the two lines above: the judge loader is
+          # exercised in the job that can actually load a tokenizer.
+          pip install "mistral-common>=1.6.2"
       - name: Assert Transformers is installed
         run: python -c "import transformers; print(transformers.__version__)"
       - name: Real sampled Transformers generation
         run: python -m pytest tests/integration/test_sampled_hf_generation.py -q -rs
       - name: The detector's two pinned DeBERTa tokenizers load
         run: python -m pytest tests/integration/test_deberta_tokenizers.py -q -rs
+      - name: Both local judges resolve and encode through the right tokenizer family
+        run: python -m pytest tests/integration/test_detector_v4_3_judge_tokenizers.py -q -rs

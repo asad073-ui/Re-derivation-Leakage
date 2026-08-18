@@ -2137,3 +2137,132 @@ takes a digest. The repository already applies this everywhere it matters at run
 v4.3 bundle split, the subject ids and the human draw are all content-addressed through
 sha256 for exactly this reason. The test fixtures were simply never held to the same
 standard.
+
+## GU-0045 — v4.3 GPU enablement, part two: the judge that could not be tokenized
+
+GU-0043 fixed the model-class half of a two-part loading blocker and left the other half in
+place. Found on the rented RTX 3090 during pre-flight verification, before any weights were
+downloaded and before any reportable phase started.
+
+### What was wrong
+
+`_build_generator` resolved the *model* class from the checkpoint's own config — correct,
+and verified here: `Mistral-Small-3.2-24B-Instruct-2506` declares
+`Mistral3ForConditionalGeneration`, and `AutoModelForImageTextToText` maps it under
+transformers 4.51.3. But the *tokenizer* was still a bare `AutoTokenizer.from_pretrained`,
+and on that repository it raises:
+
+```
+AutoTokenizer.from_pretrained("mistralai/Mistral-Small-3.2-24B-Instruct-2506")
+  -> KeyError: <class transformers.models.mistral3.configuration_mistral3.Mistral3Config>
+```
+
+Two independent causes, either of which is sufficient:
+
+1. `mistral3` is absent from `TOKENIZER_MAPPING_NAMES` in transformers 4.51.3.
+2. The repository publishes **`tekken.json` and nothing else** — no `tokenizer.json`, no
+   `tokenizer_config.json`, no `special_tokens_map.json`. Its full file list is ten weight
+   shards, a consolidated copy, `config.json`, `generation_config.json`, `params.json`,
+   `tekken.json`, and prose.
+
+Judge B was therefore unloadable. That is not a degraded run: with one annotator there is
+no Cohen's kappa, so the label gate cannot be evaluated, so no adjudicated labels exist, so
+the trainer has no authority to accept — the whole chain from GPU 1 to the human report was
+blocked behind it.
+
+`mistral-common` was also missing from the `gpu` extra, which GU-0042's runbook had asked
+for. `env-check` *reported* its absence but the loader could not have used it anyway, so
+the check was advisory about a path that did not exist.
+
+### Why CI could not see it
+
+Every v4.3 judge test runs `--fake-model`, which returns a deterministic string and loads
+no tokenizer, no config and no weights. That is the right default — the tests exercise
+resume, malformed handling and pass separation without a GPU — but it means the loader
+itself had no test at all. The first execution of `AutoTokenizer.from_pretrained` for
+judge B would have been on the rented box.
+
+### The fix
+
+Tokenizer resolution now dispatches on the declared architecture, for the same reason the
+model class does: it is a fact about the checkpoint rather than a claim this repository
+makes about a model card it cannot read offline. `_ChatTokenizer` gives the generation loop
+one interface — `encode_chat`, `decode`, `eos_id`, `max_length` — over two families whose
+APIs share no method names. Qwen3 keeps `apply_chat_template` with its explicit
+`enable_thinking` switch; Mistral3 goes through `MistralTokenizer.from_hf_hub` at the
+pinned revision, which is the path its model card documents. A missing `mistral-common`
+now refuses by name at resolution time instead of raising `ImportError` mid-run.
+
+Verified against both real repositories at their pinned commits, tokenizing an actual blind
+prompt — no weights required:
+
+```
+judge A  Qwen2TokenizerFast  apply_chat_template    707 tokens  eos=151645
+judge B  Tekkenizer          encode_chat_completion 716 tokens  eos=2
+```
+
+Both are ~0.5% of the 131,072-token context, so the truncation counter should stay at zero
+for the 1,019-row audit. The tokenizer family and class are now recorded in the run
+manifest, because "which tokenizer produced these labels" is a property of the annotator.
+
+### Two smaller things the same pre-flight found
+
+**The smoke fixture held 49 distinct pairs in 50 rows.** One candidate text appears in two
+bank partition/pool blocks, and `audit_id` is derived from the text digest — so the row was
+drawn twice under two strata carrying one id. `run_rows` keys resume on `audit_id` but does
+not add to `done` inside the loop, so it was generated twice and then collapsed by the
+label report's by-id join. Deduplication is now global, on the digest, before pooling; the
+fixture reports `n_distinct_audit_ids` and `n_distinct_pairs` so the property is visible
+rather than inferred. The redrawn fixture is 50/50/50 across five strata, still disjoint
+from the 1,019.
+
+**`REQUIRED_FREE_DISK_GIB` was a guess.** 150 was set before anyone measured the
+downloads. Measured from Hub file metadata at the pinned revisions: Qwen 27.5 GiB, Mistral
+44.7 GiB of sharded weights, encoder and baseline under 1 GiB, checkpoints and artifacts
+~3 GiB — about 76 GiB. The threshold is now 100, which keeps real headroom and stops
+refusing boxes that can do the work. Recorded alongside it: the Mistral repo also carries a
+44.7 GiB `consolidated.safetensors`, a duplicate of the shards in Mistral's own format.
+`from_pretrained` reads the index and never fetches it; a bare `snapshot_download` would,
+and would need ~120 GiB for that judge alone.
+
+### What this did not change
+
+No model, prompt, rubric, quantizer, generation parameter, threshold or gate bound moved.
+`PROMPT_VERSION` is untouched, both judges are the preregistered ones at the roster's
+repositories, and the 1,019-row bundle is byte-identical. This is a loading path and a
+fixture, not an annotator.
+
+### Addendum — the first fix's tests failed CI for the reason the fix was about
+
+The tokenizer-dispatch tests were written in `tests/unit/` and passed locally. `ci-cpu /
+cpu-all` then failed on both 3.11 and 3.12 with:
+
+```
+ModuleNotFoundError: No module named 'transformers'
+```
+
+`cpu-all` installs `.[cpu,dev]`, which deliberately omits `transformers`; the three new
+tests imported it unconditionally. They passed locally only because the rented box has the
+`gpu` extra installed — the verifying environment was not the environment under test,
+which is the same shape of mistake as shipping a loader whose only tests never load
+anything.
+
+The tests were also passing `LOCAL_JUDGE_ROSTER[role]` directly, whose `revision` is empty
+by design. `from_pretrained(repo, revision="")` is not a valid request, so against the real
+Hub all four network cases skipped rather than ran — a green file that had checked nothing.
+They now resolve the sha the way `freeze-judge-pins --resolve` does, which also states what
+the test is really about: the dispatch, not any one commit.
+
+Both are now in `tests/integration/test_detector_v4_3_judge_tokenizers.py`, run by the
+`network-transformers-contract` job — the job that already exists for exactly this class of
+defect, and that caught the missing `protobuf` in GU-0041. It installs `mistral-common`
+alongside `sentencepiece` and `protobuf` for the same stated reason. Only the pyproject
+assertion stays in `tests/unit/`, because it reads a TOML file and imports nothing.
+
+The file now loads both judge tokenizers from the Hub and encodes a real blind prompt
+through each, which is the test that would have caught the original defect on a laptop
+instead of on a rented GPU.
+
+Verified before pushing this time, in a throwaway venv built the way CI builds one —
+`torch` from the CPU index plus `.[cpu,dev]`, with `transformers`, `mistral_common` and
+`bitsandbytes` all confirmed absent — rather than in the box's own environment.

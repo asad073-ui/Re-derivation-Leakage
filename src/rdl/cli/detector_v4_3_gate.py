@@ -419,8 +419,22 @@ def detector_v4_3_judge_smoke_fixture(
                     }
                 )
 
+    # One candidate text can appear in more than one bank partition/pool, and the audit_id
+    # is derived from its digest -- so without this the same row is drawn under two strata,
+    # carrying ONE audit_id. That collapses in the judge's resume map (which is keyed by
+    # audit_id) and in the label report's by-id join, leaving a fixture that says 50 rows
+    # and holds 49 distinct pairs. Dedupe on the digest, keeping the first stratum in
+    # sorted order so the choice is deterministic rather than dict-insertion order.
+    seen_digests: set[str] = set()
+    unique_rows: list[dict] = []
+    for row in sorted([*natural, *synthetic_rows], key=lambda r: (r["_digest"], r["_stratum"])):
+        if row["_digest"] in seen_digests:
+            continue
+        seen_digests.add(row["_digest"])
+        unique_rows.append(row)
+
     pools: dict[str, list[dict]] = defaultdict(list)
-    for row in [*natural, *synthetic_rows]:
+    for row in unique_rows:
         pools[row["_stratum"]].append(row)
     for rows in pools.values():
         rows.sort(key=lambda r: r["_digest"])
@@ -454,6 +468,10 @@ def detector_v4_3_judge_smoke_fixture(
             {
                 "wrote": str(path),
                 "n_rows": len(fixture),
+                "n_distinct_audit_ids": len({r["audit_id"] for r in fixture}),
+                "n_distinct_pairs": len(
+                    {(r["conditioning_question"], r["candidate_text"]) for r in fixture}
+                ),
                 "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                 "strata": dict(sorted(counts.items())),
                 "n_overlapping_with_audit": 0,

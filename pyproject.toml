@@ -44,6 +44,10 @@ semantic = [
 ]
 gpu = [
     "accelerate==0.34.2",
+    # Mistral-Small-3.2 publishes tekken.json and no tokenizer.json/tokenizer_config.json,
+    # and transformers 4.51 has no Mistral3Config entry in its tokenizer mapping, so
+    # AutoTokenizer raises KeyError on it. This is the tokenizer its model card documents.
+    "mistral-common>=1.6.2",
     # DeBERTa-v3 uses the DeBERTa-v2 SentencePiece tokenizer, which `transformers` does
     # not depend on. The detector's encoder and its NLI baseline are both DeBERTa-v3, so
     # without these the first tokenizer load on the GPU box raises.
