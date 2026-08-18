@@ -481,9 +481,30 @@ def _build_generator(pin, *, fake: bool, device: str):
         revision=pin.revision,
         quantization_config=quantization,
         device_map=device,
+        # The pin's compute dtype, APPLIED. `bnb_4bit_compute_dtype` above covers only the
+        # 4-bit matmul; everything outside it -- layernorms, embeddings, the lm head, and
+        # under LLM.int8() the outlier path that is not quantized at all -- runs in the
+        # model's dtype. Without this, `from_pretrained` picks float16 for a bitsandbytes
+        # load, and judge A ran in float16 while its pin said bfloat16. Same class of
+        # defect as the seed that was recorded and never applied.
+        torch_dtype=getattr(torch, pin.compute_dtype),
     )
     model.eval()
     quantization_report = _verify_quantization(model, pin)
+
+    # The dtype the pin names, checked against the dtype that loaded. `torch_dtype` above
+    # is the request; this is the confirmation, for the same reason the quantizer is
+    # confirmed rather than restated -- a run attributed to bfloat16 that executed in
+    # float16 is attributed to an annotator that did not produce it.
+    loaded_dtype = str(getattr(model, "dtype", ""))
+    if pin.compute_dtype not in loaded_dtype:
+        raise typer.BadParameter(
+            f"the pin names compute_dtype {pin.compute_dtype!r} but the loaded model "
+            f"reports {loaded_dtype!r}. bfloat16 and float16 differ in dynamic range, and "
+            "under LLM.int8() the unquantized outlier path runs in this dtype, so the two "
+            "can label differently."
+        )
+    quantization_report["compute_dtype"] = {"requested": pin.compute_dtype, "loaded": loaded_dtype}
 
     limit = tokenizer.max_length
 

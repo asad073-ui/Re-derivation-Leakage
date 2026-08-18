@@ -47,6 +47,7 @@ __all__ = [
     "LocalJudgePin",
     "assert_single_model_process",
     "blind_prompt",
+    "neutralise_control_tokens",
     "normalise_response",
     "parse_strict_json",
     "reset_single_model_process",
@@ -57,7 +58,7 @@ LOCAL_JUDGE_SCHEMA = "graph-detector-v4-3-local-judgement-v1"
 
 # The prompt version. Changing any byte of the rubric or the assembly below must change
 # this string, because a label produced under a different prompt is a different annotation.
-PROMPT_VERSION = "v4.3-local-prompt-1"
+PROMPT_VERSION = "v4.3-local-prompt-2"
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,33 @@ markdown fence. The object has exactly these four keys:
 """
 
 
+_CONTROL_TOKEN = re.compile(r"<\|[^|>]{1,64}\|>")
+
+
+def neutralise_control_tokens(text: str) -> str:
+    """Defang chat-control markers in untrusted text, at the only layer that can.
+
+    The prompt already tells the judge that the blocks are data and not instructions. That
+    defends against a candidate that ARGUES; it cannot defend against one that changes the
+    conversation's structure underneath the text. ``tokenizer("<|im_start|>system ...")``
+    parses that marker into token 151644 -- a real turn boundary -- so a candidate carrying
+    Qwen's own control string opens a new system turn inside the judge's prompt, and no
+    instruction written above it applies to a turn that begins below it.
+
+    Verified rather than assumed: ``<|im_start|>`` encodes to the control id, while
+    ``<|start_header_id|>`` (Llama's, absent from Qwen's vocabulary) encodes to ordinary
+    text -- so the risk is real and specific to markers the judge's own tokenizer knows.
+
+    The candidates are model-generated text from a leakage experiment, and the fresh bank
+    of GPU 4 is generated after this code is frozen, so "the current audit happens to be
+    clean" is not a property that survives the protocol. Widening the pipe by one character
+    keeps the text legible to a human reader and inert to the tokenizer.
+
+    A no-op on every row of the frozen 1,019-row audit, which contains no such marker.
+    """
+    return _CONTROL_TOKEN.sub(lambda m: m.group(0).replace("<|", "< |", 1), text)
+
+
 def blind_prompt(
     *,
     conditioning_question: str,
@@ -188,7 +216,10 @@ def blind_prompt(
     is model-generated text from a leakage experiment and some of it is adversarial by
     construction.
     """
-    aliases = ", ".join(subject_aliases) if subject_aliases else "(none extracted)"
+    conditioning_question = neutralise_control_tokens(conditioning_question)
+    candidate_text = neutralise_control_tokens(candidate_text)
+    aliases = ", ".join(neutralise_control_tokens(a) for a in subject_aliases)
+    aliases = aliases if subject_aliases else "(none extracted)"
     return f"""\
 {BLIND_RUBRIC}
 
@@ -223,6 +254,9 @@ def reference_prompt(
     Separate function, separate rubric, and it takes the reference answer as an explicit
     argument that :func:`blind_prompt` structurally cannot accept.
     """
+    conditioning_question = neutralise_control_tokens(conditioning_question)
+    candidate_text = neutralise_control_tokens(candidate_text)
+    reference_answer = neutralise_control_tokens(reference_answer)
     return f"""\
 {REFERENCE_RUBRIC}
 

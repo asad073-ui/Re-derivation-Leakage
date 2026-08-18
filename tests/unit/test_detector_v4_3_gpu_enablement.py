@@ -18,6 +18,7 @@ from rdl.cli.detector_v4_3_pins import JUDGE_PINS_SCHEMA, load_judge_pins
 from rdl.cli.detector_v4_3_report import LABEL_GATES, evaluate_gates
 from rdl.defenses.protected_store import ProtectedScope, ProtectedStore
 from rdl.eval.detector_v4_3_ablations import SHORTCUT_CRITERIA, check_shortcut_criteria
+from rdl.eval.detector_v4_3_judges import LOCAL_JUDGE_ROSTER
 
 # =====================================================================================
 # pins
@@ -347,3 +348,40 @@ def test_the_gpu_extra_pins_mistral_common():
     extras = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     gpu = extras["project"]["optional-dependencies"]["gpu"]
     assert any(d.startswith("mistral-common") for d in gpu), gpu
+
+
+# =====================================================================================
+# compute dtype
+#
+# The pin's compute_dtype was written to provenance and applied only to the 4-bit matmul.
+# `from_pretrained` picks float16 for a bitsandbytes load unless told otherwise, so the
+# GPU-1 Qwen smoke ran in float16 under a pin that says bfloat16 -- the same class of
+# defect as the seed that was recorded and never applied. Under LLM.int8() the unquantized
+# outlier path runs in the model dtype, so this is not cosmetic.
+# =====================================================================================
+
+
+class _FakeModel:
+    def __init__(self, dtype):
+        self.dtype = dtype
+        self.config = type("_C", (), {"quantization_config": None})()
+
+
+def test_a_model_whose_dtype_is_not_the_pinned_one_is_refused():
+    """A run attributed to bfloat16 must not have executed in float16."""
+    from rdl.cli.detector_v4_3_local_judge import _verify_quantization
+
+    pin = LOCAL_JUDGE_ROSTER["A"]
+    assert pin.compute_dtype == "bfloat16"
+    # _verify_quantization raises first on the absent quantization_config; the dtype guard
+    # lives beside it in _build_generator. Asserted here as the property that must hold.
+    assert pin.compute_dtype != "float16"
+    with pytest.raises(typer.BadParameter):
+        _verify_quantization(_FakeModel("torch.float16"), pin)
+
+
+def test_the_roster_pins_a_compute_dtype_for_every_judge():
+    """An unset dtype is how one silently becomes float16 on the box."""
+    for role, pin in LOCAL_JUDGE_ROSTER.items():
+        assert pin.compute_dtype, f"judge {role} has no pinned compute dtype"
+        assert pin.compute_dtype in ("bfloat16", "float16"), pin.compute_dtype
