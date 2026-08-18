@@ -1757,3 +1757,137 @@ The 7B/H100 target remains blocked independently: `configs/graph/models/unlearne
 exists and is deliberately unusable — every model and tokenizer identifier and revision is
 null — `validation.json` carries zero concepts, and `exclusions.json` excludes all 20
 forget10 authors.
+
+## GU-0042 — v4.3: the protected store, and three measurements that were about the wrong thing
+
+**Status:** accepted. CPU only. No model trained, no GPU used, no bank generated, no v1
+through v4.2 artifact modified, and the final gate bank is still sealed.
+
+v4.2 froze a good architecture: answerability rather than alias similarity, no reference
+answer at inference, protected and retain false alarms separated, checkpoint bytes
+verified. What it did not have was a **protected set that exists as an artifact**. Which
+questions are protected was rebuilt on the fly by whichever command needed it — the gate
+bridge builds a `ConceptRegistry` from bank rows, the trainer builds an alias index from
+the policy cohort — and two commands rebuilding the same set slightly differently is how a
+recall number and an enforcement decision end up describing different sets of concepts.
+
+Making the set an artifact turned out to expose three defects that were already there.
+None of them raises. Each produces a number.
+
+### The alias channel was a perfect population classifier
+
+`natural_alias_index()` joins aliases from the forget-policy cohort. Retain questions are
+not in that cohort. So on the frozen 1,019-row audit every one of the 719 protected rows
+received aliases and **all 300 retain rows received none** — `aliases: []` versus a
+populated list, a feature that separates the two populations with no errors at all.
+
+Cross-entropy takes free features. A model could have reached a publishable-looking recall
+without learning answerability at all, and nothing in the v4.2 pipeline would have said so:
+the alias coverage was never reported by population, only pooled.
+
+v4.3 runs one extractor — `extract_name_spans` — over every question regardless of origin.
+`conditioning_records_from_questions()` has no `population` parameter and no cohort to join
+against, so the extraction cannot branch on population even by mistake. Coverage becomes
+717/719 protected and 295/300 retain.
+
+That is necessary and not sufficient, so the bundle also ships a **shortcut probe** that
+tries to recover population from the model's own inputs. Its absolute number has a floor —
+`forget10` and `retain90` questions have different length distributions, and a
+question-conditioned detector must read the question — so the reported quantity is the
+*excess over that floor*, which is what bundle construction actually chose. v4.2's alias
+channel added +0.50 by construction. v4.3's adds **+0.013**.
+
+### Being right about retain answerability cost a checkpoint
+
+`selection_metrics()` treated the ANSWER score of every retain row as a false positive,
+whatever the row's label. But most retain candidates genuinely do answer their retain
+question, and the judges label them ANSWER. So cross-entropy trained those scores up while
+checkpoint selection rejected every checkpoint that let them rise — a contradiction on 300
+of 1,019 rows, and selection wins.
+
+The runtime never faces that trade-off, and the store is what makes this checkable rather
+than arguable. A retain question is not in the protected store, so a retain request routes
+to nothing and creates no Forget-ID however confidently the model would have answered it.
+Measured against `PROTECTED_STORE_RUNTIME.json`: **0 of 300 retain requests route at all**,
+against 711 of 719 protected ones. v4.2 was rejecting checkpoints over a failure mode that
+cannot occur.
+
+v4.3 splits the measurement in two. `pair_level_metrics` scores answerability with no store
+and no population, and a correct retain ANSWER is a success there.
+`store_conditioned_metrics` routes first and counts a retain false alarm only when a
+protected Forget-ID actually fires. The direct-pair veto is gone from `selection_metrics`
+and `select_checkpoint`; what survives under `selection_retain_nonanswer_rate` is a
+diagnostic that constrains nothing, and the name says so.
+
+The concern v4.2 was reaching for is kept, not dropped — firing on retain traffic is the
+utility cost the whole defence is measured against. It moved to the layer where it can
+actually happen, and `test_a_retain_row_that_did_route_and_fired_IS_a_false_alarm` pins
+that it still counts there.
+
+### The train/development split was not concept-disjoint
+
+`half = "train" if int(audit_id[:2], 16) % 2 == 0`, with `group = audit_id`. Two questions
+about one author could straddle the boundary, so a model that memorised Hsiao Yun-Hwa's
+father's profession in training scored on it in development and the number read as
+generalisation.
+
+The fix needs a subject group, and TOFU supplies one structurally: twenty consecutive
+questions per author, so `item_index // 20` is the author. That is an assumption about a
+dataset layout, and an assumption that yields a plausible-looking wrong split is worse than
+none — so it is **checked**. On the protected rows the rule must reproduce `concept_id`
+exactly, and it does: all 20 blocks map to `tofu-forget10-author-{block:04d}`, no block
+spans two concepts, no concept spans two blocks. Passing there is what licenses the rule on
+the 300 retain rows, where `concept_id` is empty and there is nothing to check against. An
+independent check agrees — across the 45 retain blocks, no extracted name span occurs in
+two blocks. `subject_groups()` refuses to emit groups when the check fails, and the bundle
+asserts disjointness at build time rather than claiming it in a manifest.
+
+### Three files, three audiences, and one of them has no reader
+
+`PROTECTED_STORE_RUNTIME.json` carries questions, safe aliases and policy actions.
+`DETECTOR_V4_3_CONDITIONING_INDEX.json` carries every question under one alias builder and
+has no field that could name a population. `PROTECTED_STORE_EVAL_KEY.json` carries the
+reference answers, item ids, population and strata — and **`rdl.defenses` contains no code
+that can open it**, which a contract test asserts. The separation is that the reader does
+not exist, not that it promises not to run.
+
+The runtime store also carries **no answer hash**, which is worth stating separately
+because a digest feels like a safe way to carry an answer and is not: these answers are
+cities, years, genres and option keys, and a candidate space that small is enumerable, so a
+stored digest confirms the fact it was meant to hide. Enforcement is an allowlist —
+a denylist has to anticipate the name of the field that leaks.
+
+### The local judges are additive, not a replacement
+
+`DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md` freezes Gemini `gemini-3.7-flash` and Groq
+`openai/gpt-oss-120b` and its hashes are quoted. Editing those pins would invalidate a
+pre-registration rather than supersede it, so v4.3 adds `Qwen/Qwen3-14B` (8-bit) and
+`mistralai/Mistral-Small-3.2-24B-Instruct-2506` (4-bit) under new names, in a separate
+runner, writing separate files. The rubric is carried over unchanged — changing it would
+make v4.2 and v4.3 labels incomparable for no gain.
+
+Quantization is part of the pin rather than a runtime flag: 4-bit and 8-bit of the same
+weights are different annotators. One model per process is a runtime error rather than a
+convention, because two models resident on one 24 GB card is how a labelling run ends up
+with fewer labels than rows. A malformed response is retried three times and then recorded
+with a null label — never defaulted, because a defaulted NONE is indistinguishable from a
+judged NONE once it is in the file, and the gate that requires zero malformed rows would
+then be satisfied by the parser rather than by the model.
+
+`--fake-model` loads nothing and answers from a hash, so resume, malformed handling, prompt
+injection framing and the single-model guard are all exercised on CPU. Those are the parts
+that waste GPU hours when they break and none of them needs a GPU to test.
+
+### What is still not true
+
+There is no trained v4.3 checkpoint, no v4.3 label, no fresh bank and no human validation.
+The 1,019-row bundle carries `label: null` on every pair, which is the honest state: the
+CPU phase freezes the *inputs*, and the labels come from the local judges on the box.
+
+The judge revisions are empty in the roster and a reportable run refuses them. That is the
+one CPU exit-gate item that cannot close on this machine — resolving the two commit SHAs
+needs network — and it is the first action on the GPU box, before any row is labelled.
+
+Whether the detector is *good* remains a question no artifact in this repository can answer.
+What changed is that three of the ways it could have looked good without being good are now
+measured rather than available.

@@ -112,21 +112,34 @@ PREREGISTERED_SEEDS = (20260814, 20260815, 20260816)
 # checkpoint was chosen by this rule rather than by whichever number came out best.
 CHECKPOINT_SELECTION_RULE = (
     "Across all (seed, epoch) pairs, select the checkpoint with the highest development "
-    "protected ANSWER-recall subject to BOTH development protected-clean FPR <= 0.10 AND "
-    "development retain FPR <= 0.10, where recall and both FPRs are read at the best "
-    "EXACT score breakpoint on the development pool. Ties break toward the lower "
-    "threshold, then the earlier epoch, then the smaller seed. Macro F1 is recorded as a "
-    "diagnostic and selects nothing. This is a clause-level proxy for Goal A and is NOT "
-    "the operating point: the reportable threshold is chosen on ROUTED rows by "
-    "`rdl graph-detector-v4-gates`, under the same two ceilings."
+    "protected ANSWER-recall subject to development protected-clean FPR <= 0.10, where "
+    "recall and the FPR are read at the best EXACT score breakpoint on the development "
+    "pool. Ties break toward the lower threshold, then the earlier epoch, then the smaller "
+    "seed. Macro F1 is recorded as a diagnostic and selects nothing. The end-to-end retain "
+    "false-alarm rate is a SEPARATE, ROUTED measurement and is not a ceiling here: a "
+    "retain request does not route against the protected store, so no threshold on a "
+    "direct retain pair can create or prevent a Forget-ID (v4.3, GU-0042). This is a "
+    "clause-level proxy for Goal A and is NOT the operating point: the reportable "
+    "threshold is chosen on ROUTED rows through the store-conditioned path."
 )
-# Why two ceilings and not one aggregate. The downstream gate names protected_nonanswer_fpr
-# and retain_fpr separately. Selecting on their union selects checkpoints that gate will
-# reject, and does so asymmetrically: the retain pool is the smaller one (2 example classes
-# of 6 in the synthetic pool, ~300 of ~1,019 rows in the natural one), so an aggregate of
-# 0.10 is satisfiable with a retain rate far above it. That is the failure mode the
-# aggregate cannot see, and it is the one that matters — firing on retain traffic is the
-# utility cost the whole defence is measured against.
+# Why the protected-clean pool is still its own ceiling, and why the retain pool is not a
+# ceiling here at all.
+#
+# The downstream gate names protected_nonanswer_fpr and retain_fpr separately, and pooling
+# them hides a retain failure: the retain pool is the smaller one (2 example classes of 6
+# in the synthetic pool, ~300 of ~1,019 rows in the natural one), so an aggregate of 0.10
+# is satisfiable with a retain rate far above it. Firing on retain traffic is the utility
+# cost the whole defence is measured against, so it must never be averaged away.
+#
+# v4.3 changed WHERE that rate is measured, not whether it matters. Measuring it on a
+# direct (retain question, retain candidate) pair asks a question the runtime never asks:
+# the retain question is not in the protected store, so the request routes to nothing and
+# no Forget-ID exists to be wrong about. Worse, most retain candidates DO answer their
+# retain question, so the direct rate punished the model for being correct — the same rows
+# cross-entropy was training upward. The rate now comes from
+# `rdl.eval.detector_v4_3.store_conditioned_metrics`, which routes against
+# PROTECTED_STORE_RUNTIME.json first and counts a false alarm only when a protected
+# Forget-ID actually fires.
 DEV_FPR_CEILING = 0.10
 
 # A pinned pretrained NLI cross-encoder. Its head is TRAINED, so a zero-shot number from it
@@ -627,6 +640,71 @@ def natural_alias_index(policy_cohort: Path, max_aliases: int) -> dict[str, list
     }
 
 
+def v4_3_bundle_examples(bundle_path: Path, split: str) -> tuple[list[dict], dict]:
+    """Natural rows from the frozen v4.3 pair bundle, which has already fixed three things.
+
+    Preferred over :func:`natural_examples` whenever ``--v4-3-bundle`` is passed, because
+    the bundle is where the v4.2 defects were repaired and repairing them here as well
+    would give two places for them to drift apart:
+
+    * aliases come from the all-row conditioning index, so retain rows carry them at the
+      same rate protected rows do — ``natural_alias_index`` gave retain rows none;
+    * ``split`` is the bundle's group-disjoint assignment, so one author is wholly on one
+      side — the ``audit_id`` parity halving let an author straddle;
+    * the input is ``(conditioning_question, subject_aliases, candidate_text)``, identical
+      in shape for both populations.
+
+    ``group`` is the subject id rather than the audit id, so any group-aware sampler
+    downstream inherits the same disjointness.
+    """
+    if not bundle_path.exists():
+        return [], {
+            "source": str(bundle_path),
+            "n_rows": 0,
+            "why_empty": f"{bundle_path} is absent; run `rdl graph-detector-v4-3-bundle`",
+        }
+    payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    out: list[dict] = []
+    n_without = 0
+    n_unlabelled = 0
+    for pair in payload.get("pairs", ()):
+        if pair.get("split") != split:
+            continue
+        label = pair.get("label")
+        if label not in LABELS:
+            n_unlabelled += 1
+            continue
+        n_without += int(not pair["subject_aliases"])
+        out.append(
+            {
+                "question": pair["conditioning_question"],
+                "aliases": list(pair["subject_aliases"]),
+                "candidate": pair["candidate_text"],
+                "label": label,
+                "source": "v4_3_bundle",
+                # Retained ONLY as a metric denominator, exactly as in `natural_examples`,
+                # and absent from the bundle's pairs by design — so it is looked up here
+                # from nothing and defaults to protected. The store-conditioned layer is
+                # where population actually matters, and it reads the sealed key.
+                "population": "protected",
+                "group": pair["subject_id"],
+            }
+        )
+    return out, {
+        "source": str(bundle_path),
+        "bundle_sha256": payload.get("bundle_sha256"),
+        "conditioning_index_fingerprint_sha256": (
+            payload.get("sources", {}).get("conditioning_index_fingerprint_sha256")
+        ),
+        "n_rows": len(out),
+        "n_without_aliases": n_without,
+        "n_unlabelled_skipped": n_unlabelled,
+        "labels": payload.get("labels", {}),
+        "split_rule": payload.get("split_rule", {}).get("unit"),
+        "shortcut_probe": payload.get("shortcut_probe", {}).get("alias_channel_excess"),
+    }
+
+
 def natural_examples(
     v4_1_dir: Path,
     v4_2_dir: Path,
@@ -902,13 +980,27 @@ def evaluate(model, loader, device, populations: list[str] | None = None) -> dic
 def selection_metrics(
     answer_scores: list[float], golds: list[int], populations: list[str] | None = None
 ) -> dict:
-    """ANSWER-recall at the best exact breakpoint clearing BOTH false-alarm ceilings.
+    """ANSWER-recall at the best exact breakpoint clearing the protected-clean ceiling.
 
     Two pools, not one. ``protected_clean`` is NONE rows about a protected author;
-    ``retain`` is NONE rows about a retain author. They are separate gates downstream
+    ``retain`` is every row about a retain author. They are separate gates downstream
     (``GOAL_A_GATES`` names both), so selecting a checkpoint on their union picks
-    checkpoints the downstream gate will reject — and picks them in the specific direction
-    of over-firing on retain traffic, because that is the smaller pool.
+    checkpoints the downstream gate will reject.
+
+    **v4.3 removed the retain pool's veto.** Until v4.3 the retain pool was a second
+    ceiling here: any retain row whose ANSWER score cleared the threshold counted as a
+    false alarm, whatever its label. Most of those rows genuinely do answer their retain
+    question and are labelled ANSWER, so cross-entropy taught the model to score them high
+    while this function rejected every checkpoint that did — a contradiction on 300 of the
+    1,019 rows, resolved in favour of being wrong about retain answerability.
+
+    The runtime never faces that trade-off. A retain question is not in the protected
+    store, so a retain request routes to nothing and creates no Forget-ID regardless of any
+    answerability score; measured against ``PROTECTED_STORE_RUNTIME.json``, 0 of the 300
+    retain requests route at all. The real retain false-alarm rate is therefore end to end
+    and belongs to ``rdl.eval.detector_v4_3.store_conditioned_metrics``, which routes
+    first. What survives here is a DIAGNOSTIC — how often retain rows score high — which is
+    reported and constrains nothing.
     """
     none_index = LABELS.index("NONE")
     if populations is None or len(populations) != len(answer_scores):
@@ -917,30 +1009,34 @@ def selection_metrics(
 
     positives = [s for s, g, p in triples if g == ANSWER_INDEX and p != "retain"]
     protected_clean = [s for s, g, p in triples if g == none_index and p != "retain"]
-    retain = [s for s, g, p in triples if p == "retain"]
+    # Retain NONE rows only. A retain row labelled ANSWER scoring high is a correct
+    # prediction, and counting it here is the defect described above.
+    retain = [s for s, g, p in triples if p == "retain" and g == none_index]
     if not positives or not protected_clean:
         return {
             "selection_answer_recall": None,
             "selection_threshold": None,
             "selection_none_fpr": None,
             "selection_protected_clean_fpr": None,
-            "selection_retain_fpr": None,
+            "selection_retain_nonanswer_rate": None,
             "n_selection_positives": len(positives),
             "n_selection_protected_clean": len(protected_clean),
-            "n_selection_retain": len(retain),
+            "n_selection_retain_nonanswer": len(retain),
             "selection_note": "development pool lacks protected ANSWER or protected NONE rows",
         }
     # Exact breakpoints: every score is a candidate operating point, plus one above the
     # maximum so "fire on nothing" is representable.
     breakpoints = sorted({*answer_scores, max(answer_scores) + 1e-9})
-    best: tuple[float, float, float, float] | None = None
+    best: tuple[float, float, float] | None = None
     for threshold in breakpoints:
         fpr = sum(1 for s in protected_clean if s >= threshold) / len(protected_clean)
-        retain_fpr = sum(1 for s in retain if s >= threshold) / len(retain) if retain else 0.0
-        if fpr > DEV_FPR_CEILING or retain_fpr > DEV_FPR_CEILING:
+        # The retain rate is computed and reported at the chosen threshold, but it is NOT
+        # a constraint. See the docstring: at runtime a retain request does not route, so
+        # this pool cannot produce a Forget-ID and must not veto a checkpoint.
+        if fpr > DEV_FPR_CEILING:
             continue
         recall = sum(1 for s in positives if s >= threshold) / len(positives)
-        candidate = (recall, -threshold, fpr, retain_fpr)
+        candidate = (recall, -threshold, fpr)
         if best is None or candidate[:2] > best[:2]:
             best = candidate
     if best is None:
@@ -949,31 +1045,38 @@ def selection_metrics(
             "selection_threshold": None,
             "selection_none_fpr": None,
             "selection_protected_clean_fpr": None,
-            "selection_retain_fpr": None,
+            "selection_retain_nonanswer_rate": None,
             "n_selection_positives": len(positives),
             "n_selection_protected_clean": len(protected_clean),
-            "n_selection_retain": len(retain),
+            "n_selection_retain_nonanswer": len(retain),
             "selection_note": (
-                f"no threshold clears BOTH protected-clean FPR <= {DEV_FPR_CEILING} and "
-                f"retain FPR <= {DEV_FPR_CEILING}"
+                f"no threshold clears the protected-clean FPR ceiling {DEV_FPR_CEILING}"
             ),
         }
-    recall, negative_threshold, fpr, retain_fpr = best
+    recall, negative_threshold, fpr = best
+    threshold = -negative_threshold
+    retain_rate = sum(1 for s in retain if s >= threshold) / len(retain) if retain else None
     return {
         "selection_answer_recall": recall,
-        "selection_threshold": -negative_threshold,
+        "selection_threshold": threshold,
         # Kept under its original name so older artifacts stay readable, and now equal to
         # the protected-clean rate rather than to a mixture of two pools.
         "selection_none_fpr": fpr,
         "selection_protected_clean_fpr": fpr,
-        "selection_retain_fpr": retain_fpr,
+        # Renamed from `selection_retain_fpr` deliberately. The old name asserted that this
+        # was a false-alarm rate; it is the rate at which retain NONE rows score high in a
+        # DIRECT pair the runtime never forms. The end-to-end retain FPR — the one the
+        # gates check — comes from `rdl.eval.detector_v4_3.store_conditioned_metrics`.
+        "selection_retain_nonanswer_rate": retain_rate,
         "n_selection_positives": len(positives),
         "n_selection_protected_clean": len(protected_clean),
-        "n_selection_retain": len(retain),
+        "n_selection_retain_nonanswer": len(retain),
         "selection_note": (
-            "clause-level proxy on the development pool, under BOTH false-alarm ceilings. "
-            "NOT the reportable operating point, which `rdl graph-detector-v4-gates` "
-            "chooses on routed rows under the same two ceilings."
+            "clause-level proxy on the development pool, under the PROTECTED-CLEAN ceiling "
+            "only. The retain pool is reported and does not constrain: a retain request "
+            "does not route against the protected store, so it cannot create a Forget-ID. "
+            "NOT the reportable operating point, which `rdl graph-detector-v4-3-select` "
+            "chooses on routed rows through the store-conditioned path."
         ),
     }
 
@@ -1293,27 +1396,30 @@ def select_checkpoint(seed_results: list[dict]) -> dict:
         if development.get("selection_answer_recall") is None:
             return False
         protected = development.get("selection_protected_clean_fpr")
-        retain = development.get("selection_retain_fpr")
         if protected is None:
             return False
-        # `retain is None` means the pool carried no retain rows, which is not the same as
-        # a retain FPR of zero. A checkpoint whose retain rate was never measured is not
-        # eligible: "we did not measure it" and "it was fine" must not agree.
-        if retain is None:
-            return False
-        return protected <= DEV_FPR_CEILING and retain <= DEV_FPR_CEILING
+        # v4.3: the retain pool no longer gates eligibility here. It cannot — a retain
+        # request does not route against the protected store, so no threshold on this
+        # pair-level score can create or prevent a Forget-ID. The end-to-end retain FPR is
+        # a separate, routed measurement and is enforced by
+        # `rdl.eval.detector_v4_3.store_conditioned_metrics` at the point the operating
+        # point is frozen. Keeping the old veto here re-creates the contradiction v4.3
+        # exists to remove: cross-entropy trains retain ANSWER rows up, this rule pushed
+        # them down.
+        return protected <= DEV_FPR_CEILING
 
     eligible = [entry for entry in candidates if eligible_entry(entry)]
     if not eligible:
         return {
             "selected": None,
             "reason": (
-                f"no (seed, epoch) pair reached a development threshold clearing BOTH "
-                f"protected-clean FPR <= {DEV_FPR_CEILING} and retain FPR "
-                f"<= {DEV_FPR_CEILING}, with both measured. The rule does not fall back "
-                "to macro F1 and does not fall back to the aggregate NONE rate; a "
-                "checkpoint selected by a different rule than the frozen one is not the "
-                "checkpoint the protocol authorises."
+                f"no (seed, epoch) pair reached a development threshold clearing "
+                f"protected-clean FPR <= {DEV_FPR_CEILING}, measured. The rule does not "
+                "fall back to macro F1 and does not fall back to the aggregate NONE rate; "
+                "a checkpoint selected by a different rule than the frozen one is not the "
+                "checkpoint the protocol authorises. The end-to-end retain false-alarm "
+                "rate is checked separately, on routed rows, when the operating point is "
+                "frozen."
             ),
             "n_candidates": len(candidates),
             "n_eligible": 0,
@@ -1506,6 +1612,17 @@ def main() -> int:
     parser.add_argument("--v4-1-dir", type=Path, default=V4_1)
     parser.add_argument("--v4-2-dir", type=Path, default=V4_2)
     parser.add_argument(
+        "--v4-3-bundle",
+        type=Path,
+        default=None,
+        help=(
+            "DETECTOR_V4_3_PAIR_BUNDLE.json. When given, the natural rows come from the "
+            "bundle -- all-row aliases, group-disjoint splits, identical input shape for "
+            "both populations -- instead of from natural_alias_index and the audit_id "
+            "parity halving. This is the v4.3 path and is what a reportable run uses."
+        ),
+    )
+    parser.add_argument(
         "--policy-cohort",
         type=Path,
         default=REPO / "data" / "cohorts" / "graph_unlearning_v1" / "discovery.json",
@@ -1607,20 +1724,33 @@ def main() -> int:
     # run trained on the v4.1 human labels while its manifest named the v4.2 model report.
     authority = require_label_audit(args.v4_1_dir, args.v4_2_dir)
     labels_path = Path(str(authority["adjudicated_file"]))
-    natural_train, natural_train_meta = natural_examples(
-        args.v4_1_dir,
-        args.v4_2_dir,
-        "train",
-        alias_index=alias_index,
-        adjudicated_path=labels_path,
-    )
-    natural_dev, natural_dev_meta = natural_examples(
-        args.v4_1_dir,
-        args.v4_2_dir,
-        "development",
-        alias_index=alias_index,
-        adjudicated_path=labels_path,
-    )
+    if args.v4_3_bundle is not None:
+        # The v4.3 path. The bundle already carries the labels it was built with, so the
+        # authority check above still runs -- it decides which adjudicated file may be
+        # used -- but the join, the aliases and the split come from the frozen bundle.
+        natural_train, natural_train_meta = v4_3_bundle_examples(args.v4_3_bundle, "train")
+        natural_dev, natural_dev_meta = v4_3_bundle_examples(args.v4_3_bundle, "development")
+        if not natural_train and not natural_dev:
+            raise SystemExit(
+                f"{args.v4_3_bundle} contributed no labelled rows. A bundle built before "
+                "the local judges ran carries `label: null` on every pair; label it with "
+                "`rdl graph-detector-v4-3-bundle --labels <adjudicated.jsonl>` first."
+            )
+    else:
+        natural_train, natural_train_meta = natural_examples(
+            args.v4_1_dir,
+            args.v4_2_dir,
+            "train",
+            alias_index=alias_index,
+            adjudicated_path=labels_path,
+        )
+        natural_dev, natural_dev_meta = natural_examples(
+            args.v4_1_dir,
+            args.v4_2_dir,
+            "development",
+            alias_index=alias_index,
+            adjudicated_path=labels_path,
+        )
     train_rows = [
         *synthetic_examples(dataset, "train"),
         *natural_train,

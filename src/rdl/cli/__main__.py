@@ -23,6 +23,14 @@ from .detector_v4_2_model_pins import detector_v4_2_freeze_model_pins
 from .detector_v4_2_operating_point import detector_v4_2_select_operating_point
 from .detector_v4_2_plan import detector_v4_2_judge_plan
 from .detector_v4_2_report import detector_v4_2_label_report
+from .detector_v4_3_bundle import detector_v4_3_bundle
+from .detector_v4_3_human import (
+    detector_v4_3_human_adjudicate,
+    detector_v4_3_human_import,
+    detector_v4_3_human_sample,
+)
+from .detector_v4_3_local_judge import detector_v4_3_local_judge
+from .detector_v4_3_store import detector_v4_3_build_store
 from .detector_v4_data import detector_v4_build_data
 from .detector_v4_gates import detector_v4_gates
 from .detector_v4_label_audit import detector_v4_label_audit, detector_v4_label_report
@@ -143,6 +151,28 @@ app.command("graph-detector-v4-2-plan-bank-runs")(detector_v4_2_plan_bank_runs)
 app.command("graph-detector-v4-2-bank-audit")(detector_v4_2_bank_audit)
 app.command("graph-detector-v4-2-select-operating-point")(detector_v4_2_select_operating_point)
 app.command("graph-detector-v4-2-final-gate")(detector_v4_2_final_gate)
+
+# v4.3 — the protected store, and the artifacts that keep the model's input answer-free
+# and population-blind. Additive: every v4.1 and v4.2 file stays byte-for-byte as frozen,
+# because their hashes are quoted in DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md and editing one
+# would invalidate a pre-registration rather than correct it.
+#
+#   build-store  PROTECTED_STORE_RUNTIME.json (answer-free, runtime-loadable),
+#                DETECTOR_V4_3_CONDITIONING_INDEX.json (answer-free AND population-free)
+#                and PROTECTED_STORE_EVAL_KEY.json (sealed; no defenses module reads it)
+#   bundle       the derived 1,019-row pair bundle: one alias builder for both
+#                populations, group-disjoint splits, and a shortcut probe that measures
+#                whether population is still recoverable from the model's own inputs
+app.command("graph-detector-v4-3-build-store")(detector_v4_3_build_store)
+app.command("graph-detector-v4-3-bundle")(detector_v4_3_bundle)
+#   local-judge  one open-weight judge, one process, one pass. --fake-model exercises
+#                resume, malformed handling and injection framing without weights.
+app.command("graph-detector-v4-3-local-judge")(detector_v4_3_local_judge)
+#   human-*      the 250-row validation. The draw never reads a detector score, and
+#                adjudication refuses to run before both rater files are frozen.
+app.command("graph-detector-v4-3-human-sample")(detector_v4_3_human_sample)
+app.command("graph-detector-v4-3-human-import")(detector_v4_3_human_import)
+app.command("graph-detector-v4-3-human-adjudicate")(detector_v4_3_human_adjudicate)
 
 
 if __name__ == "__main__":
