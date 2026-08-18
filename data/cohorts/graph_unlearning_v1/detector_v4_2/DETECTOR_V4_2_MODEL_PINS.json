@@ -1,0 +1,17 @@
+{
+  "baseline_repo_id": "cross-encoder/nli-deberta-v3-base",
+  "baseline_revision": "6c749ce3425cd33b46d187e45b92bbf96ee12ec7",
+  "enforced_by": "scripts/train_detector_v4.py enforce_model_pins(), for reportable runs",
+  "model_repo_id": "microsoft/deberta-v3-base",
+  "model_revision": "8ccc9b6f36199bec6961081d44eb72fb3f7353f3",
+  "pins_sha256": "c5c6c06377cf1bdb33de0877a48047c5f7ae1a7841ce11dc0f15ee9aa7b2511e",
+  "previous": null,
+  "protocol": "docs/graph_unlearning/DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md",
+  "resolved_from_hub": true,
+  "schema": "graph-detector-v4-2-model-pins-v1",
+  "tokenizer_repo_id": "microsoft/deberta-v3-base",
+  "tokenizer_revision": "8ccc9b6f36199bec6961081d44eb72fb3f7353f3",
+  "utc": "2026-08-18T09:12:53Z",
+  "why_the_tokenizer_is_pinned_separately": "a changed subword split changes every score at a fixed threshold while the weights stay byte-identical, so 'the same model' is not enough.",
+  "why_this_is_a_file": "the trainer required a non-empty --model-revision and accepted whatever was typed, which pins the shape of the claim and not the claim. This file is committed, so the pin is pre-registration rather than a runtime argument."
+}
