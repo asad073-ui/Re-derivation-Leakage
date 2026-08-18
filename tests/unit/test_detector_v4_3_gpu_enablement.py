@@ -7,7 +7,6 @@ produces a number nobody can attribute.
 
 from __future__ import annotations
 
-import builtins
 import json
 
 import pytest
@@ -326,107 +325,20 @@ def test_a_healthy_ablation_table_passes():
 
 
 # =====================================================================================
-# tokenizer resolution
+# the gpu extra
 #
-# PR #47 dispatched the MODEL class on the checkpoint's architecture and left the
-# TOKENIZER on AutoTokenizer. On the box that is a hard stop for judge B:
-# Mistral-Small-3.2 publishes tekken.json and no tokenizer.json/tokenizer_config.json,
-# and transformers 4.51 has no Mistral3Config entry in TOKENIZER_MAPPING_NAMES, so
-# AutoTokenizer.from_pretrained raises KeyError. Every existing judge test runs
-# --fake-model, which loads no tokenizer at all, so CI could not see it.
+# The loader's Mistral branch needs mistral-common, so the extra that provisions the box
+# must carry it. Asserted here rather than in the integration file because it reads
+# pyproject.toml and imports nothing -- it must hold on a machine with no gpu extra at all.
 #
-# These tests dispatch on a stubbed config so they assert the routing without a download.
+# The dispatch itself, and both judge tokenizers actually loading, live in
+# tests/integration/test_detector_v4_3_judge_tokenizers.py, which runs in the CI job that
+# installs transformers.
 # =====================================================================================
 
 
-class _StubConfig:
-    def __init__(self, architectures):
-        self.architectures = architectures
-
-
-def _stub_config(monkeypatch, architectures):
-    import transformers
-
-    monkeypatch.setattr(
-        transformers.AutoConfig,
-        "from_pretrained",
-        classmethod(lambda cls, *a, **k: _StubConfig(architectures)),
-    )
-
-
-def test_a_mistral3_checkpoint_tokenizes_through_mistral_common(monkeypatch):
-    """The documented path for the checkpoint, not the one that raises KeyError."""
-    from rdl.cli import detector_v4_3_local_judge as runner
-
-    _stub_config(monkeypatch, ["Mistral3ForConditionalGeneration"])
-    seen = {}
-
-    class _Inner:
-        eos_id = 2
-        n_words = 131072
-
-    class _Tok:
-        instruct_tokenizer = type("_IT", (), {"tokenizer": _Inner()})()
-
-    import mistral_common.tokens.tokenizers.mistral as mistral_module
-
-    monkeypatch.setattr(
-        mistral_module.MistralTokenizer,
-        "from_hf_hub",
-        classmethod(lambda cls, repo, **k: seen.update(repo=repo, kw=k) or _Tok()),
-    )
-
-    resolved = runner._resolve_tokenizer(
-        runner.LOCAL_JUDGE_ROSTER["B"].__class__(
-            role="B", repo_id="mistralai/Mistral-Small-3.2-24B-Instruct-2506", revision="b" * 40
-        )
-    )
-    assert resolved.kind == "mistral-common"
-    assert resolved.eos_id == 2
-    assert seen["kw"]["revision"] == "b" * 40, "the pinned commit must reach the tokenizer"
-
-
-def test_a_causal_lm_checkpoint_still_uses_autotokenizer(monkeypatch):
-    """Qwen3's path is unchanged; the Mistral branch must not capture it."""
-    import transformers
-
-    from rdl.cli import detector_v4_3_local_judge as runner
-
-    _stub_config(monkeypatch, ["Qwen3ForCausalLM"])
-
-    class _HF:
-        model_max_length = 131072
-        eos_token_id = 151645
-
-    monkeypatch.setattr(
-        transformers.AutoTokenizer,
-        "from_pretrained",
-        classmethod(lambda cls, *a, **k: _HF()),
-    )
-    resolved = runner._resolve_tokenizer(runner.LOCAL_JUDGE_ROSTER["A"])
-    assert resolved.kind == "transformers"
-    assert resolved.eos_id == 151645
-
-
-def test_a_missing_mistral_common_refuses_with_the_reason(monkeypatch):
-    """Not an ImportError forty minutes into a rented run."""
-    from rdl.cli import detector_v4_3_local_judge as runner
-
-    _stub_config(monkeypatch, ["Mistral3ForConditionalGeneration"])
-    real_import = builtins.__import__
-
-    def _no_mistral(name, *args, **kwargs):
-        if name.startswith("mistral_common"):
-            raise ImportError("no mistral_common")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", _no_mistral)
-    with pytest.raises(typer.BadParameter, match="mistral-common"):
-        runner._resolve_tokenizer(runner.LOCAL_JUDGE_ROSTER["B"])
-
-
 def test_the_gpu_extra_pins_mistral_common():
-    """The loader needs it, so the extra that provisions the box must carry it."""
+    """Mistral-Small-3.2 ships only tekken.json; AutoTokenizer raises KeyError on it."""
     from pathlib import Path
 
     import tomllib

@@ -2231,3 +2231,38 @@ No model, prompt, rubric, quantizer, generation parameter, threshold or gate bou
 `PROMPT_VERSION` is untouched, both judges are the preregistered ones at the roster's
 repositories, and the 1,019-row bundle is byte-identical. This is a loading path and a
 fixture, not an annotator.
+
+### Addendum — the first fix's tests failed CI for the reason the fix was about
+
+The tokenizer-dispatch tests were written in `tests/unit/` and passed locally. `ci-cpu /
+cpu-all` then failed on both 3.11 and 3.12 with:
+
+```
+ModuleNotFoundError: No module named 'transformers'
+```
+
+`cpu-all` installs `.[cpu,dev]`, which deliberately omits `transformers`; the three new
+tests imported it unconditionally. They passed locally only because the rented box has the
+`gpu` extra installed — the verifying environment was not the environment under test,
+which is the same shape of mistake as shipping a loader whose only tests never load
+anything.
+
+The tests were also passing `LOCAL_JUDGE_ROSTER[role]` directly, whose `revision` is empty
+by design. `from_pretrained(repo, revision="")` is not a valid request, so against the real
+Hub all four network cases skipped rather than ran — a green file that had checked nothing.
+They now resolve the sha the way `freeze-judge-pins --resolve` does, which also states what
+the test is really about: the dispatch, not any one commit.
+
+Both are now in `tests/integration/test_detector_v4_3_judge_tokenizers.py`, run by the
+`network-transformers-contract` job — the job that already exists for exactly this class of
+defect, and that caught the missing `protobuf` in GU-0041. It installs `mistral-common`
+alongside `sentencepiece` and `protobuf` for the same stated reason. Only the pyproject
+assertion stays in `tests/unit/`, because it reads a TOML file and imports nothing.
+
+The file now loads both judge tokenizers from the Hub and encodes a real blind prompt
+through each, which is the test that would have caught the original defect on a laptop
+instead of on a rented GPU.
+
+Verified before pushing this time, in a throwaway venv built the way CI builds one —
+`torch` from the CPU index plus `.[cpu,dev]`, with `transformers`, `mistral_common` and
+`bitsandbytes` all confirmed absent — rather than in the box's own environment.
