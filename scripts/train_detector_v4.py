@@ -100,6 +100,7 @@ sys.path.insert(0, str(REPO / "src"))
 V4 = REPO / "data" / "cohorts" / "graph_unlearning_v1" / "detector_v4"
 V4_1 = REPO / "data" / "cohorts" / "graph_unlearning_v1" / "detector_v4_1"
 V4_2 = REPO / "data" / "cohorts" / "graph_unlearning_v1" / "detector_v4_2"
+V4_3 = REPO / "data" / "cohorts" / "graph_unlearning_v1" / "detector_v4_3"
 LABELS = ("NONE", "PARTIAL", "ANSWER")
 ANSWER_INDEX = LABELS.index("ANSWER")
 
@@ -200,6 +201,74 @@ def require_cuda(device: str) -> str:
 
 HUMAN_REPORT = "LABEL_ALIGNMENT_REPORT.json"
 MODEL_REPORT = "DETECTOR_V4_2_MODEL_LABEL_ALIGNMENT_REPORT.json"
+
+
+def require_v4_3_label_authority(report_path: Path, bundle_path: Path) -> dict:
+    """The v4.3 authority: a passing label report, bound to the bundle it labelled.
+
+    A third acceptable authority beside v4.1's human report and v4.2's hosted-model report,
+    and it is not equivalent to either. Like v4.2's it authorises **engineering work only**
+    -- two open-weight judges agreeing is consistency evidence, not correctness -- and it
+    refuses a report whose flags have been edited to claim otherwise.
+
+    The binding to the bundle is the part v4.2 could not do. A label report names the
+    ``bundle_sha256`` it was computed over, and a training run passes both; if they differ,
+    the labels describe different rows than the ones about to be trained on, and the
+    manifest would record an authority for an audit that never happened.
+    """
+    if not report_path.exists():
+        raise SystemExit(
+            f"{report_path} is absent. A v4.3 run is authorised by "
+            "DETECTOR_V4_3_LABEL_REPORT.json, which `rdl graph-detector-v4-3-label-report` "
+            "writes once both judges' passes are closed and adjudicated."
+        )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if str(report.get("schema")) != "graph-detector-v4-3-label-authority-v1":
+        raise SystemExit(f"{report_path} carries schema {report.get('schema')!r}")
+    if not report.get("gates_passed"):
+        raise SystemExit(
+            f"{report_path} records gate failures: {report.get('gate_failures')}. Refusing "
+            "to train. A failing gate is reported as failed; it is not re-run with a "
+            "moved bound."
+        )
+    for flag in ("human_grounded", "publication_label_valid"):
+        if report.get(flag) is not False:
+            raise SystemExit(
+                f"{report_path} claims {flag}={report.get(flag)!r}. The v4.3 schema is "
+                "open-weight model-judge output and that flag is false by construction; "
+                "this file has been edited. Refusing to train on it."
+            )
+    bundle = json.loads(Path(bundle_path).read_text(encoding="utf-8"))
+    # The labelled bundle records which UNLABELLED freeze it was derived from, so the
+    # authority binds to that rather than to the labelled file's own digest, which
+    # necessarily differs once labels are attached.
+    labelled_from = str((bundle.get("labels") or {}).get("authority_bundle_sha256") or "")
+    expected = str(report.get("bundle_sha256") or "")
+    if labelled_from and expected and labelled_from != expected:
+        raise SystemExit(
+            f"{report_path} was computed over bundle {expected[:16]}... but "
+            f"{bundle_path} was labelled from {labelled_from[:16]}.... The authority "
+            "describes different rows than the ones about to be trained on."
+        )
+    return {
+        "report": str(report_path),
+        "judge_population": str(report.get("annotator_population")),
+        "human_grounded": False,
+        "publication_label_valid": False,
+        "authorises": "ENGINEERING training and evaluation only",
+        "adjudicated_file": report.get("adjudicated_file"),
+        "adjudicated_sha256": report.get("adjudicated_sha256"),
+        "bundle_sha256": expected,
+        "blind_kappa": (report.get("blind") or {}).get("kappa"),
+        "reference_kappa": (report.get("reference") or {}).get("kappa_excluding_forced"),
+        "protocol_phase": "v4.3",
+        "warning": (
+            "This run is authorised by two LOCAL OPEN-WEIGHT model judges. No result from "
+            "it may be described as a Goal A result or as publication-ready until the "
+            "250-row human validation passes. See "
+            "DETECTOR_V4_3_PROTECTED_STORE_PROTOCOL.md sections 6 and 9."
+        ),
+    }
 
 
 def require_label_audit(v4_1_dir: Path, v4_2_dir: Path) -> dict:
@@ -363,7 +432,7 @@ def load_model_pins(v4_2_dir: Path) -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
-def enforce_model_pins(args, pins: "TrainingPins", frozen: Mapping) -> list[str]:
+def enforce_model_pins(args, pins: TrainingPins, frozen: Mapping) -> list[str]:
     """Every revision this run uses that is not the one frozen for it."""
     if not frozen:
         return [
@@ -432,7 +501,7 @@ def git_state() -> dict:
     }
 
 
-def enforce_preregistration(args, pins: "TrainingPins") -> dict:
+def enforce_preregistration(args, pins: TrainingPins) -> dict:
     """Refuse a REPORTABLE run whose pins are not the preregistered ones. Returns the record.
 
     ``--non-reportable`` is the escape hatch, and it is an honest one: it does not skip the
@@ -640,7 +709,9 @@ def natural_alias_index(policy_cohort: Path, max_aliases: int) -> dict[str, list
     }
 
 
-def v4_3_bundle_examples(bundle_path: Path, split: str) -> tuple[list[dict], dict]:
+def v4_3_bundle_examples(
+    bundle_path: Path, split: str, *, eval_key: Path | None = None
+) -> tuple[list[dict], dict]:
     """Natural rows from the frozen v4.3 pair bundle, which has already fixed three things.
 
     Preferred over :func:`natural_examples` whenever ``--v4-3-bundle`` is passed, because
@@ -664,6 +735,25 @@ def v4_3_bundle_examples(bundle_path: Path, split: str) -> tuple[list[dict], dic
             "why_empty": f"{bundle_path} is absent; run `rdl graph-detector-v4-3-bundle`",
         }
     payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+
+    # `population` is a METRIC DENOMINATOR and never a model input, which is exactly why
+    # the bundle's pairs do not carry it -- a field that cannot be serialised cannot be
+    # tokenized by accident. It therefore has to come from the sealed evaluation key here.
+    #
+    # Defaulting every row to "protected" (which this function did until now) is not a
+    # neutral fallback: it makes all 300 retain rows invisible to every population-split
+    # diagnostic, so `selection_retain_nonanswer_rate` reports over an empty pool and the
+    # protected-clean denominator silently absorbs them.
+    population_of: dict[str, str] = {}
+    key_path = Path(eval_key) if eval_key else None
+    if key_path and key_path.exists():
+        population_of = {
+            audit_id: str(entry.get("population", "protected"))
+            for audit_id, entry in json.loads(key_path.read_text(encoding="utf-8"))
+            .get("rows", {})
+            .items()
+        }
+
     out: list[dict] = []
     n_without = 0
     n_unlabelled = 0
@@ -682,14 +772,11 @@ def v4_3_bundle_examples(bundle_path: Path, split: str) -> tuple[list[dict], dic
                 "candidate": pair["candidate_text"],
                 "label": label,
                 "source": "v4_3_bundle",
-                # Retained ONLY as a metric denominator, exactly as in `natural_examples`,
-                # and absent from the bundle's pairs by design — so it is looked up here
-                # from nothing and defaults to protected. The store-conditioned layer is
-                # where population actually matters, and it reads the sealed key.
-                "population": "protected",
+                "population": population_of.get(str(pair["audit_id"]), "protected"),
                 "group": pair["subject_id"],
             }
         )
+    n_retain = sum(1 for r in out if r["population"] == "retain")
     return out, {
         "source": str(bundle_path),
         "bundle_sha256": payload.get("bundle_sha256"),
@@ -699,6 +786,21 @@ def v4_3_bundle_examples(bundle_path: Path, split: str) -> tuple[list[dict], dic
         "n_rows": len(out),
         "n_without_aliases": n_without,
         "n_unlabelled_skipped": n_unlabelled,
+        "n_retain_rows": n_retain,
+        "population_source": str(key_path) if population_of else None,
+        "why_population": (
+            (
+                "read from the sealed evaluation key as a metric denominator only; it never "
+                "reaches the encoder. Without it every row would default to protected and the "
+                "retain pool would be invisible to the development diagnostics."
+            )
+            if population_of
+            else (
+                "NO evaluation key was supplied, so every row defaults to protected and the "
+                "retain diagnostics are not meaningful. Pass --v4-3-eval-key for a reportable "
+                "run."
+            )
+        ),
         "labels": payload.get("labels", {}),
         "split_rule": payload.get("split_rule", {}).get("unit"),
         "shortcut_probe": payload.get("shortcut_probe", {}).get("alias_channel_excess"),
@@ -1623,6 +1725,24 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--v4-3-label-report",
+        type=Path,
+        default=V4_3 / "DETECTOR_V4_3_LABEL_REPORT.json",
+        help=(
+            "the v4.3 label authority. A reportable --v4-3-bundle run requires it to have "
+            "passed every label gate and to name the bundle it labelled."
+        ),
+    )
+    parser.add_argument(
+        "--v4-3-eval-key",
+        type=Path,
+        default=V4_3 / "PROTECTED_STORE_EVAL_KEY.json",
+        help=(
+            "the sealed key. Read ONLY for `population`, as a metric denominator; it never "
+            "reaches the encoder. Without it the retain diagnostics have no denominator."
+        ),
+    )
+    parser.add_argument(
         "--policy-cohort",
         type=Path,
         default=REPO / "data" / "cohorts" / "graph_unlearning_v1" / "discovery.json",
@@ -1722,14 +1842,21 @@ def main() -> int:
     # The gate runs BEFORE the natural rows are read, because it is what decides WHICH
     # adjudicated file they come from. Reading them first and gating afterwards is how a
     # run trained on the v4.1 human labels while its manifest named the v4.2 model report.
-    authority = require_label_audit(args.v4_1_dir, args.v4_2_dir)
-    labels_path = Path(str(authority["adjudicated_file"]))
     if args.v4_3_bundle is not None:
-        # The v4.3 path. The bundle already carries the labels it was built with, so the
-        # authority check above still runs -- it decides which adjudicated file may be
-        # used -- but the join, the aliases and the split come from the frozen bundle.
-        natural_train, natural_train_meta = v4_3_bundle_examples(args.v4_3_bundle, "train")
-        natural_dev, natural_dev_meta = v4_3_bundle_examples(args.v4_3_bundle, "development")
+        # The v4.3 path. Its authority is the v4.3 label report, bound to the bundle it
+        # labelled -- not v4.1's human report and not v4.2's hosted-judge report, neither
+        # of which describes these rows. Requiring one of those here is what made a
+        # reportable v4.3 run impossible: it would exit before ever reading the bundle.
+        authority = require_v4_3_label_authority(
+            Path(args.v4_3_label_report), Path(args.v4_3_bundle)
+        )
+        labels_path = Path(str(authority["adjudicated_file"]))
+        natural_train, natural_train_meta = v4_3_bundle_examples(
+            args.v4_3_bundle, "train", eval_key=args.v4_3_eval_key
+        )
+        natural_dev, natural_dev_meta = v4_3_bundle_examples(
+            args.v4_3_bundle, "development", eval_key=args.v4_3_eval_key
+        )
         if not natural_train and not natural_dev:
             raise SystemExit(
                 f"{args.v4_3_bundle} contributed no labelled rows. A bundle built before "
@@ -1737,6 +1864,8 @@ def main() -> int:
                 "`rdl graph-detector-v4-3-bundle --labels <adjudicated.jsonl>` first."
             )
     else:
+        authority = require_label_audit(args.v4_1_dir, args.v4_2_dir)
+        labels_path = Path(str(authority["adjudicated_file"]))
         natural_train, natural_train_meta = natural_examples(
             args.v4_1_dir,
             args.v4_2_dir,

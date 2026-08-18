@@ -1891,3 +1891,166 @@ needs network — and it is the first action on the GPU box, before any row is l
 Whether the detector is *good* remains a question no artifact in this repository can answer.
 What changed is that three of the ways it could have looked good without being good are now
 measured rather than available.
+
+## GU-0043 — v4.3 GPU enablement: the steps that existed only as docstrings
+
+**Status:** accepted. CPU only. No model trained, no GPU used, no bank generated, no v1
+through v4.2 artifact modified, and the final gate bank is still sealed.
+
+GU-0042 got the v4.3 data design right and left the pipeline unrunnable. An external review
+of the merged branch found twelve places where a documented step had no implementation
+behind it. Eleven were real; the twelfth was a mistake in the review and is recorded below
+because the correction matters.
+
+The common shape: **a function that is tested but never called, and a command named in
+prose but never registered.** Each one would have surfaced on a rented box, mid-phase, with
+the clock running.
+
+### The roster named a command that did not exist
+
+`detector_v4_3_judges.py` told the reader to run
+`rdl graph-detector-v4-3-freeze-judge-pins`. Nothing registered it, and no implementation
+existed. The roster ships empty revisions and the runner refuses them — correct, and half a
+mechanism, because nothing could fill them in. Both judges were therefore unloadable and
+the first GPU action was impossible.
+
+The command now resolves and freezes the two shas, refuses a tag, refuses a repo that is
+not the frozen roster's, and refuses to move an existing pin without `--refreeze`. The
+runner reads the committed artifact rather than the source constant, which is what makes
+the annotator checkable after the fact.
+
+### Only half the judging protocol was implemented
+
+`reference_prompt()` existed and had no caller: the runner had no `--pass`, always wrote
+`BLIND` filenames, and could not produce the reference-assisted pass the label gate
+requires. `--pass blind|reference` now exists, the reference pass takes `--eval-key`, the
+blind pass **refuses** one, and the reference pass refuses to start until that judge's
+blind output has been closed — a reference label produced first could have been revised in
+the light of the answer, and the two passes would no longer be independent annotations.
+
+### There was nothing between judge output and training input
+
+No v4.3 label report. So no kappa, no gates, no disagreement file, no adjudication, and
+nothing that could produce the `--labels` file the bundle builder takes. The gap ran the
+whole width of the pipeline: judges could speak and the trainer could listen and there was
+no channel between them.
+
+`graph-detector-v4-3-label-report` is that channel. It verifies run provenance, computes
+blind kappa overall and per stratum, writes the disagreements **without reference answers**
+so the researcher adjudicates blind exactly as the judges did, folds the adjudication back
+in, computes reference-assisted kappa excluding forced rows, applies all ten gates, and
+emits an authority artifact bound to the bundle it labelled.
+
+Reference kappa excludes rows whose reference answer is empty because the rubric assigns
+those UNCERTAIN by rule. Two annotators agreeing because a rule told them both the same
+thing is not evidence that they agree, and counting it inflates kappa exactly where the
+data is weakest.
+
+### The trainer could not be authorised for v4.3
+
+`require_label_audit()` accepts v4.1's human report or v4.2's hosted-judge report. Neither
+describes the v4.3 rows, and the call sat *before* the bundle branch — so a reportable v4.3
+run exited before it ever read the bundle. `require_v4_3_label_authority()` is the third
+authority: engineering-only like v4.2's, refusing edited flags the same way, and
+additionally **bound to the bundle** it labelled, which v4.2's could not do.
+
+### The new metrics had no caller
+
+`pair_level_metrics`, `store_conditioned_metrics` and `select_thresholds` shipped with
+tests and no consumer. The retain-routing correction — the centrepiece of GU-0042 — reached
+no artifact. `select-operating-point` and `final-gate` are the callers, and both go through
+one `score_store_conditioned`: if selection and the gate each built their own path, the
+threshold would be chosen under one routing behaviour and applied under another. The
+held-out command refuses a second opening.
+
+### Population defaulted to protected
+
+`v4_3_bundle_examples()` stamped `population: "protected"` on every row, because the bundle
+deliberately does not carry it. The consequence was quiet: all 300 retain rows became
+invisible to the development diagnostics, so the retain rate reported over an empty pool
+and the protected-clean denominator absorbed them. It now reads the field from the sealed
+key — still only as a denominator, still never tokenized — and says so in the manifest when
+no key was supplied.
+
+### Two loading assumptions that would have failed on the box
+
+The runner hard-coded `AutoModelForCausalLM`. Qwen3-14B is a causal LM;
+Mistral-Small-3.2-24B-Instruct-2506 declares `Mistral3ForConditionalGeneration`, which that
+auto class refuses outright. Rather than encode a claim about a model card this repository
+cannot check offline, `_resolve_auto_class` reads `config.architectures` from the
+checkpoint and dispatches, recording which class it used. `mistral-common` is reported by
+`env-check` because the documented tokenizer path wants it.
+
+`LocalJudgePin.seed` was written into provenance and never applied. Greedy decoding makes
+that mostly moot, which is exactly why it would have gone unnoticed — a manifest claiming a
+control the code does not apply is discovered when a run fails to reproduce. Torch and CUDA
+are now seeded from the pin. Quantization is likewise verified against the loaded model
+rather than restated from the request: a `BitsAndBytesConfig` is an ask, and a load that
+silently fell back or offloaded to CPU is a different annotator than the manifest names.
+
+### The smoke could not be honest, and could not be complete
+
+`--limit 50` took the first fifty rows *of the reportable audit* and wrote the reportable
+filenames — a preview of the rows the smoke is supposed to be disjoint from, and a
+truncated reportable pass wearing a smoke's clothes. `--limit` now requires
+`--non-reportable --run-id`, which namespaces every output.
+
+Building the disjoint fixture then turned up something neither the plan nor the review
+anticipated: **the natural bank has 120 leaking rows and the audit took 119, so zero remain
+disjoint.** A natural-only smoke fixture contains no likely-ANSWER row, and the GPU-1
+smoke's "plausible manual labels" check could not look at the one class the detector exists
+to catch. The fixture therefore draws its ANSWER and PARTIAL rows from the held-out split
+of the synthetic relation dataset — a different generator with invented subjects, disjoint
+by construction — and every row records its source. It is a rubric-and-format check, not a
+sample of the natural distribution, and it says so.
+
+### The human sample was enriched but not a probability sample
+
+Three defects. `judges_disagree` was read off bundle rows that never carry it, so the
+oversampling silently never fired and every row landed in one stratum; it is now joined
+from the label report, the artifact that knows. The inclusion probability was an
+approximation of a weighted top-k draw, which is a defensible enrichment but not something
+"design-weighted estimate" may be said about; the draw is now stratified with a
+preregistered allocation, so the probability is exactly `n_h/N_h` and each row carries its
+design weight. And a reportable draw now requires both sources — 125 original **and** 125
+fresh — with `--exploratory` the only way to draw from the bundle alone, which stamps the
+sample non-reportable.
+
+`graph-detector-v4-3-human-report` computes the gates that had no computer: human–human
+kappa, model-consensus versus human macro F1 and per-class recall, and the frozen
+detector's own claims on the human-adjudicated subset with Wilson intervals — Wilson
+because these denominators are small enough that a Wald interval reports bounds past 1.0.
+
+### Where the review was wrong
+
+It asked for `graph-detector-v4-3-freeze-model-pins` alongside the judge pins, to freeze
+`microsoft/deberta-v3-base`, its tokenizer and `cross-encoder/nli-deberta-v3-base`. Those
+are already frozen by `rdl graph-detector-v4-2-freeze-model-pins` into
+`DETECTOR_V4_2_MODEL_PINS.json`, which the trainer already enforces. Adding a v4.3
+duplicate would create two pin artifacts for one set of models, and two artifacts that can
+disagree mean "which commit trained the checkpoint" has two answers. v4.3 reuses the v4.2
+file and records its path inside the judge-pin artifact.
+
+### How this was verified
+
+`scripts/v43_pipeline_dryrun.py` runs the entire GPU sequence on CPU with no weights and no
+network: hash-based judges, the lexical backend, a synthetic audit. It asserts 22
+behaviours and every refusal among them — a tag as a pin, a reference pass before the blind
+freeze, an `--eval-key` on a blind pass, threshold selection on the held-out partition, a
+second held-out opening, a human draw without the fresh audit. Judge B dissents on roughly
+one row in seven, because two judges that are the same deterministic function agree
+everywhere and a dry run built that way never exercises the disagreement file, the
+adjudication input, or the unresolved-row gate.
+
+The numbers it produces are meaningless and the gates it reports are about a hash. The
+sequence is what is under test.
+
+### What is still not true
+
+There is still no trained v4.3 checkpoint, no v4.3 label, no fresh bank and no human
+validation. The 1,019-row bundle still carries `label: null` on every pair. The judge
+revisions are still empty, and resolving them needs network — that remains the one CPU exit
+gate that cannot close on this machine, and it is the first action on the GPU box.
+
+What changed is that every step between here and the held-out report is now reachable from
+a command, and every one of them has been run.
