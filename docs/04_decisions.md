@@ -43,6 +43,10 @@ setup step, which is exactly the fragility the gate is supposed to remove.
 3.11 on Colab. Nothing in `src/rdl` uses a 3.11+ feature (`Self`, `StrEnum`,
 `ExceptionGroup`), which the CI matrix enforces.
 
+**Amended 2026-08-18 by ADR-0063.** The matrix is now `["3.10", "3.13"]`. The claim above
+is narrower than it reads: it is scoped to `src/rdl`, and the CI matrix could not enforce
+even that at the declared floor, because 3.10 was never in it.
+
 ---
 
 ## ADR-0003 — 2026-08-07 — Deleted nodes stay in the index as tombstones
@@ -1455,3 +1459,39 @@ rows with the same name and different numbers — indistinguishable from run-to-
 **Consequence.** The two experiments answer different questions (item-exchangeable
 recovery vs longitudinal recontamination), have different seed counts (1 vs 5), and are
 never differenced against each other. A verdict now says which one it is.
+
+---
+
+## ADR-0063 — 2026-08-18 — The CI matrix tests the endpoints of `requires-python`
+
+**Decision.** `ci-cpu.yml` runs `["3.10", "3.13"]`, not `["3.11", "3.12"]`. Still two jobs.
+
+**Context.** ADR-0002 declares `>=3.10,<3.14` and says the gate must run on the developer's
+laptop, which ships 3.10. CI then tested 3.11 and 3.12 — neither endpoint of the range it
+claims to support, and not the one interpreter the project is actually developed on.
+
+That gap had already cost something. `tests/unit/test_detector_v4_3_gpu_enablement.py`
+imported `tomllib` unguarded; `tomllib` is stdlib only from 3.11. The CPU gate was
+therefore red on 3.10 — the *declared floor* — while CI stayed green, so `make cpu-all`
+did not pass on the machine ADR-0002 exists to keep it passing on. Nobody had told CI to
+look there.
+
+Two versions from the middle of a four-version range are the two least likely to find
+anything. Version-dependent breakage clusters at the boundaries: the floor is where
+stdlib *additions* leak in (this bug), the ceiling is where removals and deprecations land.
+3.11 and 3.12 can only catch what 3.10 and 3.13 would also catch.
+
+**Rejected: test only one version.** It is cheaper, and it would be honest only if
+`requires-python` were narrowed to match. Declaring a range and testing a point means the
+declaration is an assertion nothing checks — which is the situation this ADR closes, not a
+different one. Narrowing the range instead is a live option, but it reverses ADR-0002 and
+drops the 3.10 laptop; that is a real decision and would need its own ADR.
+
+**Rejected: add 3.10 and keep 3.11 and 3.12.** Three jobs to cover the same failure modes
+as two.
+
+**Consequence.** `tomli` is a conditional dependency of the `cpu` extra under
+`python_version < '3.11'`, and the test imports `tomllib` with a fallback. The gate is
+green on 3.10 for the first time. 3.13 is now exercised rather than merely claimed; if the
+dependency set cannot support it, CI says so instead of the declaration quietly being
+wrong.
