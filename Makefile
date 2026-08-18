@@ -9,7 +9,7 @@ PKG := src/rdl
 .DEFAULT_GOAL := help
 
 .PHONY: help setup-cpu lint fmt test-unit test-contract test-graph test-integration \
-        cpu-all graph-smoke submodule repro-dry clean
+        cpu-all graph-smoke submodule repro-dry v44-artifacts v44-dryrun clean
 
 help:
 	@echo "setup-cpu         editable install + cpu extras"
@@ -23,6 +23,8 @@ help:
 	@echo "graph-smoke       full graph pipeline on the stub backend (diagnostic only)"
 	@echo "submodule         git submodule update --init --recursive (NEEDS NETWORK)"
 	@echo "repro-dry         print the exact open-unlearning command, run nothing"
+	@echo "v44-artifacts     rebuild the detector v4.4 supplement/bundle/panel/smoke"
+	@echo "v44-dryrun        verify the v4.4 CPU phase before any GPU time is billed"
 
 setup-cpu:
 	$(PY) -m pip install -e ".[cpu,dev]"
@@ -73,6 +75,18 @@ graph-smoke:
 	done
 	@echo ""
 	@echo "GRAPH SMOKE PASSED, both protocols (diagnostic only)"
+
+# Detector v4.4. Deterministic and offline: re-running produces byte-identical artifacts,
+# so this is safe to use to check that what is committed is what the code generates.
+v44-artifacts:
+	$(PY) -m rdl.cli graph-detector-v4-4-supplement
+	$(PY) -m rdl.cli graph-detector-v4-4-bundle
+	$(PY) -m rdl.cli graph-detector-v4-4-panel
+	$(PY) -m rdl.cli graph-detector-v4-4-judge-smoke-fixture
+
+# The check that runs between `make cpu-all` and the first billed GPU minute.
+v44-dryrun:
+	$(PY) scripts/v44_pipeline_dryrun.py
 
 submodule:
 	git submodule update --init --recursive

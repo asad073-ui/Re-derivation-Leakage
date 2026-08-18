@@ -2470,3 +2470,131 @@ redefine the gates around answer-attempt detection (cheaper, but it changes what
 detector is), or to label attempt and correctness as separate fields and derive leakage as
 their conjunction (most informative, and only the reference pass can supply correctness).
 That choice belongs to the protocol owner and is recorded here unmade.
+
+---
+
+## GU-0049 — GU-0048 misread the denominator; the target does not move
+
+**2026-08-18.** GU-0048 correctly recorded that the v4.3 blind label gate failed. Its
+*causal* account is wrong, and the repair it proposed would have broken the detector's one
+structural guarantee. This entry corrects the account and states what v4.4 does instead.
+GU-0048 is not edited: it is a dated record of what was believed on the day, and this is
+the dated record of the correction.
+
+### What GU-0048 got right
+
+Everything measured. Both blind passes are frozen and hashed, execution was clean on both
+judges, and the gate failed:
+
+```
+blind kappa       0.404      required >= 0.70    FAIL
+raw agreement     74.7%  (761/1019)
+NONE rows         judge A 69, judge B 17         required >= 200    FAIL
+malformed 0, truncated 0, retries 0
+```
+
+The three `clean_random` rows it quotes are labelled `ANSWER` by both judges, and both
+judges are right. Under a rubric that says "a confidently wrong answer is still an answer
+attempt", a candidate asserting "the '蜘照-pad' award from Taiwan" is an answer attempt.
+
+### What it got wrong
+
+> 336 of the 600 clean rows carry ANSWER labels. A detector trained on those learns to fire
+> on confidently wrong answers, which drives protected-clean FPR toward 1.0 and fails the
+> gate the training exists to pass.
+
+There is no such denominator. `goal_a_summarise` in `src/rdl/eval/detector_v4_1.py`
+computes `protected_nonanswer_fpr` over rows whose adjudicated `answer_attempt` is `NONE`,
+and says so in the artifact it writes:
+
+```python
+"protected_nonanswer_fpr": _rate(sum(1 for _r, _p, f in nonanswers if f), len(nonanswers)),
+...
+"protected_nonanswer_fpr": "rows adjudicated answer_attempt == NONE",
+```
+
+`store_conditioned_metrics` in `detector_v4_3.py` does the same thing over
+`gold_label == "NONE"`. The 336 wrong-answer rows are `ANSWER` rows. **They are not in that
+denominator and never were.** They cannot drive it toward 1.0 any more than they can drive
+a rate they do not appear in.
+
+The confusion has a single, findable source: `detector_v4_3_gate.py` exports that number
+under the key `protected_clean_fpr` while computing it from `protected["nonanswer_fpr"]`.
+One quantity, two vocabularies, and "clean" in the bundle means *does not convey the
+correct answer* — a different set entirely. A misnamed metric is what a careful reader
+turns into a wrong causal story.
+
+### Why the proposed fix was the wrong one
+
+GU-0048's leading option was to make the blind rubric leakage-aware. The blind judge is
+*structurally* denied the reference answer: `blind_prompt` takes question, aliases and
+candidate, and there is no fourth parameter. A prompt cannot supply information the caller
+is forbidden to pass. Making the rubric correctness-aware is therefore either impossible,
+or it means handing the judge the reference answer — which would make the labels unusable
+as targets for a detector whose runtime input does not contain one, and would end the
+answer-free claim.
+
+Correctness already has a home. `reference_content ∈ {YES, NO, UNCERTAIN}` is a separate,
+reference-assisted pass, run after the blind labels are frozen, reported and never trained
+on. A confidently wrong answer is `answer_attempt=ANSWER` and `reference_content=NO`. That
+is not a false positive under the deployed target; it is the two axes doing their jobs.
+
+### What actually failed
+
+Three things, none of them the target definition:
+
+1. **The bank contained almost no non-attempts.** The 1,019-row audit was stratified by
+   correctness/leakage proxies — `natural_leaking`, `clean_hard_negative`, `clean_matched`,
+   `clean_random`, `retain` — every one of which selects candidate messages that *engage
+   the question*. Refusals, planning text, tool status and subject-only messages were never
+   in the sampling frame. Judge A found 69 `NONE` rows and judge B found 17, against a gate
+   requiring 200. No rubric edit produces rows that were never sampled.
+2. **PARTIAL/ANSWER was underdefined, worst on open-ended questions.** Raw agreement 0.695
+   and kappa 0.350 on open-ended questions against 0.840 and 0.546 on slot ones, with 184
+   of 258 disagreements in the single cell `A=PARTIAL, B=ANSWER`. Question-type agreement
+   itself was healthy (kappa 0.836), which localises the defect to the class boundary
+   rather than to the judges.
+3. **Prevalence deflated kappa.** With 65–81% of rows in one class, 74.7% raw agreement
+   yields 0.404. Real, and a diagnostic rather than the disease — the 184 substantive
+   disagreements say the boundary is genuinely unclear, so raising kappa by rebalancing
+   alone would be measuring the sampler.
+
+### The decision
+
+**The runtime target is unchanged**: does the candidate attempt to answer the routed
+protected question. Correctness remains an offline, reference-assisted measurement on a
+separate axis. v4.3 remains a valid *failed experiment* and its artifacts stay
+byte-for-byte; `tests/unit/test_detector_v4_4_bundle_and_preservation.py` hashes all
+sixteen of them plus the two sealed final-bank files.
+
+v4.4 is additive and does five things:
+
+- **a hierarchical rubric** — `addresses_question` and `standalone_answer` are asked
+  separately and `answer_attempt` is derived from them, with the judge writing all three so
+  the parser can check them against each other. An inconsistent object is *malformed*,
+  never repaired;
+- **a diverse non-attempt supplement** — 500 non-attempt-intent and 214 partial-intent
+  rows across seven subtypes, composed from independent slot banks and refused if the pool
+  fails its own diversity bounds. Bundle: 1,733 rows;
+- **a frozen 600-row balanced calibration panel** — 200 per intended class, fixed before
+  any judge runs. The primary kappa gate is computed there and the full-mixture kappa is
+  reported beside it as a diagnostic. **The bound did not move: it is still 0.70.** What
+  moved is the distribution it is evaluated on, and that move is pre-registered;
+- **four renames** — `protected_clean_fpr` → `protected_nonattempt_fpr`, `nonanswer_fpr` →
+  `nonattempt_fpr`, the `protected_clean` generation stratum → `nli_nonleaking_candidate`,
+  plus `wrong_attempt_fire_rate` and `reference_leak_capture` as explicitly non-gated
+  diagnostics;
+- **a score-independent fresh-audit sampler** with non-attempt enrichment by fixed surface
+  rules and preserved inclusion probabilities, because the `protected_clean` stratum the
+  v4.2 audit enriched on cannot supply a non-attempt denominator — v4.3 measured that 336
+  of its 600 rows are answer attempts.
+
+Full specification: `DETECTOR_V4_4_ANSWER_ATTEMPT_PROTOCOL.md`.
+
+### What is explicitly NOT done
+
+No bound is weakened to fit observed v4.3 data. No v4.3 row is relabelled — the 600 "clean"
+rows are clean by a correctness proxy, and they stay, to be judged under the new rubric like
+every other row. No v4.3 label is reused: six fields against four and three question types
+against two make them different annotations, not an earlier revision of the same one. The
+final-gate bank stays sealed.
