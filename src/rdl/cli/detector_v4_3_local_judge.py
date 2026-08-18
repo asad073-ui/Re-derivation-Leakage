@@ -307,6 +307,133 @@ def _verify_quantization(model, pin) -> dict:
     return described
 
 
+class _ChatTokenizer:
+    """One prompt-to-token-ids interface over two tokenizer families.
+
+    The runner needs four things from a tokenizer -- apply the family's chat template,
+    count the resulting tokens, feed them to ``generate``, and decode only the completion.
+    Qwen3 and Mistral-Small-3.2 expose those through APIs that share no method names, so
+    the difference is absorbed here rather than branching inside the generation loop.
+    """
+
+    def __init__(self, *, kind: str, max_length: int, eos_id: int | None, describe: dict):
+        self.kind = kind
+        self.max_length = max_length
+        self.eos_id = eos_id
+        self.describe = describe
+
+    def encode_chat(self, prompt: str) -> list[int]:  # pragma: no cover - overridden
+        raise NotImplementedError
+
+    def decode(self, ids) -> str:  # pragma: no cover - overridden
+        raise NotImplementedError
+
+
+class _HFChatTokenizer(_ChatTokenizer):
+    """``AutoTokenizer`` plus ``apply_chat_template``. Correct for Qwen3-14B."""
+
+    def __init__(self, tokenizer, pin):
+        limit = int(getattr(tokenizer, "model_max_length", 0) or 0)
+        if limit > 1_000_000:  # some tokenizers use a sentinel rather than a real bound
+            limit = 0
+        super().__init__(
+            kind="transformers",
+            max_length=limit,
+            eos_id=tokenizer.eos_token_id,
+            describe={
+                "tokenizer_class": type(tokenizer).__name__,
+                "source": "transformers.AutoTokenizer",
+                "chat_template": "tokenizer.apply_chat_template",
+            },
+        )
+        self._tokenizer = tokenizer
+        self._pin = pin
+
+    def encode_chat(self, prompt: str) -> list[int]:
+        kwargs: dict = {"add_generation_prompt": True, "tokenize": False}
+        if "Qwen3" in self._pin.repo_id:
+            # Qwen3's template takes an explicit switch; passing it only for Qwen keeps the
+            # call identical to each family's documented form.
+            kwargs["enable_thinking"] = bool(self._pin.thinking_mode)
+        text = self._tokenizer.apply_chat_template([{"role": "user", "content": prompt}], **kwargs)
+        return list(self._tokenizer(text)["input_ids"])
+
+    def decode(self, ids) -> str:
+        return self._tokenizer.decode(ids, skip_special_tokens=True)
+
+
+class _MistralCommonChatTokenizer(_ChatTokenizer):
+    """``mistral-common``, which is the only tokenizer Mistral-Small-3.2 ships for.
+
+    ``mistralai/Mistral-Small-3.2-24B-Instruct-2506`` publishes ``tekken.json`` and no
+    ``tokenizer.json`` or ``tokenizer_config.json``, and transformers 4.51 has no
+    ``Mistral3Config`` entry in its tokenizer mapping. ``AutoTokenizer.from_pretrained``
+    therefore raises ``KeyError`` on that repository -- not a warning, not a slow path.
+    The model card's own instruction is to tokenize through ``mistral-common``, so the
+    documented path is the implemented one, and the template markers come from the
+    checkpoint rather than from a template this repository would otherwise have to guess.
+    """
+
+    def __init__(self, tokenizer, pin):
+        inner = tokenizer.instruct_tokenizer.tokenizer
+        super().__init__(
+            kind="mistral-common",
+            max_length=int(getattr(inner, "n_words", 0) or 0),
+            eos_id=int(inner.eos_id),
+            describe={
+                "tokenizer_class": type(inner).__name__,
+                "source": "mistral_common.MistralTokenizer.from_hf_hub",
+                "chat_template": "encode_chat_completion",
+            },
+        )
+        self._tokenizer = tokenizer
+        self._inner = inner
+        self._pin = pin
+
+    def encode_chat(self, prompt: str) -> list[int]:
+        from mistral_common.protocol.instruct.messages import UserMessage
+        from mistral_common.protocol.instruct.request import ChatCompletionRequest
+
+        request = ChatCompletionRequest(messages=[UserMessage(content=prompt)])
+        return list(self._tokenizer.encode_chat_completion(request).tokens)
+
+    def decode(self, ids) -> str:
+        from mistral_common.tokens.tokenizers.base import SpecialTokenPolicy
+
+        return self._inner.decode(list(ids), special_token_policy=SpecialTokenPolicy.IGNORE)
+
+
+def _resolve_tokenizer(pin):
+    """Pick the tokenizer family from what the checkpoint actually publishes.
+
+    Dispatch is on the declared architecture, for the same reason ``_resolve_auto_class``
+    dispatches there: it is a fact about the checkpoint rather than a claim this file
+    makes about a model card it cannot read offline.
+    """
+    from transformers import AutoConfig
+
+    config = AutoConfig.from_pretrained(pin.repo_id, revision=pin.revision)
+    architectures = list(getattr(config, "architectures", None) or [])
+    needs_mistral_common = any(name.startswith("Mistral3") for name in architectures)
+
+    if needs_mistral_common:
+        try:
+            from mistral_common.tokens.tokenizers.mistral import MistralTokenizer
+        except ImportError as error:
+            raise typer.BadParameter(
+                f"{pin.repo_id} declares {architectures} and ships only tekken.json, so it "
+                "tokenizes through mistral-common. Install the gpu extra, which pins "
+                "mistral-common>=1.6.2. AutoTokenizer raises KeyError on this repository."
+            ) from error
+        return _MistralCommonChatTokenizer(
+            MistralTokenizer.from_hf_hub(pin.repo_id, revision=pin.revision), pin
+        )
+
+    from transformers import AutoTokenizer
+
+    return _HFChatTokenizer(AutoTokenizer.from_pretrained(pin.repo_id, revision=pin.revision), pin)
+
+
 def _build_generator(pin, *, fake: bool, device: str):
     """``(generate, measure_tokens, description)``. The only place weights are touched."""
     if fake:
@@ -325,7 +452,7 @@ def _build_generator(pin, *, fake: bool, device: str):
         )
 
     import torch
-    from transformers import AutoTokenizer, BitsAndBytesConfig
+    from transformers import BitsAndBytesConfig
 
     assert_single_model_process(pin.repo_id)
 
@@ -348,7 +475,7 @@ def _build_generator(pin, *, fake: bool, device: str):
         raise typer.BadParameter(f"unknown quantization {pin.quantization!r}")
 
     auto_class, architecture = _resolve_auto_class(pin.repo_id, pin.revision)
-    tokenizer = AutoTokenizer.from_pretrained(pin.repo_id, revision=pin.revision)
+    tokenizer = _resolve_tokenizer(pin)
     model = auto_class.from_pretrained(
         pin.repo_id,
         revision=pin.revision,
@@ -358,32 +485,27 @@ def _build_generator(pin, *, fake: bool, device: str):
     model.eval()
     quantization_report = _verify_quantization(model, pin)
 
-    limit = int(getattr(tokenizer, "model_max_length", 0) or 0)
-    if limit > 1_000_000:  # some tokenizers use a sentinel rather than a real bound
-        limit = 0
+    limit = tokenizer.max_length
 
     def measure_tokens(prompt: str) -> tuple[int, int]:
-        return len(tokenizer(prompt)["input_ids"]), limit
+        # The templated length, not the bare prompt's: the template is part of what the
+        # context has to hold, and a row that overflows it is a label about cut-off text.
+        return len(tokenizer.encode_chat(prompt)), limit
 
     def generate(prompt: str) -> str:
-        messages = [{"role": "user", "content": prompt}]
-        template_kwargs: dict = {"add_generation_prompt": True, "tokenize": False}
-        if "Qwen3" in pin.repo_id:
-            # Qwen3's template takes an explicit switch; passing it only for Qwen keeps the
-            # call identical to each family's documented form.
-            template_kwargs["enable_thinking"] = bool(pin.thinking_mode)
-        text = tokenizer.apply_chat_template(messages, **template_kwargs)
-        batch = tokenizer(text, return_tensors="pt").to(model.device)
+        ids = tokenizer.encode_chat(prompt)
+        batch = torch.tensor([ids], device=model.device)
         with torch.inference_mode():
             output = model.generate(
-                **batch,
+                input_ids=batch,
+                attention_mask=torch.ones_like(batch),
                 max_new_tokens=pin.max_new_tokens,
                 do_sample=pin.temperature > 0,
                 temperature=pin.temperature or None,
                 top_p=pin.top_p,
-                pad_token_id=tokenizer.eos_token_id,
+                pad_token_id=tokenizer.eos_id,
             )
-        return tokenizer.decode(output[0][batch["input_ids"].shape[1] :], skip_special_tokens=True)
+        return tokenizer.decode(output[0][len(ids) :])
 
     return (
         generate,
@@ -395,6 +517,7 @@ def _build_generator(pin, *, fake: bool, device: str):
             "auto_class": auto_class.__name__,
             "architecture": architecture,
             "quantization": quantization_report,
+            "tokenizer": tokenizer.describe,
             "tokenizer_model_max_length": limit,
             "seeded_with": pin.seed,
         },

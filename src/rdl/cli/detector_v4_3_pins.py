@@ -60,7 +60,22 @@ MODEL_PINS_FILENAME = "DETECTOR_V4_2_MODEL_PINS.json"
 # any headroom.
 REQUIRED_COMPUTE_CAPABILITY = (8, 6)
 REQUIRED_VRAM_GIB = 20
-REQUIRED_FREE_DISK_GIB = 150
+
+# 150 was a guess made before anyone measured the downloads. The measured figures, from
+# the Hub's own file metadata at the pinned revisions:
+#
+#   Qwen/Qwen3-14B                                 27.5 GiB (sharded safetensors)
+#   mistralai/Mistral-Small-3.2-24B-Instruct-2506  44.7 GiB (sharded safetensors)
+#   microsoft/deberta-v3-base + NLI baseline       < 1 GiB
+#   three seed checkpoints + run artifacts         ~ 3 GiB
+#                                                  --------
+#                                                    76 GiB
+#
+# 100 keeps roughly 24 GiB of headroom over that. Note the Mistral repo ALSO carries a
+# 44.7 GiB `consolidated.safetensors`, a duplicate of the shards in Mistral's own format:
+# `from_pretrained` reads model.safetensors.index.json and never fetches it, but a bare
+# `snapshot_download` of that repo would, and would need ~120 GiB for the judge alone.
+REQUIRED_FREE_DISK_GIB = 100
 
 
 def _looks_like_sha(value: str) -> bool:
