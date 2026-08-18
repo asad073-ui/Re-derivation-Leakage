@@ -21,7 +21,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        # The endpoints of `requires-python`, not two versions from the middle of it.
+        # Two jobs either way -- but 3.11 and 3.12 are the two interpreters least likely
+        # to find anything, because version bugs cluster at the boundaries, where the
+        # stdlib gains and loses things. 3.10 is both the declared floor and the machine
+        # ADR-0002 exists to keep the gate runnable on; testing everything except it is
+        # how a bare `tomllib` import survived in tests/unit. See ADR-0063.
+        python-version: ["3.10", "3.13"]
 
     steps:
       - uses: actions/checkout@v4

@@ -37,6 +37,11 @@ cpu = [
     "PyYAML>=6.0",
     # Leak-k's released gate uses this implementation with Porter stemming.
     "rouge-score==0.1.2",
+    # `tomllib` entered the stdlib in 3.11, and ADR-0002 keeps the floor at 3.10 so the
+    # CPU gate runs on the developer's laptop. tests/unit/test_detector_v4_3_gpu_enablement.py
+    # parses this file to assert the gpu extra's pins, so the backport belongs in the
+    # extra that installs the test runner.
+    "tomli>=2.0; python_version < '3.11'",
 ]
 semantic = [
     # CPU-only public TOFU reference loader used by `rdl rescore-day2`.

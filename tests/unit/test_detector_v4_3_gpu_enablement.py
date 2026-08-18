@@ -342,7 +342,13 @@ def test_the_gpu_extra_pins_mistral_common():
     """Mistral-Small-3.2 ships only tekken.json; AutoTokenizer raises KeyError on it."""
     from pathlib import Path
 
-    import tomllib
+    # tomllib is stdlib only from 3.11, and ADR-0002 requires the CPU gate to run on
+    # whatever the developer's laptop ships -- which is 3.10 here. Without the fallback
+    # this test does not fail, it *errors*, on the lowest interpreter we claim to support.
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10
+        import tomli as tomllib
 
     root = Path(__file__).resolve().parents[2]
     extras = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
