@@ -2054,3 +2054,86 @@ gate that cannot close on this machine, and it is the first action on the GPU bo
 
 What changed is that every step between here and the held-out report is now reachable from
 a command, and every one of them has been run.
+
+## GU-0044 — the report-gate fixture was randomised per process, and CI was flaky because of it
+
+**Status:** accepted. A one-line test-fixture fix. No source change, no artifact change, no
+gate bound moved.
+
+`ci-cpu` failed on the PR #47 merge commit with
+`test_an_effect_that_dies_when_routing_is_removed_is_a_blocker`, on code that had passed
+twice on the branch minutes earlier — once on push and once on the pull request. That
+pattern is the signature of a non-deterministic test, and it was.
+
+### The cause
+
+`tests/unit/test_report_gate.py` seeded its per-condition RNG with
+
+```python
+np.random.default_rng(abs(hash(condition)) % 2**32)
+```
+
+`hash()` on a `str` is randomised per interpreter by `PYTHONHASHSEED`. Every process
+therefore drew a different set of per-item recall vectors:
+
+```
+PYTHONHASHSEED=0 -> 2166594966
+PYTHONHASHSEED=1 -> 2293973941
+PYTHONHASHSEED=2 -> 1008642731
+```
+
+For most tests in the file that is invisible, because the arms are far apart by
+construction — C3C at 0.60 against C3S at 0.35 does not stop being a 25-point gap because
+the draw moved.
+
+It is not invisible for the confound test, whose entire point is that C3C's routing-free
+arm and C3S's own arm are drawn at **the same rate**. The blocker only fires when the
+routing-free delta *fails*, and two independent Bernoulli(0.35) draws over 400 items differ
+by roughly ±3.4 points at one standard deviation. On an unlucky process that delta reached
+the 10-point threshold with an interval excluding zero, no blocker was raised, and the
+assertion failed with an empty `blockers` list.
+
+### Why it mattered more than a rerun
+
+The failure rate is low — around three standard deviations — and that is the problem rather
+than the consolation. A rare, unattributable failure on a *merge commit* looks exactly like
+the merge having broken something. The PR #47 merge spent its first minutes being suspected
+of a regression it had nothing to do with; the failing test covers the two-agent report gate
+(ADR-0044) and touches no v4.3 code at all.
+
+### The fix
+
+A sha256 prefix, which is stable across processes, machines and Python versions.
+`default_rng`'s PCG64 stream is stable for a given integer seed under numpy's compatibility
+policy, so the fixture is now byte-identical everywhere — verified by generating the vectors
+under five different `PYTHONHASHSEED` values and hashing the result:
+
+```
+0   -> 9ef08714f01d1db2bf4ac059
+1   -> 9ef08714f01d1db2bf4ac059
+2   -> 9ef08714f01d1db2bf4ac059
+3   -> 9ef08714f01d1db2bf4ac059
+999 -> 9ef08714f01d1db2bf4ac059
+```
+
+The file either passes or fails now; it cannot alternate.
+
+Determinism alone would be worth little if the frozen draw happened to sit near the
+boundary, so the realised margin was checked rather than assumed. The routing-free delta is
+**0.25 points against a required 10**, with a 95% paired interval of `[-0.048, 0.055]`
+that comfortably includes zero — a 40× margin, and the same margin in every run.
+
+### What this was not
+
+PR #44's `ci-cpu` failures three days earlier were a **different job**,
+`network-transformers-contract`, failing on the undeclared `sentencepiece` dependency that
+GU-0041 and PR #45 fixed. They are unrelated to this fixture, and an earlier draft of this
+entry wrongly grouped them together.
+
+### The general rule
+
+`hash()` is not a seed. Anything that has to reproduce — a fixture, a split, a sample —
+takes a digest. The repository already applies this everywhere it matters at runtime: the
+v4.3 bundle split, the subject ids and the human draw are all content-addressed through
+sha256 for exactly this reason. The test fixtures were simply never held to the same
+standard.

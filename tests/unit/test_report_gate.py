@@ -8,6 +8,8 @@ seeing the results, which is what pre-registration exists to prevent.
 
 from __future__ import annotations
 
+import hashlib
+
 import numpy as np
 
 from rdl.cli.make_report import (
@@ -149,6 +151,40 @@ def _day1(**kw) -> list[dict]:
     ]
 
 
+def _fixture_seed(condition: str, salt: int = 0) -> int:
+    """A per-condition RNG seed that is the same in every process.
+
+    This used to be ``abs(hash(condition))``. ``hash()`` on a **str** is randomized per
+    interpreter by ``PYTHONHASHSEED``, so every CI run drew a different set of per-item
+    recall vectors from this fixture, and the suite was quietly non-deterministic.
+
+    Mostly that is invisible, because the arms are far apart by construction. It is not
+    invisible in ``test_an_effect_that_dies_when_routing_is_removed_is_a_blocker``, whose
+    whole point is that C3C's routing-free arm and C3S's own arm are drawn at the SAME
+    rate. The confound blocker only fires when the routing-free delta *fails*, and two
+    independent Bernoulli(0.35) draws over 400 items differ by about +/- 3.4 points at one
+    standard deviation -- so on an unlucky process the routing-free delta cleared its
+    threshold, no blocker was raised, and the test failed with an empty ``blockers`` list.
+
+    That is what took down `ci-cpu` on the PR #47 merge commit, while the identical code
+    had passed on the branch minutes earlier. It is rare: the routing-free delta has to
+    reach 10 points from a mean of 0 with an interval excluding zero, which is roughly
+    three standard deviations. Rare and unattributable is the worst combination -- the run
+    that hits it looks like the merge broke something.
+
+    With the seed fixed, the routing-free delta is 0.25 points against a required 10 and a
+    95% interval of [-0.048, 0.055]. The margin is 40x, and it is now the same margin in
+    every process.
+
+    A sha256 prefix is stable across processes, machines and Python versions, and
+    ``default_rng``'s PCG64 stream is stable for a given integer seed under numpy's
+    compatibility policy. The fixture is now deterministic: this file either passes or
+    fails, and never alternates.
+    """
+    digest = hashlib.sha256(condition.encode("utf-8")).hexdigest()[:8]
+    return (int(digest, 16) + salt) % 2**32
+
+
 def _report(
     condition: str,
     *,
@@ -193,7 +229,7 @@ def _report(
     three conditions AT THE SAME SEED, so the fixture has to produce per-seed vectors
     that differ between arms in a controlled way rather than one mean vector.
     """
-    rng = np.random.default_rng(abs(hash(condition)) % 2**32)
+    rng = np.random.default_rng(_fixture_seed(condition))
     by_seed = [(rng.random(n_items) < recall).astype(float).tolist() for _ in range(n_seeds)]
     per_item = np.mean(np.asarray(by_seed), axis=0).tolist() if by_seed else []
     item_ids = [f"forget10-{i:04d}" for i in range(n_items)]
@@ -201,7 +237,7 @@ def _report(
     # The routing-free arm. By default it mirrors the treatment, which is the healthy
     # case: removing routing from the causal path does not remove the effect.
     rf = recall if routing_free_recall is None else routing_free_recall
-    rf_rng = np.random.default_rng((abs(hash(condition)) + 7) % 2**32)
+    rf_rng = np.random.default_rng(_fixture_seed(condition, salt=7))
     rf_vec = np.mean(
         np.asarray([(rf_rng.random(n_items) < rf).astype(float) for _ in range(n_seeds)]),
         axis=0,
