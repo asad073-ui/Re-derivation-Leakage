@@ -1,0 +1,47 @@
+{
+  "encoder_pins": {
+    "artifact": "DETECTOR_V4_2_MODEL_PINS.json",
+    "present": false,
+    "resolved_path": "data/cohorts/graph_unlearning_v1/detector_v4_2/DETECTOR_V4_2_MODEL_PINS.json",
+    "why_not_duplicated": "microsoft/deberta-v3-base, its tokenizer and cross-encoder/nli-deberta-v3-base are already frozen by `rdl graph-detector-v4-2-freeze-model-pins`. A second v4.3 artifact for the same three repositories could disagree with the first, and 'which commit trained the checkpoint' would then have two answers."
+  },
+  "frozen_at": "2026-08-18T09:12:52Z",
+  "judges": {
+    "A": {
+      "chat_template": "model_default",
+      "compute_dtype": "bfloat16",
+      "generation": {
+        "max_new_tokens": 512,
+        "seed": 20243,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "quantization": "bitsandbytes-8bit",
+      "repo_id": "Qwen/Qwen3-14B",
+      "revision": "40c069824f4251a91eefaf281ebe4c544efd3e18",
+      "revision_is_a_commit_sha": true,
+      "role": "A",
+      "thinking_mode": false
+    },
+    "B": {
+      "chat_template": "model_default",
+      "compute_dtype": "bfloat16",
+      "generation": {
+        "max_new_tokens": 512,
+        "seed": 20243,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "quantization": "bitsandbytes-4bit",
+      "repo_id": "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+      "revision": "95a6d26c4bfb886c58daf9d3f7332c857cb27b43",
+      "revision_is_a_commit_sha": true,
+      "role": "B",
+      "thinking_mode": false
+    }
+  },
+  "prompt_version": "v4.3-local-prompt-1",
+  "protocol": "docs/graph_unlearning/DETECTOR_V4_3_PROTECTED_STORE_PROTOCOL.md",
+  "schema": "graph-detector-v4-3-local-judge-pins-v1",
+  "why": "everything that changes an output token: repository, exact commit, quantizer, compute dtype, chat template, thinking mode and generation parameters. A quantization change is a model change -- 4-bit and 8-bit of the same weights are different annotators -- so the quantizer is pinned, not passed at runtime."
+}
