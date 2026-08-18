@@ -243,7 +243,7 @@ def test_closing_an_incomplete_pass_is_refused(tmp_path):
     rows = _rows(5)
     run_rows(rows[:2], fake_judgement, partial_path=partial, role="A")
     with pytest.raises(typer.BadParameter, match="unjudged"):
-        _close(partial, tmp_path / "out.jsonl", rows=rows, judge="A", out=tmp_path)
+        _close(partial, tmp_path / "out.jsonl", rows=rows, judge="A")
 
 
 def test_closing_a_pass_with_a_malformed_row_is_refused(tmp_path):
@@ -253,4 +253,4 @@ def test_closing_a_pass_with_a_malformed_row_is_refused(tmp_path):
     rows = _rows(3)
     run_rows(rows, lambda _p: "not json", partial_path=partial, role="A")
     with pytest.raises(typer.BadParameter, match="malformed"):
-        _close(partial, tmp_path / "out.jsonl", rows=rows, judge="A", out=tmp_path)
+        _close(partial, tmp_path / "out.jsonl", rows=rows, judge="A")

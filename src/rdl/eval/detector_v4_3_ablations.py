@@ -48,12 +48,72 @@ from ..defenses.concept_registry import normalise_scope_text
 
 __all__ = [
     "ABLATIONS",
+    "SHORTCUT_CRITERIA",
     "AblationSpec",
     "ablate",
+    "check_shortcut_criteria",
     "dragon_similarity",
     "lexical_floor",
     "rank_metrics",
 ]
+
+# Numeric, preregistered, and frozen here BEFORE any v4.3 model exists.
+#
+# "Near chance" is not a criterion -- it is a word that can be applied to 0.55 or to 0.72
+# depending on how the result looks, and a bound chosen after seeing a trained model is not
+# a bound. These are stated as macro-F1 on the three-class task, where chance for a
+# balanced guess is ~0.33 and the majority-class baseline is what a degenerate model gets.
+#
+# The margins are deliberately loose. The claim being tested is not "the shortcut carries
+# no signal" -- question length alone carries some, as the bundle's own probe shows -- it is
+# "the full input is doing the work". A shortcut that reaches within 0.10 macro-F1 of the
+# full model has falsified that, whatever its absolute value.
+SHORTCUT_CRITERIA: dict[str, dict] = {
+    "question_only_macro_f1": {
+        "operator": "<=",
+        "bound": 0.50,
+        "why": "predicting the label from question identity alone must stay far below the "
+        "full model; 0.50 leaves room for the length signal the probe already measured",
+    },
+    "aliases_only_macro_f1": {
+        "operator": "<=",
+        "bound": 0.45,
+        "why": "the alias channel carries subject identity and no relation, so it should "
+        "be near the majority-class floor",
+    },
+    "candidate_only_margin": {
+        "operator": ">=",
+        "bound": 0.10,
+        "why": "full macro-F1 minus candidate-only macro-F1. Some candidates read like "
+        "answers regardless of the question, so this is expected above chance -- but if "
+        "conditioning adds less than 0.10 the 'question-conditioned' claim is decorative",
+    },
+    "full_minus_best_shortcut": {
+        "operator": ">=",
+        "bound": 0.10,
+        "why": "the full input must beat every single-channel ablation by a real margin, "
+        "or a high aggregate score is not evidence of learned answerability",
+    },
+}
+
+
+def check_shortcut_criteria(measured: dict) -> tuple[dict, list[str]]:
+    """``(verdicts, failures)``. A criterion whose input is missing fails rather than passes."""
+    verdicts: dict[str, dict] = {}
+    failures: list[str] = []
+    for name, rule in sorted(SHORTCUT_CRITERIA.items()):
+        value = measured.get(name)
+        bound = float(rule["bound"])
+        if value is None:
+            ok, detail = False, "not measured"
+        elif rule["operator"] == "<=":
+            ok, detail = value <= bound, f"{value} <= {bound}"
+        else:
+            ok, detail = value >= bound, f"{value} >= {bound}"
+        verdicts[name] = {"ok": ok, "measured": value, **rule}
+        if not ok:
+            failures.append(f"{name}: {detail}")
+    return verdicts, failures
 
 
 @dataclass(frozen=True)

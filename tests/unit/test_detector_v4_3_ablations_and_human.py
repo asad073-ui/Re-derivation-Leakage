@@ -11,6 +11,7 @@ The two ways this tooling fails silently:
 from __future__ import annotations
 
 import json
+from collections import Counter
 
 import pytest
 import typer
@@ -18,8 +19,10 @@ import typer
 from rdl.cli.detector_v4_3_human import (
     EXPORTED_FIELDS,
     RATER_FIELDS,
+    SAMPLING_STRATA,
     _blinded,
     _read_rater,
+    allocate,
     cohens_kappa,
     draw_sample,
 )
@@ -152,14 +155,37 @@ def test_the_draw_is_deterministic():
     assert [r["audit_id"] for r in first] == [r["audit_id"] for r in second]
 
 
-def test_rare_and_contested_rows_are_oversampled_and_the_weight_is_recorded():
-    sample = draw_sample(_rows(400), n=100, stratum="original_1019")
-    weights = {r["audit_id"]: r["sampling_weight"] for r in sample}
-    assert set(weights.values()) != {1.0}, "nothing was oversampled"
-    assert all(r["inclusion_probability"] > 0 for r in sample)
-    # The oversampled classes should be over-represented relative to their 10%/14% base.
-    n_special = sum(1 for r in sample if r["sampling_weight"] > 1.0)
-    assert n_special / len(sample) > 0.25
+def test_rare_and_contested_rows_are_enriched_with_exact_inclusion_probabilities():
+    """Stratified, not weighted top-k: n_h of N_h, so the probability is exact."""
+    sample = draw_sample(_rows(400), n=125, stratum="original_1019")
+    assert len(sample) == 125
+    strata = Counter(r["sampling_stratum"] for r in sample)
+    assert strata["judge_disagreement"] > 0 and strata["partial_label"] > 0
+
+    # The two hard strata are over-represented relative to their ~14%/10% base rates.
+    enriched = strata["judge_disagreement"] + strata["partial_label"]
+    assert enriched / len(sample) > 0.25
+
+    # And every row's inclusion probability is exactly its stratum's draw fraction.
+    for row in sample:
+        assert row["inclusion_probability"] == pytest.approx(
+            row["stratum_drawn"] / row["stratum_size"]
+        )
+        assert row["design_weight"] == pytest.approx(row["stratum_size"] / row["stratum_drawn"])
+
+
+def test_the_sampling_strata_are_mutually_exclusive_and_exhaustive():
+    sample = draw_sample(_rows(400), n=125, stratum="original_1019")
+    assert {r["sampling_stratum"] for r in sample} <= set(SAMPLING_STRATA)
+    assert len({r["audit_id"] for r in sample}) == len(sample), "a row was drawn twice"
+
+
+def test_allocation_spills_a_short_stratum_into_the_remainder():
+    """A source with few disagreements must still yield exactly n rows."""
+    sizes = allocate({"judge_disagreement": 3, "partial_label": 2, "remainder": 300}, total=125)
+    assert sizes["judge_disagreement"] == 3
+    assert sizes["partial_label"] == 2
+    assert sum(sizes.values()) == 125
 
 
 def test_a_blinded_row_carries_only_the_four_exported_fields():

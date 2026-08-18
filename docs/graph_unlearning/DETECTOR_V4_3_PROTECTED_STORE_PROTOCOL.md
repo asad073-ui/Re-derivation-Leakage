@@ -252,9 +252,24 @@ which population, stratum or a reference answer could arrive. The reference pass
 different function with a different rubric, available only after blind labels are frozen.
 
 **Smoke exclusion.** The GPU-1 fit smoke runs on a disjoint 50-row fixture that is
-non-reportable and excluded from the 1,019. If either model or configuration changes after
-that smoke, a dated v4.3 amendment is written and the reportable labelling run restarts —
-a replacement is never chosen after inspecting full-run kappa.
+non-reportable and excluded from the 1,019, built by
+`rdl graph-detector-v4-3-judge-smoke-fixture`. `--non-reportable --run-id <name>`
+namespaces every output file, so a smoke can never occupy a reportable filename. If either
+model or configuration changes after that smoke, a dated v4.3 amendment is written and the
+reportable labelling run restarts — a replacement is never chosen after inspecting full-run
+kappa.
+
+**The smoke fixture has two sources, and this is a real limitation.** The plan asked for 50
+rows balanced across the five original strata. That is not satisfiable. The natural bank
+holds 120 leaking rows and the 1,019-row audit took 119, so **zero leaking rows remain
+disjoint** — a natural-only fixture would contain no likely-ANSWER row at all, and the
+smoke could not check the judges on the one class the detector exists to catch. The ANSWER
+and PARTIAL rows therefore come from the held-out split of the synthetic relation dataset,
+which is a different generator with invented subjects and is disjoint from the natural
+audit by construction. The realised fixture is 10 rows from each of: natural
+development-clean, natural held-out-clean, natural retain, synthetic ANSWER, synthetic
+PARTIAL. Every row records its source. This is a rubric-and-format check, not a sample of
+the natural distribution, and no number from it is reportable.
 
 ### 6.1 Label gates
 
@@ -303,6 +318,24 @@ Reported together, on the same rows:
 highly.** Ablations blank fields rather than deleting them, so every variant hits the same
 encoder with the same segment structure — deleting would change the token layout as well as
 the information, and the ablation would measure two things at once.
+
+### 8.1 Numeric acceptance criteria
+
+"Near chance" is not a criterion — it is a word that can be applied to 0.55 or to 0.72
+depending on how the result looks. These are frozen here, before any v4.3 model exists, as
+three-class macro F1 on the development rows (`SHORTCUT_CRITERIA` in
+`rdl.eval.detector_v4_3_ablations`):
+
+| criterion | bound | why |
+|---|---|---|
+| `question_only_macro_f1` | ≤ 0.50 | question identity alone must stay far below the full model; the bound leaves room for the length signal the bundle probe already measured |
+| `aliases_only_macro_f1` | ≤ 0.45 | aliases carry subject identity and no relation, so this should sit near the majority-class floor |
+| `candidate_only_margin` | ≥ 0.10 | full macro F1 minus candidate-only. Some candidates read like answers regardless of the question; if conditioning adds less than this, "question-conditioned" is decorative |
+| `full_minus_best_shortcut` | ≥ 0.10 | the full input must beat every single-channel ablation by a real margin |
+
+The margins are deliberately loose. The claim under test is not "the shortcut carries no
+signal" — question length alone carries some — it is "the full input is doing the work". A
+shortcut within 0.10 macro F1 of the full model falsifies that whatever its absolute value.
 
 ### What is adopted from DRAGON, and what is not
 
@@ -393,6 +426,23 @@ All of the following hold before the 3090 is rented:
 - [x] local-judge fake-model smoke, resume, injection, malformed-JSON and single-model
       tests pass;
 - [x] shortcut probe alias-channel excess +0.013 (< 0.05);
+- [x] every GPU step is reachable from a command: judge pins, env check, disjoint smoke
+      fixture, blind and reference passes, label report and authority, labelled-bundle
+      rebuild, store-conditioned operating point, held-out gate, human report;
+- [x] the whole sequence runs end to end on CPU with no weights and no network —
+      `python scripts/v43_pipeline_dryrun.py` exercises 22 behaviours, including every
+      refusal (a tag as a pin, a reference pass before the blind freeze, an `--eval-key` on
+      a blind pass, selection on the held-out partition, a second held-out opening, a human
+      draw without the fresh audit);
 - [ ] judge model pins **resolved on a networked box** — the roster ships empty revisions
       and a reportable run refuses them. This is the one gate that cannot close on this
       machine and is the first action on the GPU box.
+
+### 12.1 What is pinned where
+
+The encoder, its tokenizer and the NLI baseline stay with
+`rdl graph-detector-v4-2-freeze-model-pins` → `DETECTOR_V4_2_MODEL_PINS.json`. v4.3 does
+**not** write a second artifact for the same three repositories: two pin files for one set
+of models can disagree, and "which commit trained the checkpoint" would then have two
+answers. `rdl graph-detector-v4-3-freeze-judge-pins` pins only the two local judges, and
+records the path to the v4.2 artifact alongside.

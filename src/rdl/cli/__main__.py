@@ -24,12 +24,20 @@ from .detector_v4_2_operating_point import detector_v4_2_select_operating_point
 from .detector_v4_2_plan import detector_v4_2_judge_plan
 from .detector_v4_2_report import detector_v4_2_label_report
 from .detector_v4_3_bundle import detector_v4_3_bundle
+from .detector_v4_3_gate import (
+    detector_v4_3_final_gate,
+    detector_v4_3_judge_smoke_fixture,
+    detector_v4_3_select_operating_point,
+)
 from .detector_v4_3_human import (
     detector_v4_3_human_adjudicate,
     detector_v4_3_human_import,
+    detector_v4_3_human_report,
     detector_v4_3_human_sample,
 )
 from .detector_v4_3_local_judge import detector_v4_3_local_judge
+from .detector_v4_3_pins import detector_v4_3_env_check, detector_v4_3_freeze_judge_pins
+from .detector_v4_3_report import detector_v4_3_label_report
 from .detector_v4_3_store import detector_v4_3_build_store
 from .detector_v4_data import detector_v4_build_data
 from .detector_v4_gates import detector_v4_gates
@@ -168,11 +176,30 @@ app.command("graph-detector-v4-3-bundle")(detector_v4_3_bundle)
 #   local-judge  one open-weight judge, one process, one pass. --fake-model exercises
 #                resume, malformed handling and injection framing without weights.
 app.command("graph-detector-v4-3-local-judge")(detector_v4_3_local_judge)
+#   freeze-judge-pins  the two judges' exact commit shas. The ENCODER pins stay with
+#                `graph-detector-v4-2-freeze-model-pins`: a second artifact for the same
+#                three repositories could disagree with the first, and "which commit
+#                trained the checkpoint" would then have two answers.
+#   env-check    can this box run the reportable phase, checked before weights download
+#   smoke-fixture  50 rows DISJOINT from the reportable 1,019, for the GPU-1 fit smoke
+#   label-report the missing middle: agreement, gates, blind disagreements, adjudication,
+#                and the authority artifact the trainer refuses to run without
+#   select-operating-point / final-gate
+#                the callers for rdl.eval.detector_v4_3, which shipped untested against a
+#                real artifact because nothing invoked it. Both go through one scoring
+#                path, so the threshold is chosen under the routing the gate applies.
+app.command("graph-detector-v4-3-freeze-judge-pins")(detector_v4_3_freeze_judge_pins)
+app.command("graph-detector-v4-3-env-check")(detector_v4_3_env_check)
+app.command("graph-detector-v4-3-judge-smoke-fixture")(detector_v4_3_judge_smoke_fixture)
+app.command("graph-detector-v4-3-label-report")(detector_v4_3_label_report)
+app.command("graph-detector-v4-3-select-operating-point")(detector_v4_3_select_operating_point)
+app.command("graph-detector-v4-3-final-gate")(detector_v4_3_final_gate)
 #   human-*      the 250-row validation. The draw never reads a detector score, and
 #                adjudication refuses to run before both rater files are frozen.
 app.command("graph-detector-v4-3-human-sample")(detector_v4_3_human_sample)
 app.command("graph-detector-v4-3-human-import")(detector_v4_3_human_import)
 app.command("graph-detector-v4-3-human-adjudicate")(detector_v4_3_human_adjudicate)
+app.command("graph-detector-v4-3-human-report")(detector_v4_3_human_report)
 
 
 if __name__ == "__main__":
