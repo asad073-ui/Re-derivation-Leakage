@@ -6,6 +6,13 @@
    third of all retain traffic still clears an aggregate ceiling of 0.10 and is selected.
    The downstream gate then rejects it, after the GPU time is spent.
 
+   **Superseded in part by v4.3 (GU-0042).** Keeping the two negative populations apart
+   was right and still holds. Making the *direct* retain pair rate a second veto here was
+   not: the runtime never forms that pair, and most retain candidates correctly answer
+   their retain question, so the veto punished the model for agreeing with its own
+   training signal. The rate moved to a routed, end-to-end measurement. The tests below
+   were rewritten to pin the new behaviour and say why.
+
 2. **A new bank gated on an old bank's labels.** ``final-gate`` originally wrote an opening
    record and printed the name of a different command, which reads the **v4** natural bank
    and the **v4.1** audit. Nothing tied the labels to the bank being opened, so the fresh
@@ -73,43 +80,54 @@ def test_the_aggregate_rate_really_would_have_hidden_it():
     assert retain > trainer.DEV_FPR_CEILING, retain
 
 
-def test_selection_refuses_the_threshold_the_aggregate_rate_would_have_chosen():
+def test_the_protected_clean_pool_is_still_its_own_ceiling():
+    """Pooling the two negative populations is still refused; that half of v4.2 stands."""
     trainer = _trainer()
     scores, golds, populations = _pool(trainer)
 
     with_populations = trainer.selection_metrics(scores, golds, populations)
-    # The only thresholds clearing BOTH ceilings are above 0.9, where recall is 0.
-    assert with_populations["selection_retain_fpr"] is not None
-    assert with_populations["selection_retain_fpr"] <= trainer.DEV_FPR_CEILING
     assert with_populations["selection_protected_clean_fpr"] <= trainer.DEV_FPR_CEILING
-    assert with_populations["selection_answer_recall"] == 0.0
-
-    # And the pooled view, which is what the old code computed, picks 0.9 and reports
-    # perfect recall — the number that would have been trained on.
-    pooled = trainer.selection_metrics(scores, golds, None)
-    assert pooled["selection_answer_recall"] == 1.0
-    assert pooled["selection_threshold"] == pytest.approx(0.9)
+    # The retain rate is still computed and still reported -- it just no longer vetoes.
+    assert with_populations["selection_retain_nonanswer_rate"] is not None
 
 
-def test_a_checkpoint_whose_retain_rate_was_never_measured_is_not_eligible():
-    """ "We did not measure it" and "it was fine" must not produce the same verdict."""
+# =====================================================================================
+# v4.3 (GU-0042): the retain pool is a diagnostic here, not a ceiling
+#
+# v4.2 made the retain pool a second veto at checkpoint selection. That was wrong for a
+# reason no amount of tuning fixes: a retain question is not in the protected store, so a
+# retain request routes to nothing and creates no Forget-ID whatever its answerability
+# score. Measured against PROTECTED_STORE_RUNTIME.json, 0 of the 300 retain requests in
+# the frozen audit route at all.
+#
+# Meanwhile most retain candidates genuinely DO answer their retain question and are
+# labelled ANSWER, so cross-entropy trained those scores up while this rule rejected every
+# checkpoint that let them rise -- a contradiction on 300 of 1,019 rows. The end-to-end
+# retain FPR is now measured by rdl.eval.detector_v4_3.store_conditioned_metrics, which
+# routes first. The tests below pin the new behaviour and keep the old concern honest:
+# the rate is still measured, still reported, and still gated -- elsewhere.
+# =====================================================================================
+
+
+def test_a_retain_row_that_correctly_answers_is_not_a_false_alarm():
+    """The contradiction, stated directly: being right must not cost a checkpoint."""
     trainer = _trainer()
-    unmeasured = {
-        "seed": 1,
-        "epoch": 1,
-        "development": {
-            "selection_answer_recall": 0.95,
-            "selection_protected_clean_fpr": 0.02,
-            "selection_retain_fpr": None,
-            "selection_threshold": 0.5,
-        },
-    }
-    result = trainer.select_checkpoint([{"history": [unmeasured]}])
-    assert result["selected"] is None
-    assert "retain" in result["reason"]
+    answer, none = trainer.ANSWER_INDEX, trainer.LABELS.index("NONE")
+    # 100 protected ANSWER high, 400 protected NONE low, and 20 RETAIN rows that are
+    # labelled ANSWER and scored high -- which is the model being correct.
+    scores = [0.9] * 100 + [0.1] * 400 + [0.9] * 20
+    golds = [answer] * 100 + [none] * 400 + [answer] * 20
+    populations = ["protected"] * 500 + ["retain"] * 20
+
+    metrics = trainer.selection_metrics(scores, golds, populations)
+    # Those 20 rows are not in the retain diagnostic pool at all: it counts retain NONE
+    # rows only, so correct retain answerability costs nothing.
+    assert metrics["n_selection_retain_nonanswer"] == 0
+    assert metrics["selection_answer_recall"] == 1.0
+    assert metrics["selection_threshold"] == pytest.approx(0.9)
 
 
-def test_a_checkpoint_failing_only_the_retain_ceiling_is_not_eligible():
+def test_a_high_retain_pair_rate_no_longer_vetoes_a_checkpoint():
     trainer = _trainer()
     entries = [
         {
@@ -118,7 +136,7 @@ def test_a_checkpoint_failing_only_the_retain_ceiling_is_not_eligible():
             "development": {
                 "selection_answer_recall": 0.99,
                 "selection_protected_clean_fpr": 0.01,
-                "selection_retain_fpr": 0.40,
+                "selection_retain_nonanswer_rate": 0.40,
                 "selection_threshold": 0.5,
             },
         },
@@ -128,22 +146,54 @@ def test_a_checkpoint_failing_only_the_retain_ceiling_is_not_eligible():
             "development": {
                 "selection_answer_recall": 0.60,
                 "selection_protected_clean_fpr": 0.05,
-                "selection_retain_fpr": 0.05,
+                "selection_retain_nonanswer_rate": 0.05,
                 "selection_threshold": 0.7,
             },
         },
     ]
     result = trainer.select_checkpoint([{"history": entries}])
-    assert result["selected"]["seed"] == 2, "the higher-recall checkpoint fails retain"
+    assert result["selected"]["seed"] == 1, "recall decides; the direct retain rate does not"
+    assert result["n_eligible"] == 2
+
+
+def test_a_checkpoint_failing_the_protected_clean_ceiling_is_still_not_eligible():
+    """The ceiling that survived. Removing the retain veto must not remove this one."""
+    trainer = _trainer()
+    entries = [
+        {
+            "seed": 1,
+            "epoch": 1,
+            "development": {
+                "selection_answer_recall": 0.99,
+                "selection_protected_clean_fpr": 0.40,
+                "selection_retain_nonanswer_rate": 0.01,
+                "selection_threshold": 0.5,
+            },
+        },
+        {
+            "seed": 2,
+            "epoch": 1,
+            "development": {
+                "selection_answer_recall": 0.60,
+                "selection_protected_clean_fpr": 0.05,
+                "selection_retain_nonanswer_rate": 0.05,
+                "selection_threshold": 0.7,
+            },
+        },
+    ]
+    result = trainer.select_checkpoint([{"history": entries}])
+    assert result["selected"]["seed"] == 2, "the higher-recall checkpoint fails protected-clean"
     assert result["n_eligible"] == 1
 
 
-def test_the_frozen_selection_rule_names_both_ceilings():
+def test_the_frozen_selection_rule_says_where_the_retain_rate_moved_to():
+    """A rule that silently dropped a ceiling is indistinguishable from a regression."""
     trainer = _trainer()
     rule = trainer.CHECKPOINT_SELECTION_RULE
     assert "protected-clean FPR" in rule
-    assert "retain FPR" in rule
-    assert "BOTH" in rule
+    assert "retain" in rule
+    assert "ROUTED" in rule, "the rule must say the retain rate is measured after routing"
+    assert "GU-0042" in rule, "the rule must cite the decision that changed it"
 
 
 def test_the_synthetic_rows_carry_their_population():
