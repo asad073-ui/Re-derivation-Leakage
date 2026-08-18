@@ -39,6 +39,26 @@ from .detector_v4_3_local_judge import detector_v4_3_local_judge
 from .detector_v4_3_pins import detector_v4_3_env_check, detector_v4_3_freeze_judge_pins
 from .detector_v4_3_report import detector_v4_3_label_report
 from .detector_v4_3_store import detector_v4_3_build_store
+from .detector_v4_4_bundle import (
+    detector_v4_4_bundle,
+    detector_v4_4_judge_smoke_fixture,
+    detector_v4_4_panel,
+    detector_v4_4_supplement,
+)
+from .detector_v4_4_gate import (
+    detector_v4_4_audit_sample,
+    detector_v4_4_final_gate,
+    detector_v4_4_select_operating_point,
+)
+from .detector_v4_4_human import (
+    detector_v4_4_human_adjudicate,
+    detector_v4_4_human_import,
+    detector_v4_4_human_pilot,
+    detector_v4_4_human_reference_pass,
+    detector_v4_4_human_sample,
+)
+from .detector_v4_4_judge import detector_v4_4_env_check, detector_v4_4_local_judge
+from .detector_v4_4_report import detector_v4_4_label_report
 from .detector_v4_data import detector_v4_build_data
 from .detector_v4_gates import detector_v4_gates
 from .detector_v4_label_audit import detector_v4_label_audit, detector_v4_label_report
@@ -200,6 +220,57 @@ app.command("graph-detector-v4-3-human-sample")(detector_v4_3_human_sample)
 app.command("graph-detector-v4-3-human-import")(detector_v4_3_human_import)
 app.command("graph-detector-v4-3-human-adjudicate")(detector_v4_3_human_adjudicate)
 app.command("graph-detector-v4-3-human-report")(detector_v4_3_human_report)
+
+# v4.4 — the answer-attempt repair. Additive again: every v4.3 artifact stays byte-for-byte,
+# including the two failed blind passes, because a failed experiment whose evidence was
+# edited afterwards stops being evidence. See GU-0049 and
+# docs/graph_unlearning/DETECTOR_V4_4_ANSWER_ATTEMPT_PROTOCOL.md.
+#
+# The target did NOT move. It is still "does this candidate attempt to answer the routed
+# protected question", correctness still lives on the separate reference axis, and the
+# Goal-A false-alarm denominator was always rows judged NONE. What moved is the data (the
+# audit contained almost no non-attempts), the rubric (PARTIAL/ANSWER was underdefined on
+# open-ended questions), the distribution kappa is gated on, and four metric names that
+# said "clean" when they meant "did not attempt".
+#
+#   supplement   ~714 non-attempt and partial rows, composed from independent slot banks
+#                and refused if the pool fails its own diversity bounds
+#   bundle       the ~1,733-row v4.4 bundle, on v4.3's conditioning index and split rule
+#   panel        the frozen 600-row balanced calibration panel, 200 per intended class
+#   judge-smoke-fixture  60 rows disjoint from the bundle, 20 per intended class
+app.command("graph-detector-v4-4-supplement")(detector_v4_4_supplement)
+app.command("graph-detector-v4-4-bundle")(detector_v4_4_bundle)
+app.command("graph-detector-v4-4-panel")(detector_v4_4_panel)
+app.command("graph-detector-v4-4-judge-smoke-fixture")(detector_v4_4_judge_smoke_fixture)
+#   local-judge  the same two pinned models and the same one-model-per-process rule, under
+#                the hierarchical prompt. An object whose answer_attempt contradicts its own
+#                addresses_question/standalone_answer is MALFORMED, never repaired.
+#   env-check    v4.3's hardware checks plus the v4.4 artifacts, including that the frozen
+#                panel names the bundle actually on disk
+app.command("graph-detector-v4-4-local-judge")(detector_v4_4_local_judge)
+app.command("graph-detector-v4-4-env-check")(detector_v4_4_env_check)
+#   label-report the balanced-panel gate is PRIMARY; the full-mixture kappa is reported
+#                beside it as a distribution-dependent diagnostic. The kappa BOUND did not
+#                move -- it is still 0.70 -- only the distribution it is evaluated on.
+app.command("graph-detector-v4-4-label-report")(detector_v4_4_label_report)
+#   audit-sample the score-independent fresh-bank sampler. v4.2 enriched by the NLI/ROUGE
+#                `protected_clean` stratum and v4.3 measured that 336 of its 600 rows are
+#                answer attempts, so it could never supply the non-attempt denominator.
+#   select-operating-point / final-gate
+#                the same bounds as v4.3 under names that say what they measure:
+#                protected_nonattempt_fpr, not protected_clean_fpr.
+app.command("graph-detector-v4-4-audit-sample")(detector_v4_4_audit_sample)
+app.command("graph-detector-v4-4-select-operating-point")(detector_v4_4_select_operating_point)
+app.command("graph-detector-v4-4-final-gate")(detector_v4_4_final_gate)
+#   human-*      two ORDERED passes. The reference pass refuses to open until every blind
+#                rater file is complete, because a rater who has seen the answer can no
+#                longer report whether the text attempted one.
+#   human-pilot  30-50 rows, non-reportable, before the prompt and panel are frozen.
+app.command("graph-detector-v4-4-human-pilot")(detector_v4_4_human_pilot)
+app.command("graph-detector-v4-4-human-sample")(detector_v4_4_human_sample)
+app.command("graph-detector-v4-4-human-reference-pass")(detector_v4_4_human_reference_pass)
+app.command("graph-detector-v4-4-human-import")(detector_v4_4_human_import)
+app.command("graph-detector-v4-4-human-adjudicate")(detector_v4_4_human_adjudicate)
 
 
 if __name__ == "__main__":
