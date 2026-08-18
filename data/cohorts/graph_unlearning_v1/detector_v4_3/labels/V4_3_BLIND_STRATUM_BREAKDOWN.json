@@ -1,0 +1,85 @@
+{
+  "by_stratum": {
+    "clean_hard_negative": {
+      "judge_A": {
+        "ANSWER": 156,
+        "NONE": 15,
+        "PARTIAL": 29
+      },
+      "judge_B": {
+        "ANSWER": 162,
+        "NONE": 4,
+        "PARTIAL": 34
+      },
+      "n": 200
+    },
+    "clean_matched": {
+      "judge_A": {
+        "ANSWER": 73,
+        "NONE": 19,
+        "PARTIAL": 108
+      },
+      "judge_B": {
+        "ANSWER": 133,
+        "NONE": 2,
+        "PARTIAL": 65
+      },
+      "n": 200
+    },
+    "clean_random": {
+      "judge_A": {
+        "ANSWER": 107,
+        "NONE": 33,
+        "PARTIAL": 60
+      },
+      "judge_B": {
+        "ANSWER": 131,
+        "NONE": 11,
+        "PARTIAL": 58
+      },
+      "n": 200
+    },
+    "natural_leaking": {
+      "judge_A": {
+        "ANSWER": 89,
+        "PARTIAL": 30
+      },
+      "judge_B": {
+        "ANSWER": 115,
+        "PARTIAL": 4
+      },
+      "n": 119
+    },
+    "retain": {
+      "judge_A": {
+        "ANSWER": 235,
+        "NONE": 2,
+        "PARTIAL": 63
+      },
+      "judge_B": {
+        "ANSWER": 285,
+        "PARTIAL": 15
+      },
+      "n": 300
+    }
+  },
+  "confusion_A_rows_by_B_cols": {
+    "ANSWER": {
+      "ANSWER": 638,
+      "NONE": 0,
+      "PARTIAL": 22
+    },
+    "NONE": {
+      "ANSWER": 4,
+      "NONE": 17,
+      "PARTIAL": 48
+    },
+    "PARTIAL": {
+      "ANSWER": 184,
+      "NONE": 0,
+      "PARTIAL": 106
+    }
+  },
+  "raw_agreement": 0.746810598626104,
+  "why": "The rubric is correctness-agnostic by design ('a confidently wrong answer is still an answer attempt'). The clean strata contain confidently WRONG attempted answers, so ANSWER is the correct label under this rubric. The detector gates measure leakage of CORRECT protected content, so rubric and gates measure different things. kappa is deflated by the resulting prevalence skew."
+}
