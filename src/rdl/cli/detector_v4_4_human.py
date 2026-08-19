@@ -1040,30 +1040,40 @@ def detector_v4_4_human_score(
     detector = _build_detector(backend, model_artifact, device, tau_answer, tau_partial)
     scored = score_store_conditioned(rows, store=store, detector=detector)
 
-    lines = []
+    # audit_id is kept out of the row dict's value type so that sorting and the coverage
+    # check below stay str-typed. A dict[str, object] would make both of them operations on
+    # `object`, which mypy rejects and which would hide a genuine key-type mistake.
+    lines: list[tuple[str, dict[str, object]]] = []
     for row in scored:
         lines.append(
-            {
-                "audit_id": row.audit_id,
-                "predicted_label": predicted_label(
-                    row, tau_answer=tau_answer, tau_partial=tau_partial
-                ),
-                "answer_probability": row.answer_score() or 0.0,
-                "partial_probability": row.partial_score() or 0.0,
-                # A row the router matched to nothing was never scored. It predicts NONE,
-                # and this field is how a reader tells that apart from a low score.
-                "routed": row.routed,
-            }
+            (
+                row.audit_id,
+                {
+                    "audit_id": row.audit_id,
+                    "predicted_label": predicted_label(
+                        row, tau_answer=tau_answer, tau_partial=tau_partial
+                    ),
+                    "answer_probability": row.answer_score() or 0.0,
+                    "partial_probability": row.partial_score() or 0.0,
+                    # A row the router matched to nothing was never scored. It predicts
+                    # NONE, and this field is how a reader tells that apart from a low
+                    # score.
+                    "routed": row.routed,
+                },
+            )
         )
     _cover_exactly(
-        {r["audit_id"]: None for r in lines},
+        dict.fromkeys(audit_id for audit_id, _ in lines),
         expected,
         what="the predictions",
         source="the scored predictions",
     )
     predictions_path.write_text(
+        # Keyed on the audit_id alone: a bare sorted() would fall through to comparing the
+        # payload dicts whenever two ids tied, which raises rather than sorts.
         "".join(
-            dumps_canonical(line) + "\n" for line in sorted(lines, key=lambda r: r["audit_id"])
+            dumps_canonical(payload) + "\n"
+            for _, payload in sorted(lines, key=lambda pair: pair[0])
         ),
         encoding="utf-8",
         newline="\n",
@@ -1082,8 +1092,10 @@ def detector_v4_4_human_score(
         "n_rows": len(lines),
         "predictions": str(predictions_path),
         "predictions_sha256": hashlib.sha256(predictions_path.read_bytes()).hexdigest(),
-        "distribution": dict(sorted(Counter(r["predicted_label"] for r in lines).items())),
-        "n_unrouted": sum(1 for r in lines if not r["routed"]),
+        "distribution": dict(
+            sorted(Counter(str(payload["predicted_label"]) for _, payload in lines).items())
+        ),
+        "n_unrouted": sum(1 for _, payload in lines if not payload["routed"]),
         # Everything the report re-checks. A prediction file that is not bound to THIS
         # sample and THIS detector is a file of 250 labels from somewhere.
         "human_sample": str(out / SAMPLE_FILENAME),
