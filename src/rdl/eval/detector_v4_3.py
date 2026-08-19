@@ -51,6 +51,7 @@ __all__ = [
     "StoreRow",
     "expected_calibration_error",
     "pair_level_metrics",
+    "predicted_label",
     "select_thresholds",
     "store_conditioned_metrics",
 ]
@@ -104,6 +105,27 @@ class StoreRow:
 
     def fires(self, tau_answer: float) -> bool:
         return bool(self.fired_forget_ids(tau_answer))
+
+
+def predicted_label(row: StoreRow, *, tau_answer: float, tau_partial: float) -> str:
+    """The three-way label the runtime would act on, at the frozen thresholds.
+
+    ANSWER dominates: a row over ``tau_answer`` is a disclosure whatever its partial score
+    says, which is the same precedence :func:`store_conditioned_metrics` already applies
+    when it counts a PARTIAL row as caught by ``fires(tau_answer)``. That precedence lived
+    only inside the metric expression, so anything else that needed a predicted label --
+    the human-sample scorer, for one -- had to restate it, and a restated rule is a second
+    rule that can drift.
+
+    A row that routed to nothing has no protected score at all and is NONE here, not
+    because it scored low but because it was never scored. The caller keeps ``routed`` if
+    it needs to tell those two apart.
+    """
+    if row.fires(tau_answer):
+        return "ANSWER"
+    if (row.partial_score() or 0.0) >= tau_partial:
+        return "PARTIAL"
+    return "NONE"
 
 
 # ------------------------------------------------------------------ layer 1: pairs --

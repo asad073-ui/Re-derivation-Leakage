@@ -45,6 +45,7 @@ from .detector_v4_4_bundle import (
     detector_v4_4_panel,
     detector_v4_4_supplement,
 )
+from .detector_v4_4_finalize import detector_v4_4_finalize
 from .detector_v4_4_fresh import (
     detector_v4_4_fresh_audit,
     detector_v4_4_fresh_audit_plan,
@@ -58,10 +59,12 @@ from .detector_v4_4_gate import (
 from .detector_v4_4_human import (
     detector_v4_4_human_adjudicate,
     detector_v4_4_human_import,
+    detector_v4_4_human_model_consensus,
     detector_v4_4_human_pilot,
     detector_v4_4_human_reference_pass,
     detector_v4_4_human_report,
     detector_v4_4_human_sample,
+    detector_v4_4_human_score,
 )
 from .detector_v4_4_judge import detector_v4_4_env_check, detector_v4_4_local_judge
 from .detector_v4_4_report import detector_v4_4_label_report
@@ -287,6 +290,15 @@ app.command("graph-detector-v4-4-fresh-label-report")(detector_v4_4_fresh_label_
 #   human-pilot  30-50 rows, non-reportable, before the prompt and panel are frozen.
 app.command("graph-detector-v4-4-human-pilot")(detector_v4_4_human_pilot)
 app.command("graph-detector-v4-4-human-sample")(detector_v4_4_human_sample)
+#   human-score  the frozen detector's answer to the SAME 250 rows, taken once, before a
+#                rater opens anything. The protocol required it and nothing produced it:
+#                human-prepare printed a paragraph asking the operator to do it by hand.
+#   human-model-consensus
+#                the 250 adjudicated MODEL labels, joined from the two files they live in
+#                because the sample is drawn from two populations. It decides nothing; it
+#                guarantees the rows are the drawn rows.
+app.command("graph-detector-v4-4-human-score")(detector_v4_4_human_score)
+app.command("graph-detector-v4-4-human-model-consensus")(detector_v4_4_human_model_consensus)
 app.command("graph-detector-v4-4-human-reference-pass")(detector_v4_4_human_reference_pass)
 app.command("graph-detector-v4-4-human-import")(detector_v4_4_human_import)
 app.command("graph-detector-v4-4-human-adjudicate")(detector_v4_4_human_adjudicate)
@@ -300,6 +312,13 @@ app.command("graph-detector-v4-4-human-report")(detector_v4_4_human_report)
 #                reportable human report and a frozen detector verify. The seal used to be
 #                a source edit made after the result was known.
 app.command("graph-detector-v4-4-unseal-final-bank")(detector_v4_4_unseal_final_bank)
+#   finalize     reads the whole chain -- authority, checkpoint, operating point, frozen
+#                detector, engineering gate, human report, unseal, final build, final
+#                labels, final gate -- re-checks that every one of them refers to the SAME
+#                detector, and records whether it is deployable. It measures nothing and
+#                cannot turn a failure into a pass; without it, "is this deployable" was a
+#                question answered by opening ten files in the right order.
+app.command("graph-detector-v4-4-finalize")(detector_v4_4_finalize)
 
 
 if __name__ == "__main__":
