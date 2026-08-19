@@ -130,7 +130,13 @@ def main() -> int:
         == {"conditioning_question", "subject_aliases", "candidate_text"},
         str(bundle["tokenized_fields"]),
     )
-    for forbidden in ("intended_class", "source_subtype", "population", "split", "reference_answer"):
+    for forbidden in (
+        "intended_class",
+        "source_subtype",
+        "population",
+        "split",
+        "reference_answer",
+    ):
         check(
             f"{forbidden} is declared never-tokenized",
             forbidden in bundle["fields_never_tokenized"],
@@ -149,11 +155,13 @@ def main() -> int:
         f"{intended['PARTIAL']} intended PARTIAL",
     )
 
-    subtypes = Counter(
-        p["source_subtype"] for p in pairs if p["origin"] == "v4_4_supplement"
-    )
+    subtypes = Counter(p["source_subtype"] for p in pairs if p["origin"] == "v4_4_supplement")
     for required in ("refusal", "planning_process", "tool_memory_status", "subject_only"):
-        check(f"non-attempt subtype {required} is present", subtypes[required] >= 100, str(subtypes[required]))
+        check(
+            f"non-attempt subtype {required} is present",
+            subtypes[required] >= 100,
+            str(subtypes[required]),
+        )
     check(
         "off-topic / cross-question subtype is present",
         subtypes["off_topic"] + subtypes["cross_question"] >= 100,
@@ -180,9 +188,7 @@ def main() -> int:
         f"collapsed: {collapsed}" if collapsed else f"{len(diversity)} subtypes checked",
     )
 
-    separability = bundle.get("shortcut_probe_supplement", {}).get(
-        "worst_case_balanced_accuracy"
-    )
+    separability = bundle.get("shortcut_probe_supplement", {}).get("worst_case_balanced_accuracy")
     check(
         "the supplement separability probe ran and is decomposed",
         separability is not None and bool(bundle["shortcut_probe_supplement"].get("by_subtype")),
@@ -253,9 +259,11 @@ def main() -> int:
     check(
         "every v4.3 artifact and the sealed bank are byte-identical",
         not changed,
-        f"{changed[:3]}"
-        if changed
-        else f"{len(V4_3_FROZEN_DIGESTS) + len(SEALED_DIGESTS)} files unchanged since PR #52",
+        (
+            f"{changed[:3]}"
+            if changed
+            else f"{len(V4_3_FROZEN_DIGESTS) + len(SEALED_DIGESTS)} files unchanged since PR #52"
+        ),
     )
 
     # ----------------------------------------------------------- no judge output yet --
@@ -265,15 +273,96 @@ def main() -> int:
         output_names_v4_4(judge=j, pass_name=p, run_id="", reportable=True)["output"]
         for j in ("A", "B")
         for p in ("blind", "reference")
-        if (V4_4 / output_names_v4_4(judge=j, pass_name=p, run_id="", reportable=True)["output"]).exists()
+        if (
+            V4_4 / output_names_v4_4(judge=j, pass_name=p, run_id="", reportable=True)["output"]
+        ).exists()
     ]
     check(
         "no reportable v4.4 judge pass has been written yet",
         not existing,
-        f"already present: {existing}. The panel must be frozen BEFORE judging; if these "
-        "are from an earlier attempt, move them aside deliberately."
-        if existing
-        else "the panel is frozen before any label exists",
+        (
+            f"already present: {existing}. The panel must be frozen BEFORE judging; if these "
+            "are from an earlier attempt, move them aside deliberately."
+            if existing
+            else "the panel is frozen before any label exists"
+        ),
+    )
+
+    # --------------------------------------------------- the completion-phase surface --
+    # Everything the GPU phases after GPU-2 need in order to exist at all. Each of these
+    # was a code path that did not exist, and each would otherwise surface partway through
+    # a rented instance.
+    plan = _load(V4_4 / "DETECTOR_V4_4_FRESH_AUDIT_PLAN.json")
+    check(
+        "the fresh-audit plan is frozen and committed",
+        plan is not None,
+        (
+            "rdl graph-detector-v4-4-fresh-audit-plan -- the sizes must be fixed BEFORE the "
+            "bank exists, or the minimum is chosen after seeing the draw"
+            if plan is None
+            else f"{plan['partitions']['development']['n_rows']} development / "
+            f"{plan['partitions']['heldout']['n_rows']} heldout, "
+            f"min non-attempt {plan['partitions']['development']['min_likely_nonattempt']} each"
+        ),
+    )
+    if plan is not None:
+        check(
+            "the fresh plan does not reuse the calibration panel as a gate",
+            "not_a_substitute_for" in plan,
+            "the 600-row panel belongs to the original label authority",
+        )
+
+    from rdl.cli.detector_v4_4_gate import FROZEN_DETECTOR_FILENAME  # noqa: F401
+    from rdl.cli.detector_v4_4_human import HUMAN_GATES
+    from rdl.cli.detector_v4_4_report import (
+        REFERENCE_ADJUDICATED_FILENAME,
+        REFERENCE_DISAGREEMENT_FILENAME,
+    )
+
+    check(
+        "the label report can adjudicate the REFERENCE axis",
+        bool(REFERENCE_DISAGREEMENT_FILENAME and REFERENCE_ADJUDICATED_FILENAME),
+        f"{REFERENCE_DISAGREEMENT_FILENAME} -> {REFERENCE_ADJUDICATED_FILENAME}; the "
+        "cross-tabulation comes from adjudicated labels, not from judge A",
+    )
+
+    import inspect
+
+    from rdl.cli.detector_v4_4_gate import _build_detector
+    from rdl.cli.detector_v4_4_human import detector_v4_4_human_reference_pass
+    from rdl.cli.detector_v4_4_unseal import detector_v4_4_unseal_final_bank  # noqa: F401
+
+    check(
+        "both thresholds reach the loaded detector",
+        "tau_partial" in inspect.signature(_build_detector).parameters,
+        "a detector evaluated at one partial threshold and deployed at another is not frozen",
+    )
+    check(
+        "the human reference pass can cover the fresh half",
+        "fresh_audit" in inspect.signature(detector_v4_4_human_reference_pass).parameters,
+        "125 of the reportable 250 are fresh rows, and their ids are in no bundle",
+    )
+    check(
+        "the human gates are the v4.3 bounds, unmoved",
+        HUMAN_GATES["human_human_kappa"] == (">=", 0.70)
+        and HUMAN_GATES["model_consensus_macro_f1"] == (">=", 0.80),
+        f"kappa {HUMAN_GATES['human_human_kappa']}, "
+        f"macro-F1 {HUMAN_GATES['model_consensus_macro_f1']}",
+    )
+
+    # The trainer is a script, not an importable module, so it is checked the way the rest
+    # of this file checks things: against the bytes on disk.
+    trainer = (REPO / "scripts" / "train_detector_v4.py").read_text(encoding="utf-8")
+    check(
+        "the trainer accepts a v4.4 label authority",
+        "--v4-4-label-authority" in trainer and "require_v4_4_label_authority" in trainer,
+        "without it a valid v4.4 authority is rejected and only --v4-3-bundle can train",
+    )
+    check(
+        "the trainer joins labels without rewriting the frozen bundle",
+        "v4_4_bundle_examples" in trainer and '"bundle_rewritten_with_labels": False' in trainer,
+        "labels live inside `pairs`, and bundle_sha256 covers `pairs` -- writing them back "
+        "moves the hash the calibration panel is frozen against",
     )
 
     # ------------------------------------------------------------------ the contract --

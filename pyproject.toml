@@ -52,7 +52,14 @@ gpu = [
     # Mistral-Small-3.2 publishes tekken.json and no tokenizer.json/tokenizer_config.json,
     # and transformers 4.51 has no Mistral3Config entry in its tokenizer mapping, so
     # AutoTokenizer raises KeyError on it. This is the tokenizer its model card documents.
-    "mistral-common>=1.6.2",
+    #
+    # EXACT, not >=. This package IS part of the annotator: it decides the Tekken subword
+    # split for judge B, and a different split is a different prompt at a fixed budget and
+    # therefore a different label. `>=1.6.2` let a `pip install` months apart produce two
+    # annotators under one protocol version. 1.11.7 is the version the successful Mistral
+    # tokenizer/load smoke ran under; changing it requires a dated amendment BEFORE any
+    # v4.4 label, not after.
+    "mistral-common==1.11.7",
     # DeBERTa-v3 uses the DeBERTa-v2 SentencePiece tokenizer, which `transformers` does
     # not depend on. The detector's encoder and its NLI baseline are both DeBERTa-v3, so
     # without these the first tokenizer load on the GPU box raises.

@@ -69,6 +69,8 @@ from .detector_v4_4_bundle import DEFAULT_V4_4_DIR
 
 __all__ = [
     "AUDIT_SAMPLE_FILENAME",
+    "FROZEN_DETECTOR_FILENAME",
+    "FROZEN_DETECTOR_SCHEMA",
     "HELDOUT_REPORT_FILENAME",
     "NONATTEMPT_SURFACE_RULES",
     "OPERATING_POINT_FILENAME",
@@ -81,6 +83,12 @@ __all__ = [
 ]
 
 OPERATING_POINT_FILENAME = "DETECTOR_V4_4_OPERATING_POINT.json"
+FROZEN_DETECTOR_FILENAME = "DETECTOR_V4_4_FROZEN_DETECTOR.json"
+FROZEN_DETECTOR_SCHEMA = "graph-detector-v4-4-frozen-detector-v1"
+# The class order the trainer fixed. Recorded in the frozen artifact because a detector
+# loaded against a permuted label map produces confident, wrong, perfectly plausible
+# numbers -- ANSWER read off the NONE logit is not an error anything downstream can see.
+LABEL_ORDER: tuple[str, ...] = ("NONE", "PARTIAL", "ANSWER")
 HELDOUT_REPORT_FILENAME = "DETECTOR_V4_4_HELDOUT_GATE.json"
 AUDIT_SAMPLE_FILENAME = "DETECTOR_V4_4_AUDIT_SAMPLE.json"
 
@@ -345,15 +353,42 @@ def _load_rows(audit: Path, partition: str) -> list[dict]:
     return selected
 
 
-def _build_detector(backend: str, model_artifact: Path | None, device: str, tau: float):
+def _build_detector(
+    backend: str,
+    model_artifact: Path | None,
+    device: str,
+    tau: float,
+    tau_partial: float | None = None,
+):
+    """Build the detector at BOTH thresholds.
+
+    ``build_backend`` takes only ``answer_threshold``, so a v4.4 detector used to be loaded
+    with whatever ``partial_threshold`` the class defaults to (0.5) while the report
+    computed its PARTIAL metrics from raw scores at the frozen ``tau_partial``. Those are
+    two different detectors, and a detector is not frozen while evaluation and runtime
+    disagree about one of its two operating points.
+
+    The second threshold is applied through ``with_thresholds`` rather than by widening
+    ``build_backend``: it shares the loaded weights and the tokenizer, so no reload happens
+    and the v4/v4.2/v4.3 callers keep the signature they were written against.
+    """
     from .detector_v4_gates import build_backend
 
-    return build_backend(
+    detector = build_backend(
         backend,
         model_artifact if backend == "cross_encoder" else None,
         answer_threshold=tau,
         device=device if backend == "cross_encoder" else "",
     )
+    if tau_partial is None:
+        return detector
+    with_thresholds = getattr(detector, "with_thresholds", None)
+    if with_thresholds is None:  # pragma: no cover - both backends implement it
+        raise typer.BadParameter(
+            f"{type(detector).__name__} cannot carry a partial threshold, so tau_partial "
+            "would be frozen in the artifact and ignored by the loaded detector."
+        )
+    return with_thresholds(answer_threshold=tau, partial_threshold=tau_partial)
 
 
 def _v4_4_metrics(
@@ -387,6 +422,83 @@ def _v4_4_metrics(
         }
     )
     return out
+
+
+def _write_frozen_detector(
+    out: Path,
+    *,
+    operating_point: Mapping,
+    model_artifact: Path | None,
+    store: ProtectedStore,
+    backend: str,
+) -> Path:
+    """``DETECTOR_V4_4_FROZEN_DETECTOR.json`` -- everything a deployment must match.
+
+    The operating point records the two thresholds; it does not record which weights,
+    which tokenizer commit, which class order or which segmentation those thresholds were
+    chosen under. Without that, "the frozen detector" is a phrase rather than an object,
+    and the final gate's promise -- same weights, same tokenizer, same class map, same
+    store, same two thresholds -- has nothing to check against.
+
+    ``human_validated`` starts false and is never set by this command. It is turned true
+    only by a separate, passing human report, because a file that can mark itself validated
+    is not evidence of validation.
+    """
+    manifest: dict = {}
+    if model_artifact is not None and model_artifact.exists():
+        manifest = json.loads(model_artifact.read_text(encoding="utf-8"))
+    pins = manifest.get("pins", {})
+    payload = {
+        "schema": FROZEN_DETECTOR_SCHEMA,
+        "protocol": V4_4_PROTOCOL,
+        "frozen_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "backend": backend,
+        "model_artifact": str(model_artifact) if model_artifact else None,
+        "model_artifact_sha256": (
+            hashlib.sha256(model_artifact.read_bytes()).hexdigest()
+            if model_artifact is not None and model_artifact.exists()
+            else None
+        ),
+        "checkpoint": manifest.get("selected_checkpoint") or manifest.get("checkpoint"),
+        "checkpoint_digest": manifest.get("checkpoint_digest"),
+        "label_map": manifest.get("label_map"),
+        "label_map_sha256": (
+            hashlib.sha256(
+                dumps_canonical(manifest.get("label_map") or {}).encode("utf-8")
+            ).hexdigest()
+            if manifest.get("label_map")
+            else None
+        ),
+        "tokenizer_repo_id": pins.get("model_repo_id"),
+        "tokenizer_revision": pins.get("tokenizer_revision"),
+        "model_revision": pins.get("model_revision"),
+        "class_order": list(LABEL_ORDER),
+        "encoding_budget": manifest.get("encoding_budget"),
+        "segmentation_version": (manifest.get("encoding_budget") or {}).get("segmentation_version"),
+        "protected_store_fingerprint": store.fingerprint(),
+        "tau_answer": operating_point["tau_answer"],
+        "tau_partial": operating_point["tau_partial"],
+        "operating_point_sha256": operating_point["operating_point_sha256"],
+        "source_commit": (manifest.get("git") or {}).get("commit"),
+        "source_tree_clean": (manifest.get("git") or {}).get("clean"),
+        "receives_gold_answers": False,
+        "why_no_gold_answers": (
+            "the runtime input is (conditioning_question, subject_aliases, "
+            "candidate_text). The reference answer is never tokenized, which is what makes "
+            "the answer-free claim checkable rather than asserted."
+        ),
+        "human_validated": False,
+        "human_validation_record": None,
+        "why_human_validated_is_false": (
+            "it is set by a separate passing human report, never by this command. A file "
+            "that can mark itself validated is not evidence of validation."
+        ),
+    }
+    payload["frozen_detector_sha256"] = hashlib.sha256(
+        dumps_canonical({k: v for k, v in payload.items() if k != "frozen_at"}).encode("utf-8")
+    ).hexdigest()
+    atomic_json(out / FROZEN_DETECTOR_FILENAME, payload)
+    return out / FROZEN_DETECTOR_FILENAME
 
 
 def detector_v4_4_select_operating_point(
@@ -458,10 +570,19 @@ def detector_v4_4_select_operating_point(
         dumps_canonical({k: v for k, v in payload.items() if k != "frozen_at"}).encode("utf-8")
     ).hexdigest()
     atomic_json(out / OPERATING_POINT_FILENAME, payload)
+
+    frozen_detector = _write_frozen_detector(
+        out,
+        operating_point=payload,
+        model_artifact=Path(model_artifact) if model_artifact else None,
+        store=store,
+        backend=backend,
+    )
+
     typer.echo(
         dumps_canonical(
             {
-                "wrote": str(out / OPERATING_POINT_FILENAME),
+                "wrote": [str(out / OPERATING_POINT_FILENAME), str(frozen_detector)],
                 "tau_answer": chosen["tau_answer"],
                 "tau_partial": chosen["tau_partial"],
                 "development_answer_micro_recall": metrics["protected"]["answer_micro_recall"],
@@ -520,7 +641,9 @@ def detector_v4_4_final_gate(
             "threshold was chosen under a different routed set."
         )
     rows = _load_rows(audit, partition)
-    detector = _build_detector(backend, model_artifact, device, tau_answer)
+    # BOTH thresholds. The gate must score with the detector that would be deployed, not
+    # with one that shares only its answer threshold.
+    detector = _build_detector(backend, model_artifact, device, tau_answer, tau_partial)
     scored = score_store_conditioned(rows, store=store, detector=detector)
     metrics = _v4_4_metrics(scored, tau_answer=tau_answer, tau_partial=tau_partial, rows=rows)
 

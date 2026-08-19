@@ -45,6 +45,11 @@ from .detector_v4_4_bundle import (
     detector_v4_4_panel,
     detector_v4_4_supplement,
 )
+from .detector_v4_4_fresh import (
+    detector_v4_4_fresh_audit,
+    detector_v4_4_fresh_audit_plan,
+)
+from .detector_v4_4_fresh_report import detector_v4_4_fresh_label_report
 from .detector_v4_4_gate import (
     detector_v4_4_audit_sample,
     detector_v4_4_final_gate,
@@ -55,10 +60,12 @@ from .detector_v4_4_human import (
     detector_v4_4_human_import,
     detector_v4_4_human_pilot,
     detector_v4_4_human_reference_pass,
+    detector_v4_4_human_report,
     detector_v4_4_human_sample,
 )
 from .detector_v4_4_judge import detector_v4_4_env_check, detector_v4_4_local_judge
 from .detector_v4_4_report import detector_v4_4_label_report
+from .detector_v4_4_unseal import detector_v4_4_unseal_final_bank
 from .detector_v4_data import detector_v4_build_data
 from .detector_v4_gates import detector_v4_gates
 from .detector_v4_label_audit import detector_v4_label_audit, detector_v4_label_report
@@ -262,6 +269,18 @@ app.command("graph-detector-v4-4-label-report")(detector_v4_4_label_report)
 app.command("graph-detector-v4-4-audit-sample")(detector_v4_4_audit_sample)
 app.command("graph-detector-v4-4-select-operating-point")(detector_v4_4_select_operating_point)
 app.command("graph-detector-v4-4-final-gate")(detector_v4_4_final_gate)
+#   fresh-audit-plan / fresh-audit
+#                the bridge from the NESTED v4.2 bank to a v4.4 judgeable row. The bank
+#                stores partitions.{development,heldout}.{clean,leaking,retain} and carries
+#                `request`/`text`; audit-sample reads a top-level `rows`, so it saw zero.
+#                The plan freezes both partitions' sizes BEFORE the bank exists.
+app.command("graph-detector-v4-4-fresh-audit-plan")(detector_v4_4_fresh_audit_plan)
+app.command("graph-detector-v4-4-fresh-audit")(detector_v4_4_fresh_audit)
+#   fresh-label-report
+#                both label axes over ONE fresh partition. Not the 600-row calibration
+#                panel: that belongs to the original label authority and reusing it as a
+#                fresh gate would certify this rubric with agreement measured elsewhere.
+app.command("graph-detector-v4-4-fresh-label-report")(detector_v4_4_fresh_label_report)
 #   human-*      two ORDERED passes. The reference pass refuses to open until every blind
 #                rater file is complete, because a rater who has seen the answer can no
 #                longer report whether the text attempted one.
@@ -271,6 +290,16 @@ app.command("graph-detector-v4-4-human-sample")(detector_v4_4_human_sample)
 app.command("graph-detector-v4-4-human-reference-pass")(detector_v4_4_human_reference_pass)
 app.command("graph-detector-v4-4-human-import")(detector_v4_4_human_import)
 app.command("graph-detector-v4-4-human-adjudicate")(detector_v4_4_human_adjudicate)
+#   human-report the gate v4.3 had and v4.4 did not: human-human kappa, model consensus and
+#                frozen-detector predictions against the ADJUDICATED HUMAN labels, plus
+#                provenance. Without it the human phase could produce labels and nothing
+#                that turned them into a pass or a fail.
+app.command("graph-detector-v4-4-human-report")(detector_v4_4_human_report)
+#   unseal-final-bank
+#                the ONLY thing that opens the final bank. It refuses unless a passing,
+#                reportable human report and a frozen detector verify. The seal used to be
+#                a source edit made after the result was known.
+app.command("graph-detector-v4-4-unseal-final-bank")(detector_v4_4_unseal_final_bank)
 
 
 if __name__ == "__main__":

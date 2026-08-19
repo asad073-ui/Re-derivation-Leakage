@@ -8,10 +8,27 @@ Two invocations, in order, exactly as v4.3:
     the aliases and the candidate and **never the reference answer** -- the researcher
     adjudicates blind, exactly as the judges did.
 
-``--adjudication FILE [--require-reference-pass]``
+``--adjudication FILE [--reference-adjudication FILE] [--require-reference-pass]``
     Folds the adjudicated decisions in, freezes the blind labels, checks the adjudicated
     bundle's class minima, and -- once both reference passes exist -- computes
     reference-assisted kappa and the two-axis cross-tabulation.
+
+The reference axis is adjudicated too, and separately
+-----------------------------------------------------
+``reference_content`` used to be reported from judge A wherever the two reference passes
+disagreed. That is not an adjudication, it is a coin already flipped: the cross-tabulation
+that GU-0048 needed would have been half judge A's opinion on exactly the rows the two
+judges could not agree about. The reference axis now writes its own disagreement file,
+takes its own ``--reference-adjudication``, and refuses to build an authority while any
+reference row is missing, malformed, truncated or unresolved -- the same zero-tolerance the
+blind axis has always had.
+
+The two disagreement files are NOT symmetric, and deliberately so.
+``V4_4_BLIND_DISAGREEMENTS.jsonl`` never carries the reference answer, because a researcher
+who has seen it cannot un-see it and the blind label is the trainable one.
+``V4_4_REFERENCE_DISAGREEMENTS.jsonl`` does carry it, because deciding "does this convey the
+reference answer" without the reference answer is not a task. That file is an offline
+diagnostic artifact and never reaches training or runtime.
 
 What changed from v4.3, and why
 -------------------------------
@@ -66,6 +83,8 @@ from .detector_v4_4_judge import output_names_v4_4
 __all__ = [
     "ADJUDICATED_FILENAME",
     "DISAGREEMENT_FILENAME",
+    "REFERENCE_ADJUDICATED_FILENAME",
+    "REFERENCE_DISAGREEMENT_FILENAME",
     "REPORT_FILENAME",
     "detector_v4_4_label_report",
 ]
@@ -73,9 +92,15 @@ __all__ = [
 REPORT_FILENAME = "DETECTOR_V4_4_LABEL_REPORT.json"
 ADJUDICATED_FILENAME = "V4_4_ADJUDICATED.jsonl"
 DISAGREEMENT_FILENAME = "V4_4_BLIND_DISAGREEMENTS.jsonl"
+REFERENCE_ADJUDICATED_FILENAME = "V4_4_REFERENCE_ADJUDICATED.jsonl"
+REFERENCE_DISAGREEMENT_FILENAME = "V4_4_REFERENCE_DISAGREEMENTS.jsonl"
 AUTHORITY_FILENAME = "DETECTOR_V4_4_LABEL_AUTHORITY.json"
 
 LABELS = ("NONE", "PARTIAL", "ANSWER")
+# The reference axis is ternary and its third value is not "no opinion" -- UNCERTAIN is
+# assigned BY RULE when the row has no reference answer to convey. An adjudicator may also
+# choose it, which is why it is a legal decision and not only a rule output.
+REFERENCE_LABELS = ("YES", "NO", "UNCERTAIN")
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -152,6 +177,14 @@ def detector_v4_4_label_report(
     ),
     adjudication: Path = typer.Option(
         None, "--adjudication", help="a JSONL of blind adjudication decisions."
+    ),
+    reference_adjudication: Path = typer.Option(
+        None,
+        "--reference-adjudication",
+        help=(
+            "a JSONL of reference adjudication decisions. Required whenever both reference "
+            "passes exist and they disagree anywhere."
+        ),
     ),
     require_reference_pass: bool = typer.Option(
         False,
@@ -442,24 +475,140 @@ def detector_v4_4_label_report(
         ]
         for judge in ("A", "B")
     }
+    reference_adjudication_block: dict | None = None
     if all(p.exists() for p in reference_paths.values()):
-        ref_a, ref_malformed_a, _ = _pass_table(
-            _read_jsonl(reference_paths["A"]), "reference_content"
-        )
-        ref_b, ref_malformed_b, _ = _pass_table(
-            _read_jsonl(reference_paths["B"]), "reference_content"
-        )
+        ref_rows_a = _read_jsonl(reference_paths["A"])
+        ref_rows_b = _read_jsonl(reference_paths["B"])
+        ref_a, ref_malformed_a, _ = _pass_table(ref_rows_a, "reference_content")
+        ref_b, ref_malformed_b, _ = _pass_table(ref_rows_b, "reference_content")
         key_rows = json.loads(Path(eval_key).read_text(encoding="utf-8")).get("rows", {})
+        judged_ref = set(ref_a) & set(ref_b)
         has_reference = {
-            i
-            for i in set(ref_a) & set(ref_b)
-            if str(key_rows.get(i, {}).get("reference_answer", "")).strip()
+            i for i in judged_ref if str(key_rows.get(i, {}).get("reference_answer", "")).strip()
         }
-        forced = sorted(set(ref_a) & set(ref_b) - has_reference)
+        forced = sorted(judged_ref - has_reference)
         scored = sorted(has_reference)
+
+        # Same zero-tolerance the blind axis has. A reference row that never came back is
+        # not a row that agreed.
+        ref_missing = sorted(
+            (set(pairs) - {str(r["audit_id"]) for r in ref_rows_a})
+            | (set(pairs) - {str(r["audit_id"]) for r in ref_rows_b})
+        )
+        ref_truncated = sorted(
+            {
+                str(r["audit_id"])
+                for rows in (ref_rows_a, ref_rows_b)
+                for r in rows
+                if r.get("prompt_truncated")
+            }
+        )
+        ref_malformed = sorted(set(ref_malformed_a) | set(ref_malformed_b))
+
+        # ------------------------------------------- the reference disagreement file --
+        # Written before any refusal, so the pause it forces is one the researcher can act
+        # on. Unlike the blind file this one SHOWS the reference answer: deciding whether a
+        # candidate conveys it is not a question that can be asked blind.
+        ref_disagreements = sorted(i for i in scored if ref_a[i] != ref_b[i])
+        out.mkdir(parents=True, exist_ok=True)
+        (out / REFERENCE_DISAGREEMENT_FILENAME).write_text(
+            "".join(
+                dumps_canonical(
+                    {
+                        "audit_id": i,
+                        "conditioning_question": pairs[i]["conditioning_question"],
+                        "subject_aliases": pairs[i]["subject_aliases"],
+                        "candidate_text": pairs[i]["candidate_text"],
+                        "reference_answer": str(key_rows.get(i, {}).get("reference_answer", "")),
+                        "label_1": min(ref_a[i], ref_b[i]),
+                        "label_2": max(ref_a[i], ref_b[i]),
+                        "reference_content": None,
+                    }
+                )
+                + "\n"
+                for i in ref_disagreements
+            ),
+            encoding="utf-8",
+        )
+
+        ref_decisions = {
+            str(r["audit_id"]): str(r["reference_content"])
+            for r in (_read_jsonl(Path(reference_adjudication)) if reference_adjudication else [])
+            if r.get("reference_content") in REFERENCE_LABELS
+        }
+        ref_unresolved = sorted(set(ref_disagreements) - set(ref_decisions))
+        ref_failures = []
+        if ref_missing:
+            ref_failures.append(f"{len(ref_missing)} reference rows are missing")
+        if ref_malformed:
+            ref_failures.append(f"{len(ref_malformed)} reference rows are malformed")
+        if ref_truncated:
+            ref_failures.append(f"{len(ref_truncated)} reference prompts were truncated")
+        if ref_unresolved:
+            ref_failures.append(
+                f"{len(ref_unresolved)} reference disagreements are unadjudicated "
+                f"(first {ref_unresolved[:3]})"
+            )
+        if ref_failures:
+            raise typer.BadParameter(
+                "the reference axis is not closed: "
+                + "; ".join(ref_failures)
+                + f". The disagreements are in {out / REFERENCE_DISAGREEMENT_FILENAME}; "
+                "resolve every one WITH the reference answer visible and re-run with "
+                "--reference-adjudication. Reporting judge A's label on the rows the two "
+                "judges could not agree about is not an adjudication."
+            )
+
+        # The adjudicated reference label. Forced-UNCERTAIN rows keep UNCERTAIN by rule.
+        reference_final = dict.fromkeys(forced, "UNCERTAIN")
+        reference_final.update(
+            {i: (ref_decisions.get(i) or ref_a[i]) for i in scored},
+        )
+        (out / REFERENCE_ADJUDICATED_FILENAME).write_text(
+            "".join(
+                dumps_canonical(
+                    {
+                        "audit_id": i,
+                        "reference_content": reference_final[i],
+                        "source": (
+                            "forced_uncertain_no_reference_answer"
+                            if i in set(forced)
+                            else "adjudicated" if i in ref_decisions else "both_judges_agreed"
+                        ),
+                    }
+                )
+                + "\n"
+                for i in sorted(reference_final)
+            ),
+            encoding="utf-8",
+        )
+        reference_adjudication_block = {
+            "file": str(reference_adjudication) if reference_adjudication else None,
+            "sha256": (
+                sha256_text(Path(reference_adjudication).read_text(encoding="utf-8"))
+                if reference_adjudication
+                else None
+            ),
+            "n_decisions": len(ref_decisions),
+            "n_unresolved": 0,
+            "adjudicated_file": str(out / REFERENCE_ADJUDICATED_FILENAME),
+            "adjudicated_sha256": hashlib.sha256(
+                (out / REFERENCE_ADJUDICATED_FILENAME).read_bytes()
+            ).hexdigest(),
+            "disagreement_file": str(out / REFERENCE_DISAGREEMENT_FILENAME),
+            "disagreement_sha256": hashlib.sha256(
+                (out / REFERENCE_DISAGREEMENT_FILENAME).read_bytes()
+            ).hexdigest(),
+            "why_this_file_may_show_the_reference_answer": (
+                "it is an offline adjudication artifact. The blind file must never show it, "
+                "because the blind label is the trainable one; this axis is never trained "
+                "on and never reaches runtime, so withholding the reference answer here "
+                "would only make the decision impossible."
+            ),
+        }
         reference_block = {
             "ran": True,
-            "n_rows": len(set(ref_a) & set(ref_b)),
+            "n_rows": len(judged_ref),
             "n_scored_excluding_forced": len(scored),
             "n_forced_uncertain": len(forced),
             "kappa_excluding_forced": cohens_kappa(
@@ -468,7 +617,11 @@ def detector_v4_4_label_report(
             "raw_agreement_excluding_forced": raw_agreement(
                 [ref_a[i] for i in scored], [ref_b[i] for i in scored]
             ),
-            "n_malformed": len(set(ref_malformed_a) | set(ref_malformed_b)),
+            "n_malformed": len(ref_malformed),
+            "n_missing": len(ref_missing),
+            "n_truncated": len(ref_truncated),
+            "n_disagreements": len(ref_disagreements),
+            "n_unresolved": 0,
             "why_forced_rows_are_excluded": (
                 "the reference rubric assigns UNCERTAIN by rule when the reference answer "
                 "is empty. Those rows were not judged, they were assigned, and two "
@@ -477,9 +630,16 @@ def detector_v4_4_label_report(
                 "candidate was generated for this protocol and there is no answer it was "
                 "supposed to convey."
             ),
+            # From the ADJUDICATED reference label, not judge A. On exactly the rows the
+            # two judges disagreed about, judge A's label was never a decision anybody made.
             "attempt_vs_content": dict(
-                sorted(Counter(f"{final[i]}|{ref_a[i]}" for i in scored if i in final).items())
+                sorted(
+                    Counter(
+                        f"{final[i]}|{reference_final[i]}" for i in scored if i in final
+                    ).items()
+                )
             ),
+            "attempt_vs_content_source": "adjudicated_reference_labels",
             "why_this_axis_is_never_trained_on": (
                 "the runtime input does not contain the reference answer. A classifier "
                 "trained on reference_content would be a different detector and would "
@@ -518,6 +678,8 @@ def detector_v4_4_label_report(
         "bundle_minima_failures": minima_failures,
     }
     report["reference_axis"] = reference_block
+    if reference_adjudication_block is not None:
+        report["reference_adjudication"] = reference_adjudication_block
     atomic_json(out / REPORT_FILENAME, report)
 
     authority = {
@@ -529,11 +691,37 @@ def detector_v4_4_label_report(
         "panel_sha256": panel_payload.get("panel_sha256"),
         "adjudicated_file": str(out / ADJUDICATED_FILENAME),
         "adjudicated_sha256": hashlib.sha256((out / ADJUDICATED_FILENAME).read_bytes()).hexdigest(),
+        "blind_adjudication_sha256": report["adjudication"]["sha256"],
+        "blind_disagreement_sha256": hashlib.sha256(
+            (out / DISAGREEMENT_FILENAME).read_bytes()
+        ).hexdigest(),
+        # Both axes are bound by hash. The reference files are bound even though the axis
+        # is untrainable: an authority that names them without pinning them cannot later
+        # prove which reference labels its cross-tabulation was computed from.
+        "reference_adjudicated_file": (
+            reference_adjudication_block["adjudicated_file"]
+            if reference_adjudication_block
+            else None
+        ),
+        "reference_adjudicated_sha256": (
+            reference_adjudication_block["adjudicated_sha256"]
+            if reference_adjudication_block
+            else None
+        ),
+        "reference_adjudication_sha256": (
+            reference_adjudication_block["sha256"] if reference_adjudication_block else None
+        ),
+        "reference_disagreement_sha256": (
+            reference_adjudication_block["disagreement_sha256"]
+            if reference_adjudication_block
+            else None
+        ),
         "n_labels": len(final),
         "distribution": dict(sorted(distribution.items())),
         "panel_gate": {"passed": True, "kappa": panel_report["kappa"]},
         "bundle_minima_passed": not minima_failures,
         "reference_axis_ran": reference_block["ran"],
+        "reference_axis_closed": reference_adjudication_block is not None,
         "trainable_field": "answer_attempt",
         "not_trainable": ["reference_content"],
         "green": not minima_failures,
