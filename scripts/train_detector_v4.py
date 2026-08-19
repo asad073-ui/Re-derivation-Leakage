@@ -90,6 +90,7 @@ import os
 import random
 import sys
 import time
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -101,6 +102,7 @@ V4 = REPO / "data" / "cohorts" / "graph_unlearning_v1" / "detector_v4"
 V4_1 = REPO / "data" / "cohorts" / "graph_unlearning_v1" / "detector_v4_1"
 V4_2 = REPO / "data" / "cohorts" / "graph_unlearning_v1" / "detector_v4_2"
 V4_3 = REPO / "data" / "cohorts" / "graph_unlearning_v1" / "detector_v4_3"
+V4_4 = REPO / "data" / "cohorts" / "graph_unlearning_v1" / "detector_v4_4"
 LABELS = ("NONE", "PARTIAL", "ANSWER")
 ANSWER_INDEX = LABELS.index("ANSWER")
 
@@ -267,6 +269,235 @@ def require_v4_3_label_authority(report_path: Path, bundle_path: Path) -> dict:
             "it may be described as a Goal A result or as publication-ready until the "
             "250-row human validation passes. See "
             "DETECTOR_V4_3_PROTECTED_STORE_PROTOCOL.md sections 6 and 9."
+        ),
+    }
+
+
+def require_v4_4_label_authority(authority_path: Path, bundle_path: Path) -> dict:
+    """The v4.4 authority: a green label authority bound to the IMMUTABLE bundle.
+
+    Different from v4.3's in one structural way that matters more than any of the flag
+    checks below. v4.3 trained from a *labelled* bundle -- ``graph-detector-v4-3-bundle
+    --labels ...`` wrote the labels back into the pairs -- so the authority could only bind
+    to the unlabelled freeze the labelled file *claimed* to descend from.
+
+    v4.4 cannot do that. Its labels live inside ``pairs``, ``bundle_sha256`` covers
+    ``pairs``, and the 600-row calibration panel is frozen against that hash. Writing labels
+    into the bundle would move the hash the panel is bound to, and the primary kappa gate
+    would then be evidence about a file that no longer exists. So the frozen bundle is never
+    rewritten: the authority binds to its hash directly, and :func:`v4_4_bundle_examples`
+    joins ``V4_4_ADJUDICATED.jsonl`` to it in memory, by ``audit_id``.
+
+    That makes the join itself the thing to check. A join is silent when it half-fails --
+    a missing id is a dropped row, a duplicate id is a row whose label depends on file
+    order, an extra id is a label for a row that is not in this bundle -- so all three are
+    refused here rather than counted later.
+    """
+    if not authority_path.exists():
+        raise SystemExit(
+            f"{authority_path} is absent. A v4.4 run is authorised by "
+            "DETECTOR_V4_4_LABEL_AUTHORITY.json, which "
+            "`rdl graph-detector-v4-4-label-report --adjudication ... "
+            "--reference-adjudication ...` writes once BOTH axes are closed."
+        )
+    authority = json.loads(authority_path.read_text(encoding="utf-8"))
+    if str(authority.get("schema")) != "graph-detector-v4-4-label-authority-v1":
+        raise SystemExit(
+            f"{authority_path} carries schema {authority.get('schema')!r}, not "
+            "'graph-detector-v4-4-label-authority-v1'. A v4.3 authority describes a "
+            "different bundle under a different prompt version; it is not an earlier "
+            "version of this file."
+        )
+    if not authority.get("green"):
+        raise SystemExit(
+            f"{authority_path} is not green. Refusing to train. A failing authority is "
+            "reported as failing; it is not re-run with a moved bound."
+        )
+    if not (authority.get("panel_gate") or {}).get("passed"):
+        raise SystemExit(
+            f"{authority_path} records a failed balanced-panel gate. The 200/200/200 panel "
+            "is the primary agreement gate and adjudication on top of a failed panel hides "
+            "the failure behind a resolved file."
+        )
+    if not authority.get("bundle_minima_passed"):
+        raise SystemExit(
+            f"{authority_path} records failed bundle class minima. The non-attempt "
+            "supplement exists precisely to meet them; a bundle that misses them is v4.3 "
+            "again, with too few true NONE rows to measure a non-attempt denominator."
+        )
+    if str(authority.get("trainable_field")) != "answer_attempt":
+        raise SystemExit(
+            f"{authority_path} names trainable_field "
+            f"{authority.get('trainable_field')!r}. v4.4 trains the answer-attempt axis "
+            "and nothing else."
+        )
+    if "reference_content" not in list(authority.get("not_trainable") or ()):
+        raise SystemExit(
+            f"{authority_path} does not mark reference_content non-trainable. That axis is "
+            "computed WITH the reference answer visible; training on it would produce a "
+            "detector that needs the answer at runtime and would break the answer-free "
+            "claim the whole protocol rests on."
+        )
+
+    bundle = json.loads(Path(bundle_path).read_text(encoding="utf-8"))
+    expected = str(authority.get("bundle_sha256") or "")
+    actual = str(bundle.get("bundle_sha256") or "")
+    if not expected or expected != actual:
+        raise SystemExit(
+            f"{authority_path} was computed over bundle {expected[:16]}... but "
+            f"{bundle_path} hashes to {actual[:16]}.... The authority describes different "
+            "rows than the ones about to be trained on. If the bundle was rebuilt WITH "
+            "labels, that is the defect: rebuild it unlabelled and join in memory."
+        )
+
+    labels_path = Path(str(authority.get("adjudicated_file") or ""))
+    if not labels_path.exists():
+        raise SystemExit(f"{authority_path} names adjudicated file {labels_path}, which is absent.")
+    digest = hashlib.sha256(labels_path.read_bytes()).hexdigest()
+    if digest != str(authority.get("adjudicated_sha256")):
+        raise SystemExit(
+            f"{labels_path} hashes to {digest[:16]}... but {authority_path} binds "
+            f"{str(authority.get('adjudicated_sha256'))[:16]}.... The label file has "
+            "changed since the authority was frozen."
+        )
+
+    # ------------------------------------------------------------- the join itself --
+    bundle_ids = [str(p["audit_id"]) for p in bundle.get("pairs", ())]
+    seen: Counter = Counter()
+    for line in labels_path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            seen[str(json.loads(line)["audit_id"])] += 1
+    duplicates = sorted(i for i, n in seen.items() if n > 1)
+    if duplicates:
+        raise SystemExit(
+            f"{labels_path} carries {len(duplicates)} duplicated audit_ids (first "
+            f"{duplicates[:3]}). Which label a row gets would depend on file order."
+        )
+    missing = sorted(set(bundle_ids) - set(seen))
+    extra = sorted(set(seen) - set(bundle_ids))
+    if missing:
+        raise SystemExit(
+            f"{len(missing)} bundle rows have no adjudicated label (first {missing[:3]}). "
+            "The authority requires a label for every row; a row silently dropped at join "
+            "time leaves the training set without anybody deciding it should."
+        )
+    if extra:
+        raise SystemExit(
+            f"{len(extra)} adjudicated labels name rows that are not in this bundle (first "
+            f"{extra[:3]}). The label file and the bundle describe different populations."
+        )
+    if int(authority.get("n_labels") or -1) != len(bundle_ids):
+        raise SystemExit(
+            f"{authority_path} claims n_labels={authority.get('n_labels')} against "
+            f"{len(bundle_ids)} bundle rows."
+        )
+
+    return {
+        "report": str(authority_path),
+        "judge_population": "two_local_open_weight_judges",
+        "human_grounded": False,
+        "publication_label_valid": False,
+        "authorises": "ENGINEERING training and evaluation only",
+        "adjudicated_file": str(labels_path),
+        "adjudicated_sha256": digest,
+        "bundle_sha256": expected,
+        "panel_sha256": authority.get("panel_sha256"),
+        "panel_kappa": (authority.get("panel_gate") or {}).get("kappa"),
+        "reference_axis_ran": authority.get("reference_axis_ran"),
+        "reference_axis_closed": authority.get("reference_axis_closed"),
+        "reference_adjudicated_sha256": authority.get("reference_adjudicated_sha256"),
+        "trainable_field": "answer_attempt",
+        "not_trainable": ["reference_content"],
+        "n_labels": int(authority.get("n_labels") or 0),
+        "label_join": "in_memory_by_audit_id_against_the_immutable_bundle",
+        "protocol_phase": "v4.4",
+        "warning": (
+            "This run is authorised by two LOCAL OPEN-WEIGHT model judges. No result from "
+            "it may be described as a Goal A result or as publication-ready until the "
+            "250-row human validation passes."
+        ),
+    }
+
+
+def v4_4_bundle_examples(
+    bundle_path: Path, split: str, *, labels_path: Path, eval_key: Path | None = None
+) -> tuple[list[dict], dict]:
+    """Natural rows from the frozen v4.4 bundle, joined to the adjudicated labels in memory.
+
+    The v4.3 loader reads ``pair["label"]`` because a v4.3 bundle was rebuilt with its
+    labels inside. This one must not: see :func:`require_v4_4_label_authority`. The bundle
+    file is opened read-only and the labels arrive from ``V4_4_ADJUDICATED.jsonl``.
+
+    Everything else is deliberately identical to v4.3 -- all-row aliases, the bundle's
+    group-disjoint split, ``population`` from the sealed key as a metric denominator only.
+    A v4.4 that also changed those would confound "the labels got better" with "the split
+    changed" in every comparison against v4.3.
+    """
+    if not bundle_path.exists():
+        return [], {
+            "source": str(bundle_path),
+            "n_rows": 0,
+            "why_empty": f"{bundle_path} is absent; run `rdl graph-detector-v4-4-bundle`",
+        }
+    payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    label_of = {
+        str(row["audit_id"]): str(row["answer_attempt"])
+        for row in (
+            json.loads(line)
+            for line in labels_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+    }
+
+    population_of: dict[str, str] = {}
+    key_path = Path(eval_key) if eval_key else None
+    if key_path and key_path.exists():
+        population_of = {
+            audit_id: str(entry.get("population", "protected"))
+            for audit_id, entry in json.loads(key_path.read_text(encoding="utf-8"))
+            .get("rows", {})
+            .items()
+        }
+
+    out: list[dict] = []
+    n_without = 0
+    n_unlabelled = 0
+    for pair in payload.get("pairs", ()):
+        if pair.get("split") != split:
+            continue
+        label = label_of.get(str(pair["audit_id"]))
+        if label not in LABELS:
+            n_unlabelled += 1
+            continue
+        n_without += int(not pair["subject_aliases"])
+        out.append(
+            {
+                "question": pair["conditioning_question"],
+                "aliases": list(pair["subject_aliases"]),
+                "candidate": pair["candidate_text"],
+                "label": label,
+                "source": "v4_4_bundle",
+                "population": population_of.get(str(pair["audit_id"]), "protected"),
+                "group": pair["subject_id"],
+            }
+        )
+    return out, {
+        "source": str(bundle_path),
+        "bundle_sha256": payload.get("bundle_sha256"),
+        "bundle_rewritten_with_labels": False,
+        "labels_source": str(labels_path),
+        "labels_sha256": hashlib.sha256(labels_path.read_bytes()).hexdigest(),
+        "conditioning_index_fingerprint_sha256": (
+            payload.get("sources", {}).get("conditioning_index_fingerprint_sha256")
+        ),
+        "n_rows": len(out),
+        "n_without_aliases": n_without,
+        "n_unlabelled_skipped": n_unlabelled,
+        "n_retain_rows": sum(1 for r in out if r["population"] == "retain"),
+        "population_source": str(key_path) if population_of else None,
+        "why_population": (
+            "read from the sealed evaluation key as a metric denominator only; it never "
+            "reaches the encoder."
         ),
     }
 
@@ -1743,6 +1974,36 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--v4-4-bundle",
+        type=Path,
+        default=None,
+        help=(
+            "DETECTOR_V4_4_PAIR_BUNDLE.json, the IMMUTABLE unlabelled freeze. It is opened "
+            "read-only: the labels are joined in memory from the authority's adjudicated "
+            "file. Rebuilding this file with labels would move the hash the 600-row "
+            "calibration panel is frozen against."
+        ),
+    )
+    parser.add_argument(
+        "--v4-4-label-authority",
+        type=Path,
+        default=V4_4 / "DETECTOR_V4_4_LABEL_AUTHORITY.json",
+        help=(
+            "the v4.4 label authority. Must be green, bound to --v4-4-bundle's hash, and "
+            "carry a label for every bundle row exactly once."
+        ),
+    )
+    parser.add_argument(
+        "--v4-4-eval-key",
+        type=Path,
+        default=V4_3 / "PROTECTED_STORE_EVAL_KEY.json",
+        help=(
+            "the sealed key. Read ONLY for `population`, as a metric denominator; it never "
+            "reaches the encoder. v4.4 reuses v4.3's key because it describes the same "
+            "protected store."
+        ),
+    )
+    parser.add_argument(
         "--policy-cohort",
         type=Path,
         default=REPO / "data" / "cohorts" / "graph_unlearning_v1" / "discovery.json",
@@ -1842,7 +2103,34 @@ def main() -> int:
     # The gate runs BEFORE the natural rows are read, because it is what decides WHICH
     # adjudicated file they come from. Reading them first and gating afterwards is how a
     # run trained on the v4.1 human labels while its manifest named the v4.2 model report.
-    if args.v4_3_bundle is not None:
+    if args.v4_4_bundle is not None:
+        if args.v4_3_bundle is not None:
+            raise SystemExit(
+                "--v4-3-bundle and --v4-4-bundle are two different labelled populations "
+                "under two different prompt versions. Pass one."
+            )
+        # The v4.4 path. The bundle is never rewritten; the authority binds its hash and
+        # the labels join in memory by audit_id.
+        authority = require_v4_4_label_authority(
+            Path(args.v4_4_label_authority), Path(args.v4_4_bundle)
+        )
+        labels_path = Path(str(authority["adjudicated_file"]))
+        natural_train, natural_train_meta = v4_4_bundle_examples(
+            args.v4_4_bundle, "train", labels_path=labels_path, eval_key=args.v4_4_eval_key
+        )
+        natural_dev, natural_dev_meta = v4_4_bundle_examples(
+            args.v4_4_bundle,
+            "development",
+            labels_path=labels_path,
+            eval_key=args.v4_4_eval_key,
+        )
+        if not natural_train and not natural_dev:
+            raise SystemExit(
+                f"{args.v4_4_bundle} contributed no labelled rows even though its authority "
+                "verified. That means the bundle's audit_ids and the adjudicated file's "
+                "audit_ids do not overlap on any split."
+            )
+    elif args.v4_3_bundle is not None:
         # The v4.3 path. Its authority is the v4.3 label report, bound to the bundle it
         # labelled -- not v4.1's human report and not v4.2's hosted-judge report, neither
         # of which describes these rows. Requiring one of those here is what made a
@@ -1913,10 +2201,22 @@ def main() -> int:
         print(f"baseline AUC (ANSWER vs NONE): {baseline['answer_vs_none_auc']}")
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    # The manifest names the protocol the LABELS came from, not the protocol this script
+    # was first written for. A v4.4 run whose manifest cites the v4.2 judge protocol would
+    # send a reader to a rubric that no longer describes any label in the training set.
+    is_v4_4 = str(authority.get("protocol_phase")) == "v4.4"
     manifest: dict = {
-        "schema": "graph-detector-v4-model-v3",
-        "phase": "Detector-v4.2 Phase 7 — cross-encoder fine-tune",
-        "protocol": "docs/graph_unlearning/DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md",
+        "schema": "graph-detector-v4-4-model-v1" if is_v4_4 else "graph-detector-v4-model-v3",
+        "phase": (
+            "Detector-v4.4 — answer-attempt cross-encoder fine-tune"
+            if is_v4_4
+            else "Detector-v4.2 Phase 7 — cross-encoder fine-tune"
+        ),
+        "protocol": (
+            "docs/graph_unlearning/DETECTOR_V4_4_ANSWER_ATTEMPT_PROTOCOL.md"
+            if is_v4_4
+            else "docs/graph_unlearning/DETECTOR_V4_2_LLM_JUDGE_PROTOCOL.md"
+        ),
         "device_requested": args.device,
         "device_name": device_name,
         "pins": pins.to_dict(),

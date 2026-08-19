@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -569,17 +570,111 @@ def detector_v4_4_env_check(
 
     record("v4_4_prompt_version", True, PROMPT_VERSION)
 
-    failures = [c for c in checks if not c["ok"]]
-    typer.echo(
-        dumps_canonical(
-            {
-                "protocol": V4_4_PROTOCOL,
-                "prompt_version": PROMPT_VERSION,
-                "checks": checks,
-                "n_failures": len(failures),
-                "ready_for_reportable_gpu_phase": not failures,
-            }
+    # ------------------------------------------------------------- the readiness half --
+    # The frozen judge-pin artifact records `present: false` for the encoder pins, because
+    # that was true when it was generated. It is NOT rewritten to say otherwise: editing a
+    # frozen observation to match today makes the artifact useless as a record of what was
+    # known then. Instead the model-pin file is verified HERE, and its hash recorded.
+    from .detector_v4_2_llm_judge import DEFAULT_V4_2_OUT
+    from .detector_v4_2_model_pins import MODEL_PINS_FILENAME
+
+    model_pins_path = DEFAULT_V4_2_OUT / MODEL_PINS_FILENAME
+    model_pins_sha = None
+    if model_pins_path.exists():
+        model_pins_sha = hashlib.sha256(model_pins_path.read_bytes()).hexdigest()
+        record(
+            "v4_4_encoder_pins_present",
+            True,
+            f"{model_pins_path.name} @ {model_pins_sha[:12]} (the judge-pin artifact's "
+            "'present: false' is a frozen observation from before it existed, and is not "
+            "rewritten)",
         )
+    else:
+        record("v4_4_encoder_pins_present", False, f"{model_pins_path} is absent")
+
+    # `mistral-common` decides judge B's Tekken subword split, so it is part of the
+    # annotator rather than part of the environment.
+    try:
+        from importlib.metadata import version as _version
+
+        mistral_version = _version("mistral-common")
+    except Exception:  # pragma: no cover - absent on a CPU box without gpu extras
+        mistral_version = ""
+    record(
+        "v4_4_mistral_common_pinned",
+        mistral_version == PINNED_MISTRAL_COMMON,
+        f"installed {mistral_version or 'absent'}, protocol pins {PINNED_MISTRAL_COMMON}. "
+        "A different Tekken split is a different prompt at a fixed budget, so this is an "
+        "annotator version, not a library version.",
     )
+
+    plan_path = root / "DETECTOR_V4_4_FRESH_AUDIT_PLAN.json"
+    record(
+        "v4_4_fresh_audit_plan",
+        plan_path.exists(),
+        (
+            f"{plan_path.name} freezes both partitions' sizes BEFORE the bank exists"
+            if plan_path.exists()
+            else f"{plan_path} is absent; run graph-detector-v4-4-fresh-audit-plan on CPU"
+        ),
+    )
+
+    failures = [c for c in checks if not c["ok"]]
+    readiness = {
+        "schema": "graph-detector-v4-4-readiness-v1",
+        "protocol": V4_4_PROTOCOL,
+        "prompt_version": PROMPT_VERSION,
+        "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "environment": _readiness_environment(mistral_version),
+        "encoder_pins": {"file": str(model_pins_path), "sha256": model_pins_sha},
+        "bundle_sha256": bundle_payload.get("bundle_sha256"),
+        "checks": checks,
+        "n_failures": len(failures),
+        "ready_for_reportable_gpu_phase": not failures,
+    }
+    if root.exists():
+        atomic_json(root / "DETECTOR_V4_4_READINESS.json", readiness)
+    typer.echo(dumps_canonical(readiness))
     if strict and failures:
         raise typer.Exit(code=1)
+
+
+PINNED_MISTRAL_COMMON = "1.11.7"
+
+
+def _readiness_environment(mistral_version: str) -> dict:
+    """Torch, CUDA, driver, GPU and free disk -- whatever this box can actually answer.
+
+    Every field is optional and reported as ``None`` when unavailable rather than omitted,
+    so a CPU run of this command produces the same KEYS as a GPU run and the two can be
+    diffed. An absent key and a null key read very differently to somebody comparing a
+    laptop's manifest against the instance that produced the labels.
+    """
+    import contextlib
+    import shutil
+
+    out: dict = {
+        "python": sys.version.split()[0],
+        "mistral_common": mistral_version or None,
+        "torch": None,
+        "cuda": None,
+        "driver": None,
+        "gpu_name": None,
+        "vram_gib": None,
+        "bf16_supported": None,
+        "free_disk_gib": None,
+    }
+    with contextlib.suppress(OSError):  # pragma: no branch - defensive
+        out["free_disk_gib"] = round(shutil.disk_usage(Path.cwd()).free / 2**30, 2)
+    try:
+        import torch
+
+        out["torch"] = torch.__version__
+        out["cuda"] = torch.version.cuda
+        if torch.cuda.is_available():
+            out["gpu_name"] = torch.cuda.get_device_name(0)
+            out["vram_gib"] = round(torch.cuda.get_device_properties(0).total_memory / 2**30, 2)
+            out["bf16_supported"] = bool(torch.cuda.is_bf16_supported())
+    except Exception:  # pragma: no cover - torch is absent on the CPU gate
+        pass
+    return out

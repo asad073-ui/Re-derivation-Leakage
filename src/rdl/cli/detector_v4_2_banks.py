@@ -560,12 +560,27 @@ def detector_v4_2_build_bank(
     if bank not in BANK_FILENAME:
         raise typer.BadParameter(f"--bank must be engineering or final, got {bank!r}")
     if bank == "final":
-        raise typer.BadParameter(
-            "the final bank is SEALED. It is generated once, after the human validation "
-            f"of {V4_2_PROTOCOL} section 10 passes and the checkpoint and threshold are "
-            "frozen. A model-judge-authorised run uses --bank engineering. To lift this, "
-            "record the decision in DECISIONS.md and change this function deliberately."
+        # The seal used to be lifted by editing this function, which is a source change
+        # made after the human result is known by the person who wants the bank. It is now
+        # lifted by an unseal record that can only be written against a PASSING human
+        # report -- and the record is re-verified here rather than merely found, because a
+        # record is a file and a file can be copied out of another checkout.
+        from .detector_v4_4_unseal import UNSEAL_RECORD_FILENAME, verify_unseal_record
+
+        seal_failures = verify_unseal_record(
+            manifest_dir / UNSEAL_RECORD_FILENAME, v4_2_dir=manifest_dir, v4_1_dir=v4_1_dir
         )
+        if seal_failures:
+            for failure in seal_failures:
+                typer.echo(f"  [SEALED] {failure}", err=True)
+            raise typer.BadParameter(
+                "the final bank is SEALED. It is generated once, after the human "
+                f"validation of {V4_2_PROTOCOL} section 10 passes and the checkpoint and "
+                "thresholds are frozen. A model-judge-authorised run uses "
+                "--bank engineering. To lift the seal, run "
+                "`rdl graph-detector-v4-4-unseal-final-bank`, which refuses unless the "
+                "human report passed."
+            )
 
     manifest_path = manifest_dir / ENGINEERING_MANIFEST_FILENAME
     if not manifest_path.exists():
