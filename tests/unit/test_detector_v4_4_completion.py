@@ -520,6 +520,17 @@ def test_mistral_common_is_pinned_exactly():
     assert "mistral-common>=" not in pyproject
 
 
+def test_ci_loads_the_same_mistral_common_the_protocol_pins():
+    """The job that actually loads the Tekken tokenizer must load the PINNED one.
+
+    Otherwise the one check that can catch a tokenizer regression is run against a
+    different annotator than a rented box installs.
+    """
+    workflow = (REPO / ".github" / "workflows" / "ci-cpu.yml").read_text(encoding="utf-8")
+    assert "mistral-common==1.11.7" in workflow
+    assert "mistral-common>=" not in workflow
+
+
 def test_the_frozen_judge_pin_artifact_is_not_rewritten():
     """Its `present: false` is a true observation from before the encoder pins existed."""
     judge_source = (REPO / "src" / "rdl" / "cli" / "detector_v4_4_judge.py").read_text(

@@ -121,7 +121,13 @@ jobs:
           # has no Mistral3Config entry in its tokenizer mapping, so AutoTokenizer raises
           # KeyError on judge B. Same reasoning as the two lines above: the judge loader is
           # exercised in the job that can actually load a tokenizer.
-          pip install "mistral-common>=1.6.2"
+          #
+          # EXACT, and the same version the gpu extra pins. This package decides judge B's
+          # Tekken subword split, which makes it part of the ANNOTATOR rather than part of
+          # the environment. A floating range here would mean this job -- the only one that
+          # actually loads that tokenizer -- validates a different annotator than the one a
+          # rented box installs, which is the single thing it exists to rule out.
+          pip install "mistral-common==1.11.7"
       - name: Assert Transformers is installed
         run: python -c "import transformers; print(transformers.__version__)"
       - name: Real sampled Transformers generation
