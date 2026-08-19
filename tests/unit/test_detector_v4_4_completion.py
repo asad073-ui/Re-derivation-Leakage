@@ -839,3 +839,71 @@ def test_the_runner_gives_each_fresh_partition_its_own_judge_directory():
     body = RUNNER.split("gpu5_label() {")[1].split("\n}")[0]
     assert 'judge_dir="$V44/fresh/$partition"' in body
     assert '--out-dir "$judge_dir"' in body
+
+
+# =====================================================================================
+# the shortcut ablations, which were frozen and never run
+# =====================================================================================
+
+
+def test_the_shortcut_criteria_are_numeric_and_frozen():
+    """The runbook called this undefined. It is defined -- it was just never evaluated."""
+    from rdl.eval.detector_v4_3_ablations import SHORTCUT_CRITERIA
+
+    assert SHORTCUT_CRITERIA["question_only_macro_f1"]["bound"] == 0.50
+    assert SHORTCUT_CRITERIA["aliases_only_macro_f1"]["bound"] == 0.45
+    assert SHORTCUT_CRITERIA["candidate_only_margin"]["bound"] == 0.10
+    assert SHORTCUT_CRITERIA["full_minus_best_shortcut"]["bound"] == 0.10
+
+
+def test_the_trainer_now_actually_evaluates_the_stop_rule():
+    """A rule no code path calls is a paragraph. Nothing imported it outside a test."""
+    assert "run_input_ablations" in TRAINER
+    assert "check_shortcut_criteria" in TRAINER
+    assert "--skip-ablations" in TRAINER
+
+
+def test_ablate_rows_blanks_the_other_channels_without_changing_the_shape():
+    trainer = _trainer()
+    row = {"question": "Q", "aliases": ["A"], "candidate": "C", "label": "NONE", "group": "g"}
+    for keep, expected in (
+        ("question", ("Q", [], "")),
+        ("aliases", ("", ["A"], "")),
+        ("candidate", ("", [], "C")),
+    ):
+        (ablated,) = trainer.ablate_rows([row], (keep,))
+        assert (ablated["question"], ablated["aliases"], ablated["candidate"]) == expected
+        # The row is otherwise untouched: same label, same group, same key set.
+        assert ablated["label"] == "NONE" and ablated["group"] == "g"
+        assert set(ablated) == set(row)
+
+
+def test_the_three_variants_are_the_three_single_channels():
+    trainer = _trainer()
+    assert set(trainer.ABLATION_VARIANTS) == {"question_only", "aliases_only", "candidate_only"}
+    for name, keep in trainer.ABLATION_VARIANTS.items():
+        assert len(keep) == 1, f"{name} keeps more than one channel"
+
+
+def test_a_reportable_run_fails_when_a_shortcut_reaches_the_full_model():
+    """The whole point of the rule: a channel within 0.10 macro-F1 falsifies the claim."""
+    from rdl.eval.detector_v4_3_ablations import check_shortcut_criteria
+
+    _verdicts, failures = check_shortcut_criteria(
+        {
+            "question_only_macro_f1": 0.20,
+            "aliases_only_macro_f1": 0.20,
+            "candidate_only_macro_f1": 0.80,
+            "candidate_only_margin": 0.02,
+            "full_minus_best_shortcut": 0.02,
+        }
+    )
+    assert failures, "a candidate-only model within 0.02 of the full model must fail"
+    assert "SHORTCUT ABLATIONS FAILED" in TRAINER
+
+
+def test_ablations_cannot_influence_checkpoint_selection():
+    """They run after selection; feeding them back would pick the model that flatters them."""
+    selection_at = TRAINER.index("selection = select_checkpoint(seed_results)")
+    ablation_at = TRAINER.index("ablations = run_input_ablations(")
+    assert selection_at < ablation_at, "the ablations must not run before selection"

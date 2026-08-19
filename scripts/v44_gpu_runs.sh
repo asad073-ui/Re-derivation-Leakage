@@ -469,7 +469,7 @@ gpu4_train() {
     --model-repo-id microsoft/deberta-v3-base \
     --model-revision 8ccc9b6f36199bec6961081d44eb72fb3f7353f3 \
     --tokenizer-revision 8ccc9b6f36199bec6961081d44eb72fb3f7353f3 \
-    --skip-baseline --seeds 20260814 --epochs 1 --device cuda \
+    --skip-baseline --skip-ablations --seeds 20260814 --epochs 1 --device cuda \
     --output-dir "$LOGS/model-smoke" 2>&1 | tee "$LOGS/gpu4-smoke.log"
   [ "${PIPESTATUS[0]}" -eq 0 ] || die "the training smoke failed. Nothing reportable ran."
 

@@ -91,7 +91,7 @@ import random
 import sys
 import time
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -1720,6 +1720,112 @@ def train_one_seed(
     }
 
 
+# ---------------------------------------------------------------- input ablations --
+
+# Which channel each ablation KEEPS. The other two are blanked, and blanked rather than
+# removed so that every variant sees the same encoding budget and the same segment layout:
+# an ablation that changed the input SHAPE would be measuring the shape.
+ABLATION_VARIANTS: dict[str, tuple[str, ...]] = {
+    "question_only": ("question",),
+    "aliases_only": ("aliases",),
+    "candidate_only": ("candidate",),
+}
+
+
+def ablate_rows(rows: list[dict], keep: Sequence[str]) -> list[dict]:
+    """``rows`` with every channel except ``keep`` blanked."""
+    out = []
+    for row in rows:
+        out.append(
+            {
+                **row,
+                "question": row["question"] if "question" in keep else "",
+                "aliases": list(row["aliases"]) if "aliases" in keep else [],
+                "candidate": row["candidate"] if "candidate" in keep else "",
+            }
+        )
+    return out
+
+
+def run_input_ablations(
+    *,
+    pins: TrainingPins,
+    train_rows: list[dict],
+    dev_rows: list[dict],
+    tokenizer,
+    budget,
+    output_dir: Path,
+    device: str,
+    epochs: int,
+    seed: int,
+    full_macro_f1: float,
+) -> dict:
+    """Train one model per single-channel input, and apply the PRE-COMMITTED stop rule.
+
+    ``SHORTCUT_CRITERIA`` has been frozen in ``rdl.eval.detector_v4_3_ablations`` since
+    v4.3, with numeric bounds and the reasoning for each -- and nothing ever called it.
+    A stop rule that no code path evaluates is a paragraph, not a rule: the training run
+    would finish, the manifest would say nothing about shortcuts, and "the ablations
+    passed" would be a checklist item somebody ticked from memory.
+
+    One seed, not three. These are falsification probes rather than reported results -- the
+    question is "can a single channel get close to the full model", and the full model's
+    own three-seed spread is what the margin is judged against.
+    """
+    from rdl.eval.detector_v4_3_ablations import check_shortcut_criteria
+
+    measured: dict[str, float] = {}
+    per_variant: dict[str, dict] = {}
+    for name, keep in sorted(ABLATION_VARIANTS.items()):
+        result = train_one_seed(
+            seed=seed,
+            pins=pins,
+            train_rows=ablate_rows(train_rows, keep),
+            dev_rows=ablate_rows(dev_rows, keep),
+            tokenizer=tokenizer,
+            budget=budget,
+            output_dir=output_dir / "ablations" / name,
+            device=device,
+            epochs=epochs,
+        )
+        best = max(
+            (entry["development"]["macro_f1"] for entry in result["history"]),
+            default=0.0,
+        )
+        per_variant[name] = {
+            "keeps": list(keep),
+            "best_development_macro_f1": best,
+            "seed": seed,
+        }
+        measured[f"{name}_macro_f1"] = best
+
+    # The two derived quantities the criteria are actually stated over.
+    measured["candidate_only_margin"] = full_macro_f1 - measured["candidate_only_macro_f1"]
+    measured["full_minus_best_shortcut"] = full_macro_f1 - max(
+        measured[f"{name}_macro_f1"] for name in ABLATION_VARIANTS
+    )
+    verdicts, failures = check_shortcut_criteria(measured)
+    return {
+        "ran": True,
+        "seed": seed,
+        "full_macro_f1": full_macro_f1,
+        "per_variant": per_variant,
+        "measured": measured,
+        "criteria": verdicts,
+        "failures": failures,
+        "passed": not failures,
+        "rule_frozen_in": "rdl.eval.detector_v4_3_ablations.SHORTCUT_CRITERIA",
+        "why_one_seed": (
+            "falsification probes, not reported results. The claim under test is that no "
+            "single channel approaches the full model."
+        ),
+        "why_blanked_not_removed": (
+            "every variant sees the same encoding budget and segment layout, so the "
+            "comparison is about the channel's content rather than the input's shape."
+        ),
+    }
+
+
 def select_checkpoint(seed_results: list[dict]) -> dict:
     """Apply :data:`CHECKPOINT_SELECTION_RULE` across every (seed, epoch) pair."""
     candidates = [entry for result in seed_results for entry in result["history"]]
@@ -2008,6 +2114,15 @@ def main() -> int:
         type=Path,
         default=REPO / "data" / "cohorts" / "graph_unlearning_v1" / "discovery.json",
     )
+    parser.add_argument(
+        "--skip-ablations",
+        action="store_true",
+        help=(
+            "skip the frozen single-channel input ablations. They train three extra "
+            "models, so a smoke run skips them; a REPORTABLE run must not, and a "
+            "reportable run whose ablations fail exits non-zero."
+        ),
+    )
     parser.add_argument("--output-dir", type=Path, default=REPO / "runs" / "detector_v4")
     parser.add_argument("--model-repo-id", default=TrainingPins.model_repo_id)
     parser.add_argument("--model-revision", default="")
@@ -2279,10 +2394,29 @@ def main() -> int:
             best["checkpoint_hashes"], Path(best["checkpoint"])
         )
 
+    # The shortcut ablations. Run AFTER selection, on the selected checkpoint's margin,
+    # and never allowed to influence which checkpoint was chosen -- an ablation that fed
+    # back into selection would be picking the model that makes its own probe look best.
+    ablations: dict = {"ran": False, "why": "--skip-ablations was set"}
+    if best and not args.skip_ablations:
+        ablations = run_input_ablations(
+            pins=pins,
+            train_rows=train_rows,
+            dev_rows=dev_rows,
+            tokenizer=tokenizer,
+            budget=budget,
+            output_dir=args.output_dir,
+            device=args.device,
+            epochs=args.epochs,
+            seed=pins.seeds[0],
+            full_macro_f1=float(best["development"]["macro_f1"]),
+        )
+
     manifest.update(
         {
             "training": {"seeds": seed_results},
             "selection": selection,
+            "input_ablations": ablations,
             "selected_checkpoint": best["checkpoint"] if best else None,
             "selected_seed": best["seed"] if best else None,
             "selected_epoch": best["epoch"] if best else None,
@@ -2303,6 +2437,13 @@ def main() -> int:
     if not best:
         print(f"NO CHECKPOINT SELECTED: {selection['reason']}")
         return 1
+    if ablations.get("ran") and not ablations.get("passed"):
+        # A reportable run does not get to record a failed shortcut probe and continue.
+        # If a single channel comes within 0.10 macro-F1 of the full model, the
+        # "question-conditioned answerability" claim is not what the checkpoint learned.
+        print(f"SHORTCUT ABLATIONS FAILED: {ablations['failures']}")
+        if args.reportable:
+            return 1
     print(
         f"selected {best['checkpoint']} "
         f"(seed {best['seed']}, epoch {best['epoch']}, "
