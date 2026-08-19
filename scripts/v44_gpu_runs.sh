@@ -18,10 +18,13 @@
 #   scripts/v44_gpu_runs.sh gpu3b-authority  the final v4.4 label authority, both axes closed.
 #   scripts/v44_gpu_runs.sh gpu4-train   smoke, baselines, three seeds, ablations, artifact.
 #   scripts/v44_gpu_runs.sh gpu5-bank    the fresh engineering bank (SECOND environment).
-#   scripts/v44_gpu_runs.sh gpu5-label   the fresh audit draw + four judge passes.
+#   scripts/v44_gpu_runs.sh gpu5-label   the fresh audit draw + both blind passes, closed.
+#   scripts/v44_gpu_runs.sh gpu5-reference <partition>  that partition's reference passes.
 #   scripts/v44_gpu_runs.sh gpu5-gate    thresholds on fresh development, then heldout ONCE.
 #   scripts/v44_gpu_runs.sh human-prepare  the 250-row sample + frozen detector predictions.
 #   scripts/v44_gpu_runs.sh final-bank   refuses without a PASSING human report.
+#   scripts/v44_gpu_runs.sh final-audit  draws the sealed bank and runs its blind passes.
+#   scripts/v44_gpu_runs.sh final-reference  the sealed bank's reference passes.
 #   scripts/v44_gpu_runs.sh final-gate   the sealed bank, opened once.
 #
 # `verify` was one command that said "safe anywhere, no GPU needed" and then ran
@@ -61,6 +64,29 @@ mkdir -p "$LOGS"
 
 say()  { printf '\n=== %s ===\n' "$*"; }
 die()  { printf '\nSTOP: %s\n' "$*" >&2; exit 1; }
+
+# A misspelled or deleted function must STOP the run, not skip a step.
+#
+# This file is `set -uo pipefail` and deliberately not `set -e`: many phases capture
+# `rc=$?` and decide what to do, which `-e` would pre-empt. But without `-e`, bash prints
+# "command not found", returns 127, and CARRIES ON -- so when the preflight was split into
+# preflight_cpu/preflight_gpu and the two callers still said `preflight`, gpu1 and gpu2
+# would have skipped every safety check and gone straight into a paid judging run. The
+# checks would have been reported as absent in the log and nowhere else.
+#
+# `command_not_found_handle` turns exactly that class of mistake into a stop, without
+# touching the explicit exit-code handling everything else relies on.
+#
+# The `kill` is not belt-and-braces. Bash invokes this handler "in a separate execution
+# environment" -- a subshell -- so a plain `exit` here ends only the subshell and the
+# parent carries on with status 127, which is the very behaviour being fixed. Signalling
+# $$ (the top-level shell, unchanged inside the subshell) is what actually stops the run.
+command_not_found_handle() {
+  printf '\nSTOP: `%s` is not a command or function.\n' "$1" >&2
+  printf 'A phase called something that does not exist; refusing to continue into a run.\n' >&2
+  kill -s TERM "$$"
+  exit 127
+}
 
 # --------------------------------------------------------------------------- checks --
 
@@ -215,10 +241,43 @@ sys.exit(0 if all(ok for _, ok in checks) else 1)
 PY
 }
 
+# One judge pass, run to completion and then CLOSED. This is the whole lifecycle.
+#
+# The judge appends to `<stem>.partial.jsonl` while it generates. The frozen
+# `<stem>.jsonl` that every report reads is written by a SECOND invocation with `--close`,
+# which is also where completeness, malformed and truncation are checked -- so a pass that
+# is generated but never closed produces no file any report can see. GPU-2 did this
+# correctly; GPU-3A and the fresh-bank passes did not, and would each have spent hours
+# generating labels and then failed at the report with "the file is absent".
+#
+#   run_and_close_judge <judge> <pass> <log-tag> [extra args...]
+#
+# `--out-dir` and the input selector are passed through, so one helper serves the bundle
+# passes and the per-partition fresh passes alike.
+run_and_close_judge() {
+  local judge="$1" pass="$2" tag="$3"; shift 3
+  local log="$LOGS/${tag}_${judge}_${pass}.log"
+
+  say "judge $judge, $pass, $tag  ($(date +%T))"
+  python -m rdl.cli graph-detector-v4-4-local-judge \
+    --judge "$judge" --pass "$pass" "$@" >> "$log" 2>&1
+  local rc=$?
+  [ $rc -eq 0 ] || die "judge $judge ($pass, $tag) exited $rc. See $log -- the run is
+resumable: re-running skips every row already written to the partial file."
+
+  say "closing judge $judge ($pass, $tag)"
+  python -m rdl.cli graph-detector-v4-4-local-judge \
+    --judge "$judge" --pass "$pass" --close "$@" >> "$log" 2>&1
+  rc=$?
+  [ $rc -eq 0 ] || die "judge $judge ($pass, $tag) would not close. It refuses on any
+unjudged, malformed or truncated row, and the gate requires zero of each -- see $log"
+  tail -1 "$log"
+}
+
 # ------------------------------------------------------------------------- the phases --
 
 gpu1() {
-  preflight
+  preflight_gpu
   say "GPU-1: the 60-row dual-judge smoke (non-reportable)"
 
   for spec in "A:v44-smoke-qwen" "B:v44-smoke-mistral"; do
@@ -327,7 +386,7 @@ The smoke exists to be read by a person; running 1,733 reportable rows first wou
 that optional. Run 'scripts/v44_gpu_runs.sh compare', then:
   echo \"read by <name> on \$(date -I)\" > $INSPECTED"
 
-  preflight
+  preflight_gpu
   say "GPU-2: reportable blind labels over the full v4.4 bundle"
   echo "inspection recorded: $(cat "$INSPECTED")"
 
@@ -394,21 +453,15 @@ reference key in view -- and write the decisions to V4_4_BLIND_ADJUDICATION.json
     [ -f "$blind" ] || die "$blind is absent. GPU-2 has not closed judge $judge's blind pass."
   done
 
-  say "GPU-3A: reference pass, judge A"
-  python -m rdl.cli graph-detector-v4-4-local-judge \
-    --judge A --pass reference --reportable \
-    --eval-key "$V43/PROTECTED_STORE_EVAL_KEY.json" \
-    2>&1 | tee "$LOGS/gpu3a-judge-A.log"
-  local rc=${PIPESTATUS[0]}
-  [ "$rc" -eq 0 ] || die "judge A's reference pass exited $rc"
-
-  say "GPU-3A: reference pass, judge B"
-  python -m rdl.cli graph-detector-v4-4-local-judge \
-    --judge B --pass reference --reportable \
-    --eval-key "$V43/PROTECTED_STORE_EVAL_KEY.json" \
-    2>&1 | tee "$LOGS/gpu3a-judge-B.log"
-  rc=${PIPESTATUS[0]}
-  [ "$rc" -eq 0 ] || die "judge B's reference pass exited $rc"
+  # One model per process, and each pass CLOSED before the next judge is loaded. The close
+  # is what writes the frozen .jsonl the label report reads; without it this phase would
+  # generate both reference passes over 1,733 rows and then fail at the report saying the
+  # files are absent.
+  for judge in A B; do
+    run_and_close_judge "$judge" reference gpu3a \
+      --bundle "$BUNDLE" --pins "$PINS" --out-dir "$V44" \
+      --eval-key "$V43/PROTECTED_STORE_EVAL_KEY.json"
+  done
 
   # Writes V4_4_REFERENCE_DISAGREEMENTS.jsonl and then REFUSES, because the reference axis
   # is not closed until every one of them is resolved.
@@ -554,13 +607,9 @@ run graph-detector-v4-4-fresh-audit-plan and commit it."
     judge_dir="$V44/fresh/$partition"
     mkdir -p "$judge_dir"
     for judge in A B; do
-      say "GPU-5B: blind pass, $partition, judge $judge"
-      python -m rdl.cli graph-detector-v4-4-local-judge \
-        --judge "$judge" --pass blind --reportable \
-        --out-dir "$judge_dir" \
-        --input "$V44/V4_4_FRESH_BLIND_${partition}.jsonl" \
-        2>&1 | tee "$LOGS/gpu5-${partition}-blind-${judge}.log"
-      [ "${PIPESTATUS[0]}" -eq 0 ] || die "judge $judge's $partition blind pass failed."
+      run_and_close_judge "$judge" blind "gpu5-${partition}" \
+        --pins "$PINS" --out-dir "$judge_dir" \
+        --input "$V44/V4_4_FRESH_BLIND_${partition}.jsonl"
     done
     python -m rdl.cli graph-detector-v4-4-fresh-label-report \
       --partition "$partition" --blind-only 2>&1 \
@@ -574,12 +623,10 @@ Two manual pauses now, in this order, per partition:
   1. adjudicate V4_4_FRESH_<partition>_BLIND_DISAGREEMENTS.jsonl WITHOUT any reference
      answer, then run the reference passes for that partition:
 
-       python -m rdl.cli graph-detector-v4-4-local-judge --judge A --pass reference \\
-         --reportable --out-dir $V44/fresh/<partition> \\
-         --input $V44/V4_4_FRESH_BLIND_<partition>.jsonl \\
-         --eval-key $V44/DETECTOR_V4_4_FRESH_REFERENCE_KEY.json
+       scripts/v44_gpu_runs.sh gpu5-reference <partition>
 
-     (and again for judge B). The judge refuses to open a reference pass until that
+     That phase runs judge A and judge B and CLOSES each one, which is what writes the
+     frozen file the report reads. The judge refuses to open a reference pass until that
      directory's blind file is closed, which is why the directory is per-partition.
   2. adjudicate V4_4_FRESH_<partition>_REFERENCE_DISAGREEMENTS.jsonl WITH the reference
      answer, then run fresh-label-report with both --adjudication and
@@ -588,6 +635,55 @@ Two manual pauses now, in this order, per partition:
 Both partitions must be fully labelled before gpu5-gate, and the HELDOUT labels are
 produced now, before any threshold exists -- labelling held-out rows after seeing the
 threshold is how a held-out set stops being one.
+EOF
+}
+
+# --------------------------- GPU-5B(ii): the fresh reference passes, one partition --
+
+# Separate from gpu5-label because a manual blind adjudication sits between them. Takes
+# the partition as an argument rather than looping, so development can be closed and
+# adjudicated while heldout has not been opened at all.
+gpu5_reference() {
+  local partition="${1:-}"
+  case "$partition" in
+    development|heldout) : ;;
+    *) die "usage: scripts/v44_gpu_runs.sh gpu5-reference development|heldout" ;;
+  esac
+  require_clean_and_frozen
+
+  local judge_dir="$V44/fresh/$partition"
+  local key="$V44/DETECTOR_V4_4_FRESH_REFERENCE_KEY.json"
+  [ -f "$key" ] || die "$key is absent. The fresh audit was built with
+--skip-reference-key, which makes it non-reportable: the reference pass has no answers."
+  require_decision_file "$V44/V4_4_FRESH_${partition}_BLIND_ADJUDICATION.jsonl" \
+"Adjudicate V4_4_FRESH_${partition}_BLIND_DISAGREEMENTS.jsonl BLIND -- with no reference
+answer in view -- before the reference pass for this partition opens."
+
+  for judge in A B; do
+    run_and_close_judge "$judge" reference "gpu5-${partition}" \
+      --pins "$PINS" --out-dir "$judge_dir" \
+      --input "$V44/V4_4_FRESH_BLIND_${partition}.jsonl" \
+      --eval-key "$key"
+  done
+
+  # Writes the reference disagreements and then refuses, exactly as GPU-3A does for the
+  # bundle: the axis is not closed until every one of them is resolved.
+  python -m rdl.cli graph-detector-v4-4-fresh-label-report \
+    --partition "$partition" \
+    --adjudication "$V44/V4_4_FRESH_${partition}_BLIND_ADJUDICATION.jsonl" \
+    2>&1 | tee "$LOGS/gpu5-${partition}-reference-report.log" || true
+
+  cat <<EOF
+
+Resolve V4_4_FRESH_${partition}_REFERENCE_DISAGREEMENTS.jsonl WITH the reference answer
+visible, then close the partition:
+
+  python -m rdl.cli graph-detector-v4-4-fresh-label-report \\
+    --partition ${partition} \\
+    --adjudication $V44/V4_4_FRESH_${partition}_BLIND_ADJUDICATION.jsonl \\
+    --reference-adjudication $V44/V4_4_FRESH_${partition}_REFERENCE_ADJUDICATION.jsonl
+
+That writes DETECTOR_V4_4_FRESH_LABELLED_${partition}.json, which gpu5-gate reads.
 EOF
 }
 
@@ -685,7 +781,73 @@ The seal is lifted for exactly one build. Generate the final runs from the SEALE
 group-specific run ids), then assemble with graph-detector-v4-2-build-bank --bank final,
 supplying every run directory explicitly.
 
-Then: final-gate.
+Then: final-audit, its two label passes, and finally final-gate.
+EOF
+}
+
+# The final bank's audit and labels. Same two judges, same rubric, same prompt version --
+# the ONLY thing that may not happen between here and the gate is a change to the detector.
+final_audit() {
+  require_clean_and_frozen
+  local bank="$REPO/data/cohorts/graph_unlearning_v1/detector_v4_2/FINAL_GATE_BANK.json"
+  [ -f "$bank" ] || die "$bank is absent. Run final-bank and build it first."
+  local seal="$REPO/data/cohorts/graph_unlearning_v1/detector_v4_2/FINAL_BANK_UNSEAL_RECORD.json"
+  [ -f "$seal" ] || die "$seal is absent. The final bank is sealed."
+
+  say "final-audit: drawing the sealed bank as ONE partition"
+  python -m rdl.cli graph-detector-v4-4-fresh-audit \
+    --bank "$bank" --bank-kind final 2>&1 | tee "$LOGS/final-audit.log"
+  [ "${PIPESTATUS[0]}" -eq 0 ] || die "the final audit draw was refused."
+
+  local judge_dir="$V44/fresh/final"
+  mkdir -p "$judge_dir"
+  for judge in A B; do
+    run_and_close_judge "$judge" blind final \
+      --pins "$PINS" --out-dir "$judge_dir" \
+      --input "$V44/V4_4_FRESH_BLIND_final.jsonl"
+  done
+
+  python -m rdl.cli graph-detector-v4-4-fresh-label-report \
+    --partition final --blind-only 2>&1 | tee "$LOGS/final-blind-report.log" || true
+
+  cat <<EOF
+
+Adjudicate V4_4_FRESH_final_BLIND_DISAGREEMENTS.jsonl BLIND, write the decisions to
+V4_4_FRESH_final_BLIND_ADJUDICATION.jsonl, then run:
+
+  scripts/v44_gpu_runs.sh final-reference
+EOF
+}
+
+final_reference() {
+  require_clean_and_frozen
+  local judge_dir="$V44/fresh/final"
+  local key="$V44/DETECTOR_V4_4_FINAL_REFERENCE_KEY.json"
+  [ -f "$key" ] || die "$key is absent; the final audit is not reportable without it."
+  require_decision_file "$V44/V4_4_FRESH_final_BLIND_ADJUDICATION.jsonl" \
+"Adjudicate the final bank's blind disagreements WITHOUT any reference answer first."
+
+  for judge in A B; do
+    run_and_close_judge "$judge" reference final \
+      --pins "$PINS" --out-dir "$judge_dir" \
+      --input "$V44/V4_4_FRESH_BLIND_final.jsonl" --eval-key "$key"
+  done
+
+  python -m rdl.cli graph-detector-v4-4-fresh-label-report \
+    --partition final \
+    --adjudication "$V44/V4_4_FRESH_final_BLIND_ADJUDICATION.jsonl" \
+    2>&1 | tee "$LOGS/final-reference-report.log" || true
+
+  cat <<EOF
+
+Resolve V4_4_FRESH_final_REFERENCE_DISAGREEMENTS.jsonl WITH the reference answer, then:
+
+  python -m rdl.cli graph-detector-v4-4-fresh-label-report \\
+    --partition final \\
+    --adjudication $V44/V4_4_FRESH_final_BLIND_ADJUDICATION.jsonl \\
+    --reference-adjudication $V44/V4_4_FRESH_final_REFERENCE_ADJUDICATION.jsonl
+
+That writes DETECTOR_V4_4_FRESH_LABELLED_final.json. Then: final-gate.
 EOF
 }
 
@@ -697,7 +859,7 @@ final_gate() {
 
   say "final-gate: the sealed bank, opened once"
   python -m rdl.cli graph-detector-v4-4-final-gate \
-    --audit "$audit" --partition heldout \
+    --audit "$audit" --partition final \
     --operating-point "$V44/DETECTOR_V4_4_OPERATING_POINT.json" \
     --backend cross_encoder --model-artifact "$model" --device cuda:0 \
     2>&1 | tee "$LOGS/final-gate.log"
@@ -728,9 +890,12 @@ case "${1:-}" in
   gpu4-train)      gpu4_train ;;
   gpu5-bank)       gpu5_bank ;;
   gpu5-label)      gpu5_label ;;
+  gpu5-reference)  shift; gpu5_reference "${1:-}" ;;
   gpu5-gate)       gpu5_gate ;;
   human-prepare)   human_prepare ;;
   final-bank)      final_bank ;;
+  final-audit)     final_audit ;;
+  final-reference) final_reference ;;
   final-gate)      final_gate ;;
   *)               sed -n '3,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

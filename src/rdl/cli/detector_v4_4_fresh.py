@@ -82,10 +82,15 @@ from .detector_v4_4_bundle import DEFAULT_V4_4_DIR
 from .detector_v4_4_gate import enrich_nonattempt
 
 __all__ = [
+    "BANK_KINDS",
+    "FINAL_AUDIT_FILENAME",
+    "FINAL_PARTITION",
+    "FINAL_REFERENCE_KEY_FILENAME",
     "FRESH_AUDIT_FILENAME",
     "FRESH_PLAN_FILENAME",
     "FRESH_PLAN_SCHEMA",
     "FRESH_REFERENCE_KEY_FILENAME",
+    "LABELLABLE_PARTITIONS",
     "PARTITIONS",
     "blind_filename",
     "canonical_rows",
@@ -105,6 +110,22 @@ FRESH_AUDIT_SCHEMA = "graph-detector-v4-4-fresh-audit-v1"
 FRESH_REFERENCE_KEY_SCHEMA = "graph-detector-v4-4-fresh-reference-key-v1"
 
 PARTITIONS: tuple[str, ...] = ("development", "heldout")
+
+# The FINAL bank is drawn as ONE partition, and that is not an oversight.
+#
+# `graph-detector-v4-2-build-bank` halves every bank it assembles, so a final bank also
+# arrives with `development` and `heldout` blocks. For the engineering bank that split is
+# load-bearing: development chooses tau_answer and tau_partial, held-out is opened once
+# against them. By the time the final bank exists the detector is already frozen -- same
+# weights, same tokenizer, same two thresholds, no recalibration permitted -- so there is
+# nothing for a development half to select and splitting the rows would only shrink the
+# denominator of the one measurement that matters.
+FINAL_PARTITION = "final"
+LABELLABLE_PARTITIONS: tuple[str, ...] = (*PARTITIONS, FINAL_PARTITION)
+BANK_KINDS: tuple[str, ...] = ("engineering", "final")
+
+FINAL_AUDIT_FILENAME = "DETECTOR_V4_4_FINAL_AUDIT.json"
+FINAL_REFERENCE_KEY_FILENAME = "DETECTOR_V4_4_FINAL_REFERENCE_KEY.json"
 # The bank's own leak buckets. Carried as diagnostic metadata and never as a label: the
 # bank's `leaking` flag is a v4.2 heuristic over generated text, and the v4.4 gold label is
 # what two pinned judges say about the answer-attempt axis.
@@ -287,6 +308,8 @@ def detector_v4_4_fresh_audit_plan(
         DEFAULT_MIN_NONATTEMPT, "--min-nonattempt-development"
     ),
     min_nonattempt_heldout: int = typer.Option(DEFAULT_MIN_NONATTEMPT, "--min-nonattempt-heldout"),
+    n_final: int = typer.Option(DEFAULT_N_ROWS, "--n-final"),
+    min_nonattempt_final: int = typer.Option(DEFAULT_MIN_NONATTEMPT, "--min-nonattempt-final"),
     base_rate: float = typer.Option(DEFAULT_BASE_RATE, "--base-rate"),
 ) -> None:
     """Freeze the fresh audit's sizes BEFORE the bank exists. Generates nothing.
@@ -313,9 +336,20 @@ def detector_v4_4_fresh_audit_plan(
                 "min_likely_nonattempt": int(min_nonattempt_heldout),
                 "usage": "opened ONCE, against the already-frozen detector",
             },
+            # Rental B. Frozen here, with the other two, because a size chosen once the
+            # human result is known is a size the result chose.
+            "final": {
+                "n_rows": int(n_final),
+                "min_likely_nonattempt": int(min_nonattempt_final),
+                "usage": (
+                    "the SEALED final bank, drawn as one partition and opened ONCE at the "
+                    "already-frozen thresholds. Nothing selects anything from it."
+                ),
+            },
         },
         "base_rate": float(base_rate),
         "total_rows": int(n_development) + int(n_heldout),
+        "total_rows_final": int(n_final),
         "enrichment": {
             "rule": "frozen surface rules only (detector_v4_4_gate.enrich_nonattempt)",
             "never": (
@@ -387,8 +421,20 @@ def detector_v4_4_fresh_audit(
             "non-reportable: the reference pass cannot run without the key."
         ),
     ),
+    bank_kind: str = typer.Option(
+        "engineering",
+        "--bank-kind",
+        help=(
+            "engineering draws development+heldout separately; final pools the bank into "
+            "ONE partition, because the detector is already frozen and nothing selects a "
+            "threshold from it. Writes different filenames so neither can overwrite the "
+            "other."
+        ),
+    ),
 ) -> None:
-    """Draw BOTH fresh partitions from the engineering bank, before any scoring."""
+    """Draw the fresh audit from a bank, before any scoring."""
+    if bank_kind not in BANK_KINDS:
+        raise typer.BadParameter(f"--bank-kind must be one of {list(BANK_KINDS)}")
     out = Path(out_dir)
     plan_path = Path(plan) if plan else out / FRESH_PLAN_FILENAME
     if not plan_path.exists():
@@ -405,13 +451,22 @@ def detector_v4_4_fresh_audit(
     index = ConditioningIndex.load(Path(conditioning_index))
     rows, report = canonical_rows(bank_payload, index=index)
 
-    by_partition: dict[str, list[dict]] = {p: [] for p in PARTITIONS}
+    # The final bank arrives halved like any other, but nothing selects a threshold from
+    # it, so both halves are relabelled into one partition and opened together. Done here
+    # rather than in `canonical_rows` so the row's ORIGINAL bank half stays recorded.
+    partitions = (FINAL_PARTITION,) if bank_kind == "final" else PARTITIONS
+    if bank_kind == "final":
+        for row in rows:
+            row["bank_half"] = row["partition"]
+            row["partition"] = FINAL_PARTITION
+
+    by_partition: dict[str, list[dict]] = {p: [] for p in partitions}
     for row in rows:
         by_partition[row["partition"]].append(row)
 
     drawn_by_partition: dict[str, list[dict]] = {}
     designs: dict[str, dict] = {}
-    for partition in PARTITIONS:
+    for partition in partitions:
         spec = (plan_payload.get("partitions") or {}).get(partition) or {}
         wanted = int(spec.get("n_rows") or 0)
         minimum = int(spec.get("min_likely_nonattempt") or 0)
@@ -456,16 +511,17 @@ def detector_v4_4_fresh_audit(
             "n_concepts_drawn": len(concepts_drawn),
         }
 
-    all_drawn = [r for p in PARTITIONS for r in drawn_by_partition[p]]
-    overlap = {r["audit_id"] for r in drawn_by_partition["development"]} & {
-        r["audit_id"] for r in drawn_by_partition["heldout"]
-    }
-    if overlap:
-        raise typer.BadParameter(
-            f"{len(overlap)} audit_ids appear in BOTH partitions. Development chooses the "
-            "threshold and heldout reports the result; a shared row makes the second a "
-            "description of the first."
-        )
+    all_drawn = [r for p in partitions for r in drawn_by_partition[p]]
+    if bank_kind == "engineering":
+        overlap = {r["audit_id"] for r in drawn_by_partition["development"]} & {
+            r["audit_id"] for r in drawn_by_partition["heldout"]
+        }
+        if overlap:
+            raise typer.BadParameter(
+                f"{len(overlap)} audit_ids appear in BOTH partitions. Development chooses "
+                "the threshold and heldout reports the result; a shared row makes the "
+                "second a description of the first."
+            )
 
     out.mkdir(parents=True, exist_ok=True)
 
@@ -474,7 +530,7 @@ def detector_v4_4_fresh_audit(
     # explicit dict rather than by deleting keys from the row -- a filter that stops
     # filtering is invisible, an allow-list that gains a field is a diff.
     blind_files: dict[str, dict] = {}
-    for partition in PARTITIONS:
+    for partition in partitions:
         path = out / blind_filename(partition)
         path.write_text(
             "".join(
@@ -527,7 +583,9 @@ def detector_v4_4_fresh_audit(
             ),
             "rows": key_rows,
         }
-        key_path = out / FRESH_REFERENCE_KEY_FILENAME
+        key_path = out / (
+            FINAL_REFERENCE_KEY_FILENAME if bank_kind == "final" else FRESH_REFERENCE_KEY_FILENAME
+        )
         atomic_json(key_path, key)
         reference_block = {
             "built": True,
@@ -542,6 +600,7 @@ def detector_v4_4_fresh_audit(
         "protocol": V4_4_PROTOCOL,
         "drawn_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "bank": str(bank),
+        "bank_kind": bank_kind,
         "bank_sha256": hashlib.sha256(Path(bank).read_bytes()).hexdigest(),
         "bank_content_sha256": bank_payload.get("content_sha256"),
         "plan": str(plan_path),
@@ -565,18 +624,19 @@ def detector_v4_4_fresh_audit(
     manifest["audit_sha256"] = sha256_text(
         dumps_canonical({k: v for k, v in manifest.items() if k != "drawn_at"})
     )
-    atomic_json(out / FRESH_AUDIT_FILENAME, manifest)
+    audit_filename = FINAL_AUDIT_FILENAME if bank_kind == "final" else FRESH_AUDIT_FILENAME
+    atomic_json(out / audit_filename, manifest)
     typer.echo(
         dumps_canonical(
             {
                 "wrote": [
-                    str(out / FRESH_AUDIT_FILENAME),
+                    str(out / audit_filename),
                     *[b["file"] for b in blind_files.values()],
                     *([reference_block["file"]] if reference_block["built"] else []),
                 ],
                 "n_rows": len(all_drawn),
-                "by_partition": {p: len(drawn_by_partition[p]) for p in PARTITIONS},
-                "n_likely_nonattempt": {p: designs[p]["n_likely_nonattempt"] for p in PARTITIONS},
+                "by_partition": {p: len(drawn_by_partition[p]) for p in partitions},
+                "n_likely_nonattempt": {p: designs[p]["n_likely_nonattempt"] for p in partitions},
                 "n_concepts": report["n_concepts"],
                 "reportable": manifest["reportable"],
                 "audit_sha256": manifest["audit_sha256"],
