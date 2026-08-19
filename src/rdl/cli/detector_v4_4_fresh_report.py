@@ -55,9 +55,12 @@ from ..logging_utils import dumps_canonical
 from ..studies.graph_leak.evidence import atomic_json
 from .detector_v4_4_bundle import DEFAULT_V4_4_DIR
 from .detector_v4_4_fresh import (
+    FINAL_AUDIT_FILENAME,
+    FINAL_PARTITION,
+    FINAL_REFERENCE_KEY_FILENAME,
     FRESH_AUDIT_FILENAME,
     FRESH_REFERENCE_KEY_FILENAME,
-    PARTITIONS,
+    LABELLABLE_PARTITIONS,
 )
 from .detector_v4_4_judge import output_names_v4_4
 from .detector_v4_4_report import LABELS, REFERENCE_LABELS
@@ -326,11 +329,16 @@ def detector_v4_4_fresh_label_report(
     ),
 ) -> None:
     """Fold the fresh partition's judge passes into one labelled audit."""
-    if partition not in PARTITIONS:
-        raise typer.BadParameter(f"--partition must be one of {list(PARTITIONS)}")
+    if partition not in LABELLABLE_PARTITIONS:
+        raise typer.BadParameter(f"--partition must be one of {list(LABELLABLE_PARTITIONS)}")
     out = Path(out_dir)
-    audit_path = Path(audit) if audit else out / FRESH_AUDIT_FILENAME
-    key_path = Path(reference_key) if reference_key else out / FRESH_REFERENCE_KEY_FILENAME
+    # The final bank writes its own audit and its own sealed key, so that labelling the
+    # sealed bank can never read -- or overwrite -- the engineering one.
+    is_final = partition == FINAL_PARTITION
+    default_audit = FINAL_AUDIT_FILENAME if is_final else FRESH_AUDIT_FILENAME
+    default_key = FINAL_REFERENCE_KEY_FILENAME if is_final else FRESH_REFERENCE_KEY_FILENAME
+    audit_path = Path(audit) if audit else out / default_audit
+    key_path = Path(reference_key) if reference_key else out / default_key
     if not audit_path.exists():
         raise typer.BadParameter(
             f"{audit_path} is absent; run `rdl graph-detector-v4-4-fresh-audit` first."

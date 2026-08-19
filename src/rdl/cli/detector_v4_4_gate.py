@@ -79,6 +79,7 @@ __all__ = [
     "detector_v4_4_final_gate",
     "detector_v4_4_select_operating_point",
     "enrich_nonattempt",
+    "gate_report_filename",
     "rename_metrics",
 ]
 
@@ -90,6 +91,25 @@ FROZEN_DETECTOR_SCHEMA = "graph-detector-v4-4-frozen-detector-v1"
 # numbers -- ANSWER read off the NONE logit is not an error anything downstream can see.
 LABEL_ORDER: tuple[str, ...] = ("NONE", "PARTIAL", "ANSWER")
 HELDOUT_REPORT_FILENAME = "DETECTOR_V4_4_HELDOUT_GATE.json"
+
+
+def gate_report_filename(partition: str) -> str:
+    """One report file per one-shot partition.
+
+    "Opened exactly once" is enforced by the presence of this file, so the name has to be
+    per partition. With a single name the engineering held-out report would have blocked
+    the SEALED final gate months later -- the message would have read "the held-out
+    partition has been opened", which is true and entirely beside the point, and the only
+    way past it would have been `--reopen`, which permanently records a second opening
+    that never happened.
+    """
+    return (
+        HELDOUT_REPORT_FILENAME
+        if partition == "heldout"
+        else f"DETECTOR_V4_4_{partition.upper()}_GATE.json"
+    )
+
+
 AUDIT_SAMPLE_FILENAME = "DETECTOR_V4_4_AUDIT_SAMPLE.json"
 
 # The same bounds as v4.3, under the corrected names. Unchanged on purpose: a protocol that
@@ -616,14 +636,14 @@ def detector_v4_4_final_gate(
         "ONCE; passing this records that it was opened again.",
     ),
 ) -> None:
-    """Score the held-out partition once, at the frozen thresholds, and apply the gates."""
+    """Score a one-shot partition once, at the frozen thresholds, and apply the gates."""
     out = Path(output_dir)
-    existing = out / HELDOUT_REPORT_FILENAME
+    existing = out / gate_report_filename(partition)
     if existing.exists() and not reopen:
         raise typer.BadParameter(
-            f"{existing} already exists: the held-out partition has been opened. Opening it "
-            "again and reporting the better result is the thing a held-out set exists to "
-            "prevent. Pass --reopen only to record a deliberate second opening."
+            f"{existing} already exists: the {partition} partition has been opened. Opening "
+            "it again and reporting the better result is the thing a one-shot partition "
+            "exists to prevent. Pass --reopen only to record a deliberate second opening."
         )
     if not Path(operating_point).exists():
         raise typer.BadParameter(
@@ -689,11 +709,11 @@ def detector_v4_4_final_gate(
         },
         "renames": {v["v4_4_name"]: {"was": k, "why": v["why"]} for k, v in METRIC_RENAMES.items()},
     }
-    atomic_json(out / HELDOUT_REPORT_FILENAME, report)
+    atomic_json(existing, report)
     typer.echo(
         dumps_canonical(
             {
-                "wrote": str(out / HELDOUT_REPORT_FILENAME),
+                "wrote": str(existing),
                 "passed": not failures,
                 "failures": failures,
                 "measured": measured,

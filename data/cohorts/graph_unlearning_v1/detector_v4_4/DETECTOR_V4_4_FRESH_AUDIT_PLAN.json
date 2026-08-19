@@ -4,7 +4,7 @@
     "never": "no detector score is read while sampling. A sampler that used the learned score to find non-attempts would draw the rows the detector already handles, and the gate would measure the sampler.",
     "rule": "frozen surface rules only (detector_v4_4_gate.enrich_nonattempt)"
   },
-  "frozen_at": "2026-08-19T05:05:10Z",
+  "frozen_at": "2026-08-19T06:31:08Z",
   "not_a_substitute_for": "the 600-row v4.4 calibration panel, which belongs to the ORIGINAL label authority and is not a fresh-audit gate.",
   "partitions": {
     "development": {
@@ -12,15 +12,21 @@
       "n_rows": 1200,
       "usage": "threshold selection ONLY -- tau_answer and tau_partial"
     },
+    "final": {
+      "min_likely_nonattempt": 400,
+      "n_rows": 1200,
+      "usage": "the SEALED final bank, drawn as one partition and opened ONCE at the already-frozen thresholds. Nothing selects anything from it."
+    },
     "heldout": {
       "min_likely_nonattempt": 400,
       "n_rows": 1200,
       "usage": "opened ONCE, against the already-frozen detector"
     }
   },
-  "plan_sha256": "114bf74735b111755ebbd102c5a9f70f368ae3a1a167346999b071f7a7e7e420",
+  "plan_sha256": "391d4b3782d8020978089f0a3d624e92c51c31d9fdaf465bd0e8f3916f02aae3",
   "protocol": "docs/graph_unlearning/DETECTOR_V4_4_ANSWER_ATTEMPT_PROTOCOL.md",
   "schema": "graph-detector-v4-4-fresh-audit-plan-v1",
   "total_rows": 2400,
+  "total_rows_final": 1200,
   "why_two_partitions_in_one_file": "two invocations that both wrote DETECTOR_V4_4_AUDIT_SAMPLE.json would leave the second overwriting the first, and the heldout draw is the one that may be opened exactly once. One manifest, both partitions, one hash."
 }

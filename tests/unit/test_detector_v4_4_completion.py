@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -843,7 +844,25 @@ def test_the_runner_passes_only_the_two_legal_pass_names():
         after = line.split("--pass", 1)[1].split()
         assert after, f"--pass with no value: {line.strip()}"
         name = after[0].strip('"').strip("'")
+        # The shared helper forwards its caller's pass; the callers are checked below.
+        if name == "$pass":
+            continue
         assert name in ("blind", "reference"), f"illegal --pass in the runner: {line.strip()}"
+
+
+def test_every_caller_of_the_closing_helper_names_a_legal_pass():
+    """The helper forwards $pass, so the legality lives at its call sites."""
+    calls = [
+        line.strip()
+        for line in RUNNER.splitlines()
+        if "run_and_close_judge " in line and not line.strip().startswith("#")
+    ]
+    assert calls, "nothing calls the closing helper"
+    for call in calls:
+        # run_and_close_judge <judge> <pass> <tag> ...
+        parts = call.split()
+        name = parts[2].strip('"')
+        assert name in ("blind", "reference", "$judge"), f"illegal pass in: {call}"
 
 
 def test_the_runner_gives_each_fresh_partition_its_own_judge_directory():
@@ -918,3 +937,288 @@ def test_ablations_cannot_influence_checkpoint_selection():
     selection_at = TRAINER.index("selection = select_checkpoint(seed_results)")
     ablation_at = TRAINER.index("ablations = run_input_ablations(")
     assert selection_at < ablation_at, "the ablations must not run before selection"
+
+
+# =====================================================================================
+# GPU orchestration. Every test here is a lifecycle assertion, not an existence one.
+#
+# The previous suite checked that `preflight_cpu` and `preflight_gpu` EXIST, and they did.
+# What it never checked was what `gpu1` and `gpu2` actually CALL -- and they still called
+# the deleted `preflight`. CI stayed green while both paid phases would have skipped every
+# safety check. These tests assert the calls.
+# =====================================================================================
+
+
+def _fn_body(name: str) -> str:
+    """The body of one shell function, by name."""
+    assert f"{name}() {{" in RUNNER, f"{name} is not defined in the runner"
+    return RUNNER.split(f"{name}() {{", 1)[1].split("\n}", 1)[0]
+
+
+def test_no_phase_calls_the_deleted_preflight():
+    """The exact regression: `preflight` was split and two callers were left behind."""
+    for line in RUNNER.splitlines():
+        stripped = line.strip()
+        assert stripped != "preflight", "a phase still calls the deleted `preflight`"
+
+
+@pytest.mark.parametrize("phase", ["gpu1", "gpu2"])
+def test_the_paid_phases_run_the_gpu_preflight(phase):
+    body = _fn_body(phase)
+    assert "preflight_gpu" in body, f"{phase} does not run the GPU preflight"
+
+
+def test_a_missing_function_stops_the_run_rather_than_being_skipped():
+    """`set -uo pipefail` is not `set -e`: a bad call returns 127 and execution CONTINUES.
+
+    Which is why the wrong preflight name was survivable enough to reach a paid run. The
+    handler must actually halt -- bash runs it in a subshell, so a bare `exit` inside it
+    does not.
+    """
+    assert "command_not_found_handle()" in RUNNER
+    handler = _fn_body("command_not_found_handle")
+    assert 'kill -s TERM "$$"' in handler, (
+        "the handler must signal the top-level shell; a plain `exit` only ends the "
+        "subshell bash invokes it in, and the parent carries on"
+    )
+
+
+def test_the_missing_function_guard_actually_halts_a_script(tmp_path):
+    """Behavioural, not textual. The first attempt at this guard did not work."""
+    handler = _fn_body("command_not_found_handle")
+    script = tmp_path / "probe.sh"
+    script.write_text(
+        "set -uo pipefail\n"
+        f"command_not_found_handle() {{{handler}\n}}\n"
+        "definitely_not_a_function\n"
+        "echo REACHED_THE_LINE_AFTER\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(["bash", str(script)], capture_output=True, text=True, timeout=60)
+    assert (
+        "REACHED_THE_LINE_AFTER" not in result.stdout
+    ), "execution continued past an undefined function"
+    assert result.returncode != 0
+
+
+# ------------------------------------------------------------ the judge lifecycle --
+
+
+def test_a_generated_pass_is_worthless_until_it_is_closed():
+    """The judge appends to `.partial.jsonl`; `--close` writes the file reports read."""
+    assert "run_and_close_judge()" in RUNNER
+    helper = _fn_body("run_and_close_judge")
+    assert (
+        helper.count("graph-detector-v4-4-local-judge") == 2
+    ), "the helper must invoke the judge twice: once to generate, once to --close"
+    assert "--close" in helper
+
+
+@pytest.mark.parametrize(
+    "phase", ["gpu3a_reference", "gpu5_label", "gpu5_reference", "final_audit", "final_reference"]
+)
+def test_every_judging_phase_closes_its_passes(phase):
+    """GPU-3A and the fresh passes generated labels and never closed them.
+
+    Each would have spent hours on a paid GPU and then failed at the report with "the file
+    is absent", because the closed `.jsonl` is what the report reads.
+    """
+    body = _fn_body(phase)
+    assert "run_and_close_judge" in body, f"{phase} runs a judge without closing it"
+
+
+def test_no_phase_invokes_the_judge_without_the_closing_helper():
+    """A hand-rolled judge call is how the close gets forgotten again."""
+    for name in (
+        "gpu3a_reference",
+        "gpu5_label",
+        "gpu5_reference",
+        "final_audit",
+        "final_reference",
+    ):
+        body = _fn_body(name)
+        direct = [
+            line
+            for line in body.splitlines()
+            if "graph-detector-v4-4-local-judge" in line and not line.strip().startswith("#")
+        ]
+        assert not direct, f"{name} calls the judge directly instead of run_and_close_judge"
+
+
+def test_the_judge_is_never_passed_a_reportable_flag():
+    """The judge has `--non-reportable`; `--reportable` is the TRAINER's flag.
+
+    Passing it to the judge is an immediate typer error, so every such call is a phase that
+    cannot run at all.
+    """
+    for line in RUNNER.splitlines():
+        if "graph-detector-v4-4-local-judge" not in line:
+            continue
+        assert "--reportable" not in line, f"invalid judge flag: {line.strip()}"
+    helper = _fn_body("run_and_close_judge")
+    assert "--reportable" not in helper
+
+
+# --------------------------------------------------------- the final bank, Rental B --
+
+
+def test_the_final_bank_reads_its_own_preregistration():
+    """It unconditionally loaded the ENGINEERING manifest, even for --bank final."""
+    source = (REPO / "src" / "rdl" / "cli" / "detector_v4_2_banks.py").read_text(encoding="utf-8")
+    assert "final_generation_budget" in source
+    assert 'if bank == "final":' in source
+
+
+def test_the_final_budget_derives_the_sealed_seeds():
+    """FINAL_GATE_BANK_BUDGET.json says the groups are derived; nothing derived them."""
+    from rdl.cli.detector_v4_2_banks import final_generation_budget
+    from rdl.eval.detector_v4_2 import SEALED_FINAL_BANK_SEEDS
+
+    payload = json.loads(
+        (
+            REPO
+            / "data"
+            / "cohorts"
+            / "graph_unlearning_v1"
+            / "detector_v4_2"
+            / "FINAL_GATE_BANK_BUDGET.json"
+        ).read_text(encoding="utf-8")
+    )
+    budget = final_generation_budget(payload)
+    for group in ("natural", "retain"):
+        assert budget["groups"][group]["seeds"] == list(SEALED_FINAL_BANK_SEEDS)
+        assert budget["groups"][group]["n_runs"] == len(SEALED_FINAL_BANK_SEEDS)
+
+
+def test_the_engineering_seeds_never_reach_the_final_bank():
+    from rdl.cli.detector_v4_2_banks import final_generation_budget
+    from rdl.eval.detector_v4_2 import ENGINEERING_BANK_SEEDS, ENGINEERING_RETAIN_SEEDS
+
+    payload = json.loads(
+        (
+            REPO
+            / "data"
+            / "cohorts"
+            / "graph_unlearning_v1"
+            / "detector_v4_2"
+            / "FINAL_GATE_BANK_BUDGET.json"
+        ).read_text(encoding="utf-8")
+    )
+    budget = final_generation_budget(payload)
+    seeds = {s for g in budget["groups"].values() for s in g["seeds"]}
+    assert seeds.isdisjoint(ENGINEERING_BANK_SEEDS)
+    assert seeds.isdisjoint(ENGINEERING_RETAIN_SEEDS)
+
+
+def test_the_final_validator_permits_a_shared_seed_and_the_engineering_one_does_not():
+    """The final plan uses each sealed seed once per cohort; engineering forbids that."""
+    from rdl.cli.detector_v4_2_banks import final_generation_budget, validate_budget
+
+    payload = json.loads(
+        (
+            REPO
+            / "data"
+            / "cohorts"
+            / "graph_unlearning_v1"
+            / "detector_v4_2"
+            / "FINAL_GATE_BANK_BUDGET.json"
+        ).read_text(encoding="utf-8")
+    )
+    budget = final_generation_budget(payload)
+    assert validate_budget(budget, bank="final") == []
+    assert validate_budget(
+        budget, bank="engineering"
+    ), "the engineering rules must still reject a shared seed and a sealed one"
+
+
+def test_the_engineering_bank_still_cannot_use_the_sealed_seeds():
+    """The rule that stops the engineering bank being the final bank under another name."""
+    from rdl.cli.detector_v4_2_banks import GENERATION_BUDGET, validate_budget
+    from rdl.eval.detector_v4_2 import SEALED_FINAL_BANK_SEEDS
+
+    budget = json.loads(json.dumps(GENERATION_BUDGET))
+    budget["groups"]["natural"]["seeds"] = list(SEALED_FINAL_BANK_SEEDS)
+    failures = validate_budget(budget, bank="engineering")
+    assert any("SEALED" in f for f in failures)
+
+
+def test_a_final_budget_carrying_the_wrong_seeds_is_refused():
+    from rdl.cli.detector_v4_2_banks import GENERATION_BUDGET, validate_budget
+
+    budget = json.loads(json.dumps(GENERATION_BUDGET))  # engineering seeds
+    failures = validate_budget(budget, bank="final")
+    assert any("sealed set" in f for f in failures)
+
+
+# --------------------------------------------------- the final audit and its labels --
+
+
+def test_the_final_partition_is_labellable():
+    """`final_gate` expected DETECTOR_V4_4_FRESH_LABELLED_final.json and nothing made it."""
+    from rdl.cli.detector_v4_4_fresh import FINAL_PARTITION, LABELLABLE_PARTITIONS, PARTITIONS
+
+    assert FINAL_PARTITION == "final"
+    assert set(LABELLABLE_PARTITIONS) == {*PARTITIONS, "final"}
+
+
+def test_the_final_audit_writes_its_own_files():
+    """A sealed-bank audit must never read or overwrite the engineering one."""
+    from rdl.cli.detector_v4_4_fresh import (
+        FINAL_AUDIT_FILENAME,
+        FINAL_REFERENCE_KEY_FILENAME,
+        FRESH_AUDIT_FILENAME,
+        FRESH_REFERENCE_KEY_FILENAME,
+    )
+
+    assert FINAL_AUDIT_FILENAME != FRESH_AUDIT_FILENAME
+    assert FINAL_REFERENCE_KEY_FILENAME != FRESH_REFERENCE_KEY_FILENAME
+
+
+def test_the_final_bank_is_drawn_as_one_partition():
+    """No threshold is selected from it, so halving it would only shrink the denominator."""
+    source = (REPO / "src" / "rdl" / "cli" / "detector_v4_4_fresh.py").read_text(encoding="utf-8")
+    assert 'partitions = (FINAL_PARTITION,) if bank_kind == "final" else PARTITIONS' in source
+    # The row's original bank half is kept as provenance rather than discarded.
+    assert 'row["bank_half"] = row["partition"]' in source
+
+
+def test_the_final_gate_opens_the_final_partition():
+    body = _fn_body("final_gate")
+    assert "--partition final" in body, "the final gate must open the final partition"
+    assert "DETECTOR_V4_4_OPERATING_POINT.json" in body, "it must use the FROZEN thresholds"
+
+
+def test_the_runner_reaches_the_final_label_phases():
+    for phase in ("final-audit", "final-reference"):
+        assert f"{phase})" in RUNNER
+
+
+def test_no_requirements_file_smuggles_an_unpinned_transformers_into_the_cpu_env():
+    """requirements-cpu.txt listed `transformers>=4.40`; the [cpu] extra omits it on purpose.
+
+    Nothing installed that file -- README, Makefile, tasks.ps1 and CI all use
+    `pip install -e ".[cpu,dev]"` -- but following it would have put an UNPINNED
+    transformers into the environment whose entire purpose is not to have one, and on a
+    GPU box it could have overridden the pinned 4.51.3. Same class of drift as the
+    mistral-common pin: a dependency that is part of the measurement, floating.
+    """
+    assert not (
+        REPO / "requirements-cpu.txt"
+    ).exists(), "requirements-cpu.txt is back; the CPU environment is defined by the [cpu] extra"
+    for name in ("requirements-gpu-ampere.txt",):
+        text = (REPO / name).read_text(encoding="utf-8")
+        for line in text.splitlines():
+            bare = line.split("#")[0].strip()
+            if bare.startswith("transformers"):
+                assert "==" in bare, f"{name} floats transformers: {bare}"
+
+
+def test_the_t4_requirements_are_kept_as_provenance():
+    """Unused by code, and deliberately retained.
+
+    It records the Colab T4 environment the FROZEN two-agent Leak@k evidence was produced
+    under -- no flash-attn on SM75, no bf16 on Turing. Nothing imports it, which is not the
+    same as nothing depending on it: deleting it would delete the only record of how those
+    committed results were run.
+    """
+    assert (REPO / "requirements-gpu-t4.txt").exists()

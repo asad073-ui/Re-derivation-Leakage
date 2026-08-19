@@ -74,6 +74,7 @@ __all__ = [
     "detector_v4_2_build_bank",
     "detector_v4_2_final_gate",
     "detector_v4_2_freeze_banks",
+    "final_generation_budget",
     "run_meta",
     "validate_budget",
 ]
@@ -208,12 +209,76 @@ def _sha_file(path: Path) -> str | None:
 # ------------------------------------------------------------------ budget validation --
 
 
-def validate_budget(budget: Mapping) -> list[str]:
+def final_generation_budget(final_budget: Mapping) -> dict:
+    """The final bank's budget, with its seed groups DERIVED from the sealed set.
+
+    ``FINAL_GATE_BANK_BUDGET.json`` says so itself:
+
+        the final bank's seed groups are derived from the sealed set at generation time
+        and are not fixed here; the sealed set is what this file is bound to.
+
+    Nothing performed that derivation. The file's ``generation_budget`` was templated from
+    the engineering one and still carries ``50241..50244`` / ``51241..51244`` inside its
+    groups, while its top-level ``seeds`` is the sealed ``40241..40244``. Building the final
+    bank from it unmodified would have demanded engineering-seeded runs for the final gate.
+
+    Both groups get the SAME four sealed values, which is what the plan says: each seed used
+    once for the natural cohort and once for the retain cohort. They are different draws
+    because the cohorts are different -- ``discovery`` against ``retain_utility``, 50 items
+    against 45 -- and :func:`check_group` verifies exactly that, per run.
+    """
+    budget = json.loads(json.dumps(final_budget.get("generation_budget") or {}))
+    sealed = list(final_budget.get("seeds") or ())
+    if sorted(sealed) != sorted(SEALED_FINAL_BANK_SEEDS):
+        raise typer.BadParameter(
+            f"{FINAL_BUDGET_FILENAME} declares seeds {sealed}, not the sealed set "
+            f"{list(SEALED_FINAL_BANK_SEEDS)}. That file is the binding to the seal."
+        )
+    groups = budget.get("groups")
+    if not isinstance(groups, dict) or set(groups) != set(GROUPS):
+        raise typer.BadParameter(
+            f"{FINAL_BUDGET_FILENAME} carries no {sorted(GROUPS)} groups to derive from."
+        )
+    for name in GROUPS:
+        groups[name] = {
+            **groups[name],
+            "seeds": list(SEALED_FINAL_BANK_SEEDS),
+            "n_runs": len(SEALED_FINAL_BANK_SEEDS),
+            "seeds_derived_from": "FINAL_GATE_BANK_BUDGET.json seeds (the sealed set)",
+            "why_both_groups_share_them": (
+                "one draw per seed per cohort, with group-specific run ids. The cohorts "
+                "differ, so these are two draws and not one wearing two labels."
+            ),
+        }
+    budget["groups"] = groups
+    budget["bank"] = "final"
+    return budget
+
+
+def validate_budget(budget: Mapping, *, bank: str = "engineering") -> list[str]:
     """Every internally impossible thing a budget can say. Returns the failures.
 
     Run at freeze time and again at build time, because a manifest written by an older
     version of this module is exactly the case the second check exists for.
+
+    Two of the rules are ENGINEERING rules and are lifted for ``bank="final"``, because the
+    frozen final-bank plan says something the engineering plan forbids:
+
+    * *a seed may not appear in two groups.* For the engineering bank that means "one draw
+      wearing two labels". The final plan deliberately uses each of the four sealed seeds
+      **once for the natural cohort and once for the retain cohort**, with group-specific
+      run ids -- and those are genuinely two different draws, because the cohorts differ
+      (``discovery`` against ``retain_utility``, 50 items against 45). :func:`check_group`
+      still separates them by ``cohort_split`` and ``is_retain``, so nothing is weakened.
+    * *no seed may be one of the sealed final-bank seeds.* That rule exists to stop the
+      ENGINEERING bank being the final bank under another name. Applying it to the final
+      bank itself rejects the only seeds it is allowed to use.
+
+    The seeds are not changed to fit the code. They were frozen before any result existed,
+    and code that made a preregistration unusable is the thing to fix.
     """
+    if bank not in BANK_FILENAME:
+        return [f"bank must be one of {sorted(BANK_FILENAME)}, got {bank!r}"]
     failures: list[str] = []
     groups = budget.get("groups")
     if not isinstance(groups, Mapping) or set(groups) != set(GROUPS):
@@ -245,7 +310,7 @@ def validate_budget(budget: Mapping) -> list[str]:
         if len(set(seeds)) != len(seeds):
             failures.append(f"{name}: seeds {seeds} are not unique within the group")
         for seed in seeds:
-            if seed in all_seeds and all_seeds[seed] != name:
+            if bank == "engineering" and seed in all_seeds and all_seeds[seed] != name:
                 failures.append(
                     f"seed {seed} is declared in both {all_seeds[seed]!r} and {name!r}. "
                     "A retain run sharing a natural run's seed is one draw wearing two "
@@ -254,13 +319,27 @@ def validate_budget(budget: Mapping) -> list[str]:
             all_seeds[seed] = name
         if not group.get("required_arm"):
             failures.append(f"{name}: no required_arm; any arm's text would be accepted")
-    for seed in all_seeds:
-        if seed in SEALED_FINAL_BANK_SEEDS:
-            failures.append(
-                f"seed {seed} is one of the SEALED final-bank seeds "
-                f"{list(SEALED_FINAL_BANK_SEEDS)}; the engineering bank must be a "
-                "different draw or it is the final bank under a new name."
-            )
+
+    if bank == "engineering":
+        for seed in all_seeds:
+            if seed in SEALED_FINAL_BANK_SEEDS:
+                failures.append(
+                    f"seed {seed} is one of the SEALED final-bank seeds "
+                    f"{list(SEALED_FINAL_BANK_SEEDS)}; the engineering bank must be a "
+                    "different draw or it is the final bank under a new name."
+                )
+    else:
+        # The mirror image: the final bank must use EXACTLY the sealed set, in both groups.
+        for name, group in sorted(groups.items()):
+            declared = {int(s) for s in group.get("seeds", ())}
+            if declared != set(SEALED_FINAL_BANK_SEEDS):
+                failures.append(
+                    f"{name}: final-bank seeds {sorted(declared)} != the sealed set "
+                    f"{list(SEALED_FINAL_BANK_SEEDS)}. The sealed set was frozen before any "
+                    "result existed and is not substituted after the fact -- least of all "
+                    "with the engineering seeds, which would make the final gate a re-run "
+                    "of the surface the detector was tuned on."
+                )
     return failures
 
 
@@ -582,18 +661,34 @@ def detector_v4_2_build_bank(
                 "human report passed."
             )
 
-    manifest_path = manifest_dir / ENGINEERING_MANIFEST_FILENAME
-    if not manifest_path.exists():
-        raise typer.BadParameter(
-            f"{manifest_path} is absent; run `rdl graph-detector-v4-2-freeze-banks` first. "
-            "The manifest is frozen BEFORE the runs exist, which is the whole point."
-        )
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    budget = manifest["generation_budget"]
+    if bank == "final":
+        # The final bank has its OWN pre-registration. Reading the engineering manifest
+        # here -- which is what this did -- would validate final runs against the
+        # engineering seeds and reject every one of them, after the human evaluation had
+        # already passed and the seal had already been lifted.
+        manifest_path = manifest_dir / FINAL_BUDGET_FILENAME
+        if not manifest_path.exists():
+            raise typer.BadParameter(
+                f"{manifest_path} is absent; run `rdl graph-detector-v4-2-freeze-banks` "
+                "first. It completes the final manifest with the budget the frozen "
+                "FINAL_GATE_BANK_MANIFEST.json does not carry."
+            )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        budget = final_generation_budget(manifest)
+    else:
+        manifest_path = manifest_dir / ENGINEERING_MANIFEST_FILENAME
+        if not manifest_path.exists():
+            raise typer.BadParameter(
+                f"{manifest_path} is absent; run `rdl graph-detector-v4-2-freeze-banks` "
+                "first. The manifest is frozen BEFORE the runs exist, which is the whole "
+                "point."
+            )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        budget = manifest["generation_budget"]
 
     # Re-validated here, not only at freeze time: a manifest on disk may predate this
     # module, and the 60-item / 8-sample / k=32 freeze is exactly that case.
-    budget_failures = validate_budget(budget)
+    budget_failures = validate_budget(budget, bank=bank)
     if budget_failures:
         for failure in budget_failures:
             typer.echo(f"  [FAIL] {failure}", err=True)
