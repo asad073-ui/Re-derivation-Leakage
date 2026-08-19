@@ -56,8 +56,9 @@ from ..eval.detector_v4_4 import (
 )
 from ..logging_utils import dumps_canonical
 from ..studies.graph_leak.evidence import atomic_json
-from .detector_v4_3_store import DEFAULT_OUT_DIR, EVAL_KEY_FILENAME
+from .detector_v4_3_store import DEFAULT_OUT_DIR, EVAL_KEY_FILENAME, RUNTIME_STORE_FILENAME
 from .detector_v4_4_bundle import BUNDLE_FILENAME, DEFAULT_V4_4_DIR
+from .detector_v4_4_gate import FROZEN_DETECTOR_FILENAME
 
 __all__ = [
     "BLIND_EXPORT_FIELDS",
@@ -66,10 +67,12 @@ __all__ = [
     "allocate_proportional",
     "detector_v4_4_human_adjudicate",
     "detector_v4_4_human_import",
+    "detector_v4_4_human_model_consensus",
     "detector_v4_4_human_pilot",
     "detector_v4_4_human_reference_pass",
     "detector_v4_4_human_report",
     "detector_v4_4_human_sample",
+    "detector_v4_4_human_score",
     "rater_filename",
 ]
 
@@ -87,6 +90,17 @@ AGREEMENT_FILENAME = "V4_4_HUMAN_{pass_name}_AGREEMENT.json"
 ADJUDICATED_FILENAME = "V4_4_HUMAN_{pass_name}_ADJUDICATED.jsonl"
 HUMAN_REPORT_FILENAME = "DETECTOR_V4_4_HUMAN_REPORT.json"
 HUMAN_REPORT_SCHEMA = "graph-detector-v4-4-human-report-v1"
+
+# The two files the report binds, and the manifests that bind them to THIS sample. Both
+# are produced before a rater opens anything: predictions scored after the humans have
+# labelled would be a detector measured against labels it had already seen, and a model
+# consensus assembled afterwards could be assembled to agree.
+DETECTOR_PREDICTIONS_FILENAME = "V4_4_HUMAN_DETECTOR_PREDICTIONS.jsonl"
+DETECTOR_PREDICTIONS_MANIFEST = "V4_4_HUMAN_DETECTOR_PREDICTIONS.json"
+DETECTOR_PREDICTIONS_SCHEMA = "graph-detector-v4-4-human-detector-predictions-v1"
+MODEL_CONSENSUS_FILENAME = "V4_4_HUMAN_MODEL_CONSENSUS.jsonl"
+MODEL_CONSENSUS_MANIFEST = "V4_4_HUMAN_MODEL_CONSENSUS.json"
+MODEL_CONSENSUS_SCHEMA = "graph-detector-v4-4-human-model-consensus-v1"
 
 # Reused from v4.3 unchanged. A dated pre-label amendment may move them; a result may not.
 HUMAN_GATES: dict[str, tuple[str, float]] = {
@@ -112,6 +126,23 @@ def rater_filename(*, rater: str, pass_name: str, pilot: bool = False) -> str:
     """One file per rater per pass. A rater cannot overwrite their own other pass."""
     stem = "V4_4_HUMAN_PILOT" if pilot else "V4_4_HUMAN"
     return f"{stem}_{pass_name.upper()}_RATER_{rater}.jsonl"
+
+
+def _sha_file(path: Path) -> str | None:
+    """SHA-256 of a file's bytes, or ``None`` when it is not there.
+
+    ``None`` rather than a raise: these hashes are recorded so a later command can compare
+    them, and "the file was absent" is a fact worth writing down. The comparison is what
+    refuses, not the recording.
+    """
+    path = Path(path)
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+
+
+def _source_commit() -> str:
+    from ..paths import git_sha
+
+    return git_sha(short=False)
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -868,6 +899,349 @@ def _label_metrics(truth: Mapping[str, str], predicted: Mapping[str, str], *, cl
     }
 
 
+# ------------------------------------------- what the raters are measured against --
+# Both of the files below are inputs to the human report, and both must exist BEFORE the
+# raters start. The protocol said so and nothing produced them: `human-prepare` printed a
+# paragraph asking the operator to score the sample by hand and to assemble the model
+# labels for 250 ids drawn from two different adjudicated files. An instruction that the
+# operator performs from memory, on a rented box, at the end of a long day, is not a
+# binding.
+
+
+def _sample_manifest(out: Path) -> dict:
+    """The drawn sample, or a refusal. Nothing here may run against a sample-less dir."""
+    path = out / SAMPLE_FILENAME
+    if not path.exists():
+        raise typer.BadParameter(
+            f"{path} is absent. Draw the reportable sample first with "
+            "`rdl graph-detector-v4-4-human-sample`; there is nothing to score yet."
+        )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _sample_ids(manifest: Mapping) -> list[str]:
+    ids = [str(i) for i in (manifest.get("audit_ids") or ())]
+    if not ids:
+        raise typer.BadParameter(
+            f"{SAMPLE_FILENAME} carries no audit_ids. It is not a sample this can bind to."
+        )
+    return ids
+
+
+def _cover_exactly(
+    produced: Mapping[str, object], expected: Sequence[str], *, what: str, source: str
+) -> None:
+    """Refuse anything but an exact cover of the drawn sample.
+
+    Missing, extra and duplicate are three different mistakes and are reported as three,
+    because "250 rows" is satisfied by a file that drops one sampled id and adds one from
+    somewhere else -- and that file would score a different 250 than the humans saw.
+    """
+    want, have = set(expected), set(produced)
+    missing, extra = sorted(want - have), sorted(have - want)
+    problems = []
+    if missing:
+        problems.append(f"{len(missing)} sampled id(s) missing from {what}: {missing[:5]}")
+    if extra:
+        problems.append(f"{len(extra)} id(s) in {what} were never sampled: {extra[:5]}")
+    if problems:
+        raise typer.BadParameter(
+            "; ".join(problems)
+            + f". {source} must cover the drawn sample exactly: the human gate compares "
+            "these labels to the humans' on the SAME rows, and a near-cover silently "
+            "changes the denominator."
+        )
+
+
+def detector_v4_4_human_score(
+    out_dir: Path = typer.Option(DEFAULT_V4_4_DIR, "--out-dir"),
+    frozen_detector: Path = typer.Option(
+        None, "--frozen-detector", help="DETECTOR_V4_4_FROZEN_DETECTOR.json. Default: --out-dir."
+    ),
+    protected_store: Path = typer.Option(
+        DEFAULT_OUT_DIR / RUNTIME_STORE_FILENAME, "--protected-store"
+    ),
+    backend: str = typer.Option("cross_encoder", "--backend"),
+    model_artifact: Path = typer.Option(None, "--model-artifact"),
+    device: str = typer.Option("cuda:0", "--device"),
+    rescore: bool = typer.Option(
+        False,
+        "--rescore",
+        help="overwrite an existing prediction file. Records that it was scored again.",
+    ),
+) -> None:
+    """Score the drawn human sample ONCE, with the frozen detector, before the raters start.
+
+    This is the detector's answer to the same 250 rows the humans are about to label, taken
+    at the frozen ``tau_answer`` and ``tau_partial``, from the selected checkpoint, over the
+    frozen protected store. It is written once and hidden: a prediction produced after the
+    human labels exist is not a prediction, and one produced with a different threshold is
+    not this detector's.
+
+    The rows come from the sample KEY rather than from any bundle. 125 of the 250 are fresh
+    engineering ids that appear in no bundle at all, and looking them up in one is the bug
+    that silently turned the reportable 250 into a reportable 125 once already.
+    """
+    out = Path(out_dir)
+    manifest = _sample_manifest(out)
+    expected = _sample_ids(manifest)
+
+    predictions_path = out / DETECTOR_PREDICTIONS_FILENAME
+    if predictions_path.exists() and not rescore:
+        raise typer.BadParameter(
+            f"{predictions_path} exists: this sample has been scored. Scoring it again "
+            "and keeping the run that agreed with the humans better is what scoring once "
+            "prevents. Pass --rescore only to record a deliberate second scoring."
+        )
+
+    frozen_path = Path(frozen_detector) if frozen_detector else out / FROZEN_DETECTOR_FILENAME
+    if not frozen_path.exists():
+        raise typer.BadParameter(
+            f"{frozen_path} is absent. The thresholds are frozen by the engineering "
+            "held-out gate; a detector scored at a threshold chosen now is not the frozen "
+            "detector the humans are validating."
+        )
+    frozen = json.loads(frozen_path.read_text(encoding="utf-8"))
+    tau_answer = float(frozen["tau_answer"])
+    tau_partial = float(frozen["tau_partial"] or 1.0)
+
+    key_path = out / SAMPLE_KEY_FILENAME
+    if not key_path.exists():
+        raise typer.BadParameter(f"{key_path} is absent; the sample cannot be reconstructed.")
+    key = json.loads(key_path.read_text(encoding="utf-8"))
+    rows = [
+        {
+            "audit_id": str(r["audit_id"]),
+            "request": r["conditioning_question"],
+            "conditioning_question": r["conditioning_question"],
+            "candidate_text": r["candidate_text"],
+        }
+        for r in key.get("rows") or ()
+    ]
+    _cover_exactly(
+        {r["audit_id"]: None for r in rows},
+        expected,
+        what="the sample key",
+        source=SAMPLE_KEY_FILENAME,
+    )
+
+    from ..defenses.protected_store import ProtectedStore
+    from ..eval.detector_v4_3 import predicted_label
+    from .detector_v4_3_gate import score_store_conditioned
+    from .detector_v4_4_gate import _build_detector
+
+    store = ProtectedStore.load(Path(protected_store))
+    fingerprint = store.fingerprint()
+    if frozen.get("protected_store_fingerprint") not in (None, fingerprint):
+        raise typer.BadParameter(
+            "the protected store has changed since the detector was frozen. The routed set "
+            "decides which rows are scored at all, so this would be a different detector."
+        )
+    detector = _build_detector(backend, model_artifact, device, tau_answer, tau_partial)
+    scored = score_store_conditioned(rows, store=store, detector=detector)
+
+    lines = []
+    for row in scored:
+        lines.append(
+            {
+                "audit_id": row.audit_id,
+                "predicted_label": predicted_label(
+                    row, tau_answer=tau_answer, tau_partial=tau_partial
+                ),
+                "answer_probability": row.answer_score() or 0.0,
+                "partial_probability": row.partial_score() or 0.0,
+                # A row the router matched to nothing was never scored. It predicts NONE,
+                # and this field is how a reader tells that apart from a low score.
+                "routed": row.routed,
+            }
+        )
+    _cover_exactly(
+        {r["audit_id"]: None for r in lines},
+        expected,
+        what="the predictions",
+        source="the scored predictions",
+    )
+    predictions_path.write_text(
+        "".join(
+            dumps_canonical(line) + "\n" for line in sorted(lines, key=lambda r: r["audit_id"])
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    model_payload = (
+        json.loads(Path(model_artifact).read_text(encoding="utf-8"))
+        if model_artifact and Path(model_artifact).exists()
+        else {}
+    )
+    record = {
+        "schema": DETECTOR_PREDICTIONS_SCHEMA,
+        "protocol": V4_4_PROTOCOL,
+        "scored_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "rescored": bool(rescore),
+        "n_rows": len(lines),
+        "predictions": str(predictions_path),
+        "predictions_sha256": hashlib.sha256(predictions_path.read_bytes()).hexdigest(),
+        "distribution": dict(sorted(Counter(r["predicted_label"] for r in lines).items())),
+        "n_unrouted": sum(1 for r in lines if not r["routed"]),
+        # Everything the report re-checks. A prediction file that is not bound to THIS
+        # sample and THIS detector is a file of 250 labels from somewhere.
+        "human_sample": str(out / SAMPLE_FILENAME),
+        "human_sample_sha256": _sha_file(out / SAMPLE_FILENAME),
+        "human_sample_key_sha256": manifest.get("sample_key_sha256"),
+        "frozen_detector": str(frozen_path),
+        "frozen_detector_sha256": _sha_file(frozen_path),
+        "frozen_detector_declared_sha256": frozen.get("frozen_detector_sha256"),
+        "operating_point_sha256": frozen.get("operating_point_sha256"),
+        "tau_answer": tau_answer,
+        "tau_partial": tau_partial,
+        "model_artifact": str(model_artifact) if model_artifact else None,
+        "model_artifact_sha256": _sha_file(Path(model_artifact)) if model_artifact else None,
+        "selected_checkpoint": model_payload.get("selected_checkpoint"),
+        "selected_checkpoint_digest": model_payload.get("checkpoint_digest"),
+        "protected_store_fingerprint": fingerprint,
+        "source_commit": _source_commit(),
+        "scored_before_the_raters_started": (
+            "required. The raters never see this file, and the report refuses a prediction "
+            "file whose sample hash is not the one they were given."
+        ),
+    }
+    atomic_json(out / DETECTOR_PREDICTIONS_MANIFEST, record)
+    typer.echo(
+        dumps_canonical(
+            {
+                "wrote": [str(predictions_path), str(out / DETECTOR_PREDICTIONS_MANIFEST)],
+                "n_rows": len(lines),
+                "distribution": record["distribution"],
+                "tau_answer": tau_answer,
+                "tau_partial": tau_partial,
+            }
+        )
+    )
+
+
+def detector_v4_4_human_model_consensus(
+    out_dir: Path = typer.Option(DEFAULT_V4_4_DIR, "--out-dir"),
+    adjudicated: list[Path] = typer.Option(
+        [],
+        "--adjudicated",
+        help="an adjudicated model-judge label file. Pass once per source of the sample.",
+    ),
+) -> None:
+    """Join the already-adjudicated MODEL labels for exactly the 250 sampled ids.
+
+    The reportable sample is drawn from two populations -- the v4.4 bundle and the fresh
+    engineering audit -- so the model labels for it live in two adjudicated files and in
+    neither one alone. The human report takes a single ``--model-consensus`` JSONL, and
+    nothing built it, which left the operator to concatenate two files by hand and hope the
+    result covered the draw.
+
+    This decides nothing. It re-labels nothing. Every label it writes was already
+    adjudicated; the only thing it adds is the guarantee that the 250 rows it wrote are the
+    250 rows that were drawn.
+    """
+    out = Path(out_dir)
+    manifest = _sample_manifest(out)
+    expected = _sample_ids(manifest)
+
+    if not adjudicated:
+        # Defaulting to "whatever adjudicated files happen to be on disk" would make the
+        # consensus depend on directory contents at run time.
+        raise typer.BadParameter(
+            "--adjudicated is required, once per source the sample was drawn from: the "
+            "v4.4 adjudicated labels AND the fresh engineering audit's. Naming them is how "
+            "the record says which label files this consensus came from."
+        )
+
+    labels: dict[str, str] = {}
+    origin: dict[str, str] = {}
+    duplicates: list[str] = []
+    sources: list[dict] = []
+    for path in adjudicated:
+        path = Path(path)
+        if not path.exists():
+            raise typer.BadParameter(f"{path} is absent.")
+        rows = _read_jsonl(path)
+        taken = 0
+        for row in rows:
+            audit_id = str(row.get("audit_id") or "")
+            label = str(row.get("answer_attempt") or "")
+            if label not in ANSWER_ATTEMPT_LABELS:
+                continue
+            if audit_id in labels and labels[audit_id] != label:
+                # Two adjudicated files disagreeing about one row is not something to
+                # resolve here: both were closed by adjudication, and picking one would be
+                # a third adjudication performed by whoever ran this command.
+                duplicates.append(
+                    f"{audit_id}: {origin[audit_id]} says {labels[audit_id]}, "
+                    f"{path.name} says {label}"
+                )
+                continue
+            if audit_id in labels:
+                duplicates.append(f"{audit_id}: appears in both {origin[audit_id]} and {path.name}")
+                continue
+            labels[audit_id] = label
+            origin[audit_id] = path.name
+            taken += 1
+        sources.append(
+            {
+                "path": str(path),
+                "sha256": _sha_file(path),
+                "n_rows": len(rows),
+                "n_used": taken,
+            }
+        )
+
+    if duplicates:
+        raise typer.BadParameter(
+            f"{len(duplicates)} duplicated audit_id(s) across the adjudicated files: "
+            f"{duplicates[:5]}. Refusing to write a consensus that had to choose."
+        )
+
+    covered = {k: v for k, v in labels.items() if k in set(expected)}
+    _cover_exactly(covered, expected, what="the joined model labels", source="--adjudicated")
+
+    path = out / MODEL_CONSENSUS_FILENAME
+    path.write_text(
+        "".join(
+            dumps_canonical({"audit_id": i, "answer_attempt": covered[i]}) + "\n"
+            for i in sorted(covered)
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    record = {
+        "schema": MODEL_CONSENSUS_SCHEMA,
+        "protocol": V4_4_PROTOCOL,
+        "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "n_rows": len(covered),
+        "consensus": str(path),
+        "consensus_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "distribution": dict(sorted(Counter(covered.values()).items())),
+        "sources": sources,
+        "n_by_source_file": dict(sorted(Counter(origin[i] for i in covered).items())),
+        "human_sample": str(out / SAMPLE_FILENAME),
+        "human_sample_sha256": _sha_file(out / SAMPLE_FILENAME),
+        "human_sample_key_sha256": manifest.get("sample_key_sha256"),
+        "source_commit": _source_commit(),
+        "decides_nothing": (
+            "every label here was adjudicated before this command ran. It joins and "
+            "verifies coverage; it does not resolve, re-label, or break a tie."
+        ),
+    }
+    atomic_json(out / MODEL_CONSENSUS_MANIFEST, record)
+    typer.echo(
+        dumps_canonical(
+            {
+                "wrote": [str(path), str(out / MODEL_CONSENSUS_MANIFEST)],
+                "n_rows": len(covered),
+                "distribution": record["distribution"],
+                "n_by_source_file": record["n_by_source_file"],
+            }
+        )
+    )
+
+
 def detector_v4_4_human_report(
     out_dir: Path = typer.Option(DEFAULT_V4_4_DIR, "--out-dir"),
     model_consensus: Path = typer.Option(
@@ -878,11 +1252,16 @@ def detector_v4_4_human_report(
         "--detector-predictions",
         help=(
             "the frozen detector's predictions on the human sample, scored ONCE before the "
-            "raters started and hidden from them."
+            "raters started and hidden from them. REQUIRED for a reportable sample."
         ),
     ),
     frozen_detector: Path = typer.Option(
-        None, "--frozen-detector", help="DETECTOR_V4_4_FROZEN_DETECTOR.json, bound by hash."
+        None,
+        "--frozen-detector",
+        help=(
+            "DETECTOR_V4_4_FROZEN_DETECTOR.json, bound by hash. REQUIRED for a reportable "
+            "sample."
+        ),
     ),
 ) -> None:
     """The gate: human-human, model-vs-human, detector-vs-human, and provenance.
@@ -901,9 +1280,37 @@ def detector_v4_4_human_report(
     if not manifest_path.exists():
         raise typer.BadParameter(f"{manifest_path} is absent. Draw the sample first.")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    reportable = bool(manifest.get("reportable"))
+
+    # ------------------------------------------------ what a reportable run requires --
+    # An ABSENT binding is refused outright rather than recorded as a failure: it is the
+    # operator omitting a flag, not a result about the detector, and a report on disk
+    # saying passed=false for that reason is a fail that reads like a finding. A binding
+    # that is present but does not MATCH is the opposite -- that is a real finding, and it
+    # is recorded below as a provenance failure so the failing report is the evidence.
+    if reportable:
+        missing_bindings = [
+            name
+            for name, value in (
+                ("--detector-predictions", detector_predictions),
+                ("--frozen-detector", frozen_detector),
+            )
+            if value is None
+        ]
+        if missing_bindings:
+            raise typer.BadParameter(
+                f"{', '.join(missing_bindings)} not supplied, and "
+                f"{manifest_path.name} says this sample is reportable. The human gate's "
+                "claim is that a person and the FROZEN detector read the same 250 rows; "
+                "without the predictions scored before the raters started, and without the "
+                "detector they were scored with, the report can state the human-human and "
+                "model-vs-human numbers but not what they are evidence for. Run "
+                "`rdl graph-detector-v4-4-human-score` first. These flags stay optional "
+                "only for a sample drawn --exploratory, which is marked non-reportable."
+            )
 
     provenance_failures: list[str] = []
-    if not manifest.get("reportable"):
+    if not reportable:
         provenance_failures.append(
             "the sample is not reportable: it was drawn from the v4.4 bundle alone, so it "
             "measures the detector only where it was developed"
@@ -950,6 +1357,23 @@ def detector_v4_4_human_report(
         provenance_failures.append(
             f"{len(missing_model)} human-labelled rows have no model consensus label"
         )
+    # Coverage is checked against the DRAWN sample, not against the rows that happen to
+    # carry a human label. Those two sets differ exactly when adjudication left something
+    # open, and checking only the second would let an incomplete consensus pass by being
+    # incomplete in the same places.
+    if reportable:
+        uncovered_model = sorted(expected - set(model_labels))
+        extra_model = sorted(set(model_labels) - expected)
+        if uncovered_model:
+            provenance_failures.append(
+                f"the model consensus covers {len(model_labels)} of the {len(expected)} "
+                f"sampled rows; {len(uncovered_model)} are missing, e.g. {uncovered_model[:5]}"
+            )
+        if extra_model:
+            provenance_failures.append(
+                f"the model consensus carries {len(extra_model)} id(s) that were never "
+                f"sampled, e.g. {extra_model[:5]}"
+            )
 
     # ------------------------------------------------ the frozen detector vs humans --
     detector_block: dict = {"ran": False, "why": "--detector-predictions was not passed"}
@@ -971,6 +1395,21 @@ def detector_v4_4_human_report(
                 "the same 250 rows the same way, which is a different and smaller claim."
             ),
         }
+        if reportable:
+            uncovered_detector = sorted(expected - set(predicted))
+            extra_detector = sorted(set(predicted) - expected)
+            if uncovered_detector:
+                provenance_failures.append(
+                    f"the detector predictions cover {len(predicted)} of the "
+                    f"{len(expected)} sampled rows; {len(uncovered_detector)} are missing, "
+                    f"e.g. {uncovered_detector[:5]}"
+                )
+            if extra_detector:
+                provenance_failures.append(
+                    f"the detector predictions carry {len(extra_detector)} id(s) that were "
+                    f"never sampled, e.g. {extra_detector[:5]}"
+                )
+
     frozen_block: dict = {"bound": False}
     if frozen_detector is not None:
         payload = json.loads(Path(frozen_detector).read_text(encoding="utf-8"))
@@ -983,6 +1422,68 @@ def detector_v4_4_human_report(
             "tau_partial": payload.get("tau_partial"),
             "human_validated_at_read_time": payload.get("human_validated"),
         }
+
+    # ------------------------------------------------------- the bindings, verified --
+    # The prediction manifest records which sample and which frozen detector the scoring
+    # ran against. Comparing them here is what makes "scored once, before the raters, with
+    # the frozen detector" a checked statement rather than a described procedure: a
+    # predictions file copied from another checkout, or produced against a re-drawn sample,
+    # or scored with a detector that has since been re-frozen, all fail here.
+    binding_block: dict = {"checked": False}
+    if reportable and detector_predictions is not None:
+        record_path = out / DETECTOR_PREDICTIONS_MANIFEST
+        if not record_path.exists():
+            provenance_failures.append(
+                f"{record_path.name} is absent, so the predictions are not bound to this "
+                "sample or to any frozen detector. Re-run graph-detector-v4-4-human-score."
+            )
+        else:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+            sample_sha = _sha_file(manifest_path)
+            predictions_sha = _sha_file(Path(detector_predictions))
+            checks = {
+                "human_sample_sha256": (record.get("human_sample_sha256"), sample_sha),
+                "human_sample_key_sha256": (
+                    record.get("human_sample_key_sha256"),
+                    manifest.get("sample_key_sha256"),
+                ),
+                "predictions_sha256": (record.get("predictions_sha256"), predictions_sha),
+                "frozen_detector_sha256": (
+                    record.get("frozen_detector_sha256"),
+                    _sha_file(Path(frozen_detector)) if frozen_detector else None,
+                ),
+            }
+            mismatched = {
+                name: {"recorded_at_scoring_time": was, "now": now}
+                for name, (was, now) in checks.items()
+                if was != now
+            }
+            binding_block = {
+                "checked": True,
+                "manifest": str(record_path),
+                "matches": not mismatched,
+                "mismatched": mismatched,
+                "scored_at": record.get("scored_at"),
+                "rescored": record.get("rescored"),
+                "tau_answer": record.get("tau_answer"),
+                "tau_partial": record.get("tau_partial"),
+                "selected_checkpoint_digest": record.get("selected_checkpoint_digest"),
+                "model_artifact_sha256": record.get("model_artifact_sha256"),
+                "protected_store_fingerprint": record.get("protected_store_fingerprint"),
+                "source_commit": record.get("source_commit"),
+            }
+            for name, delta in sorted(mismatched.items()):
+                provenance_failures.append(
+                    f"{name} does not match what the predictions were scored against: "
+                    f"scored under {delta['recorded_at_scoring_time']!r}, now "
+                    f"{delta['now']!r}"
+                )
+            if record.get("rescored"):
+                provenance_failures.append(
+                    "the human sample was scored more than once "
+                    "(graph-detector-v4-4-human-score --rescore). The prediction being "
+                    "reported is not the first one this detector produced on these rows."
+                )
 
     # ----------------------------------------------------------- the reference axis --
     reference_block: dict = {"ran": False}
@@ -1036,6 +1537,7 @@ def detector_v4_4_human_report(
         },
         "frozen_detector_vs_human": detector_block,
         "frozen_detector": frozen_block,
+        "prediction_bindings": binding_block,
         "reference_axis": reference_block,
         "gates": verdicts,
         "failures": failures,

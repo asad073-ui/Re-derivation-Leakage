@@ -26,6 +26,7 @@
 #   scripts/v44_gpu_runs.sh final-audit  draws the sealed bank and runs its blind passes.
 #   scripts/v44_gpu_runs.sh final-reference  the sealed bank's reference passes.
 #   scripts/v44_gpu_runs.sh final-gate   the sealed bank, opened once.
+#   scripts/v44_gpu_runs.sh finalize     the whole chain -> DETECTOR_V4_4_FINAL_VALIDATION.
 #
 # `verify` was one command that said "safe anywhere, no GPU needed" and then ran
 # `env-check --strict` and `nvidia-smi`. It is split so the CPU half can actually be run on
@@ -750,11 +751,31 @@ PY
     2>&1 | tee "$LOGS/human-sample.log"
   [ "${PIPESTATUS[0]}" -eq 0 ] || die "the human sample was refused."
 
+  # Scoring the sample used to be a paragraph asking the operator to do it by hand, which
+  # is a binding performed from memory on a rented box. It is a command now, and it runs
+  # HERE -- inside the phase that drew the sample -- because "before the raters see their
+  # files" is only enforceable if nothing can happen in between.
+  say "human-score: the frozen detector on those exact 250 rows, once"
+  python -m rdl.cli graph-detector-v4-4-human-score \
+    --model-artifact "${V44_MODEL_ARTIFACT:-$LOGS/model/DETECTOR_V4_MODEL.json}" \
+    --device cuda:0 \
+    2>&1 | tee "$LOGS/human-score.log"
+  [ "${PIPESTATUS[0]}" -eq 0 ] || die "the human sample could not be scored; the raters must not start."
+
   cat <<EOF
 
-The two blind rater files are written. Before the raters start, score the sample ONCE with
-the already-frozen detector and keep those predictions in a file the raters never see --
-$V44/DETECTOR_V4_4_FROZEN_DETECTOR.json names the exact thresholds and checkpoint.
+The two blind rater files are written, and the frozen detector's predictions on the same
+250 rows are frozen beside them in a file the raters never see.
+
+Still to build before the report: the 250-row model consensus. It joins the ALREADY
+adjudicated model labels from both halves of the draw, so name both files:
+
+  python -m rdl.cli graph-detector-v4-4-human-model-consensus \\\\
+    --adjudicated "\$V44/V4_4_ADJUDICATED.jsonl" \\\\
+    --adjudicated "\$V44/DETECTOR_V4_4_FRESH_LABELLED_development.json"
+
+(use whichever adjudicated files the 125+125 were actually drawn from; the command refuses
+anything that is not an exact cover of the sample.)
 
 Raters must not see: model labels, detector predictions or scores, population, stratum,
 source model, or the reference answer.
@@ -870,10 +891,38 @@ final_gate() {
 Same weights, same tokenizer, same class map, same protected store, same tau_answer and
 tau_partial. No retraining, no recalibration, no new seed, no threshold change.
 
-If it PASSED: record the result through a NEW hash-bound validation record. Do not edit the
-model or operating-point artifacts in place.
+If it PASSED: run `scripts/v44_gpu_runs.sh finalize` next. It writes the NEW hash-bound
+validation record. Do not edit the model or operating-point artifacts in place.
 If it FAILED: the detector is not deployable. Preserve the failure and build a new detector
 version against a new untouched final bank. Do not reopen this one.
+EOF
+  return $rc
+}
+
+# The last phase. It scores nothing and can turn no failure into a pass: it reads every
+# artifact the chain produced, re-checks that they all describe ONE detector, and records
+# whether that detector is deployable. Runs on CPU; it is a phase here only so that the
+# runbook's last step is a command rather than a paragraph.
+finalize() {
+  require_clean_and_frozen
+  local model="${V44_MODEL_ARTIFACT:-$LOGS/model/DETECTOR_V4_MODEL.json}"
+  local gate="$V44/DETECTOR_V4_4_FINAL_GATE.json"
+  [ -f "$gate" ] || die "$gate is absent. The final gate is opened before it is finalized."
+
+  say "finalize: the whole chain, in one record"
+  python -m rdl.cli graph-detector-v4-4-finalize \
+    --model-artifact "$model" \
+    2>&1 | tee "$LOGS/finalize.log"
+  local rc=${PIPESTATUS[0]}
+
+  cat <<EOF
+
+$V44/DETECTOR_V4_4_FINAL_VALIDATION.json is written either way, and the failing one is the
+evidence. deployable=true means every upstream gate passed AND every artifact in the chain
+refers to the same checkpoint, the same thresholds, and the same protected store.
+
+If it refused: read the [FAIL] lines. Each one names two artifacts that disagree, or a gate
+that did not pass. Do not repair one by editing it.
 EOF
   return $rc
 }
@@ -897,5 +946,6 @@ case "${1:-}" in
   final-audit)     final_audit ;;
   final-reference) final_reference ;;
   final-gate)      final_gate ;;
+  finalize)        finalize ;;
   *)               sed -n '3,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

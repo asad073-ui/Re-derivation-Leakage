@@ -26,15 +26,33 @@ from pathlib import Path
 
 import typer
 
-from ..eval.detector_v4_2 import V4_2_PROTOCOL
+from ..eval.detector_v4_2 import SEALED_FINAL_BANK_SEEDS, V4_2_PROTOCOL
 from ..studies.graph_leak.evidence import atomic_json
-from .detector_v4_2_banks import ENGINEERING_MANIFEST_FILENAME, validate_budget
+from .detector_v4_2_banks import (
+    ENGINEERING_MANIFEST_FILENAME,
+    FINAL_BUDGET_FILENAME,
+    final_generation_budget,
+    validate_budget,
+)
 from .detector_v4_2_llm_judge import DEFAULT_V4_2_OUT
 
 __all__ = ["bank_run_commands", "detector_v4_2_plan_bank_runs"]
 
 PLAN_FILENAME = "ENGINEERING_BANK_RUN_PLAN.json"
 SCRIPT_FILENAME = "ENGINEERING_BANK_RUNS.sh"
+
+# Per-bank output names. The final plan may NOT reuse the engineering filenames: the two
+# banks live in one directory, and a final plan written over ENGINEERING_BANK_RUNS.sh would
+# destroy the record of how the engineering bank was generated at the moment the final
+# bank is being built -- the one point in the protocol where that record still matters.
+BANK_PLAN_FILENAME = {
+    "engineering": PLAN_FILENAME,
+    "final": "FINAL_BANK_RUN_PLAN.json",
+}
+BANK_SCRIPT_FILENAME = {
+    "engineering": SCRIPT_FILENAME,
+    "final": "FINAL_BANK_RUNS.sh",
+}
 
 # Which cohort manifest each group's runs read. The cohort split is already in the budget;
 # this maps it to the file `graph-run --cohort` wants, so the emitted command is complete
@@ -57,8 +75,14 @@ def bank_run_commands(
     cohort_dir: Path,
     output_root: Path,
     profile: str | None,
+    bank: str = "engineering",
 ) -> list[dict]:
-    """One command per pre-registered seed, in a stable order."""
+    """One command per pre-registered seed, in a stable order.
+
+    ``bank`` names the run directories. It is not cosmetic: ``build-bank`` verifies each
+    supplied run against its own freeze, and two banks whose runs landed in identically
+    named directories would give the operator eight paths that could belong to either.
+    """
     commands: list[dict] = []
     for group_name in sorted(budget["groups"]):
         group = budget["groups"][group_name]
@@ -70,7 +94,7 @@ def bank_run_commands(
                 "letting the operator guess."
             )
         for seed in group["seeds"]:
-            out = output_root / f"engineering-{group_name}-seed{seed}"
+            out = output_root / f"{bank}-{group_name}-seed{seed}"
             # POSIX separators, always. This plan is written on whatever machine froze the
             # bank — here, Windows — and executed on the rented Linux box, where a
             # backslash is an escape character and `data\cohorts\...` is not a path.
@@ -103,6 +127,7 @@ def bank_run_commands(
 
 
 def detector_v4_2_plan_bank_runs(
+    bank: str = typer.Option("engineering", "--bank", help="engineering | final"),
     manifest_dir: Path = typer.Option(DEFAULT_V4_2_OUT, "--manifest-dir"),
     launch: Path = typer.Option(Path("configs/graph/launch.yaml"), "--launch"),
     profile: str | None = typer.Option(
@@ -112,16 +137,39 @@ def detector_v4_2_plan_bank_runs(
     output_root: Path = typer.Option(Path("runs/graph"), "--output-root"),
     output_dir: Path = typer.Option(DEFAULT_V4_2_OUT, "--output-dir"),
 ) -> None:
-    """Write the exact eight ``graph-run`` invocations the frozen bank manifest implies."""
-    manifest_path = manifest_dir / ENGINEERING_MANIFEST_FILENAME
-    if not manifest_path.exists():
-        raise typer.BadParameter(
-            f"{manifest_path} is absent; run `rdl graph-detector-v4-2-freeze-banks` first. "
-            "The runs are derived from the freeze, not the other way round."
-        )
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    budget = manifest["generation_budget"]
-    failures = validate_budget(budget)
+    """Write the exact eight ``graph-run`` invocations the frozen bank manifest implies.
+
+    ``--bank final`` derives both groups from the SEALED set through the same
+    :func:`final_generation_budget` that ``build-bank --bank final`` uses, so the plan and
+    the verification cannot disagree about which seeds the final bank has. Without this the
+    operator hand-composed eight commands on a metered box, against a plan that named the
+    engineering seeds -- and ``build-bank`` would then have rejected every one of them,
+    after the human evaluation had already passed and the seal had already been lifted.
+    """
+    if bank not in BANK_PLAN_FILENAME:
+        raise typer.BadParameter(f"--bank must be engineering or final, got {bank!r}")
+
+    if bank == "final":
+        manifest_path = manifest_dir / FINAL_BUDGET_FILENAME
+        if not manifest_path.exists():
+            raise typer.BadParameter(
+                f"{manifest_path} is absent; run `rdl graph-detector-v4-2-freeze-banks` "
+                "first. It completes the final manifest with the budget the frozen "
+                "FINAL_GATE_BANK_MANIFEST.json does not carry."
+            )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        budget = final_generation_budget(manifest)
+    else:
+        manifest_path = manifest_dir / ENGINEERING_MANIFEST_FILENAME
+        if not manifest_path.exists():
+            raise typer.BadParameter(
+                f"{manifest_path} is absent; run `rdl graph-detector-v4-2-freeze-banks` "
+                "first. The runs are derived from the freeze, not the other way round."
+            )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        budget = manifest["generation_budget"]
+
+    failures = validate_budget(budget, bank=bank)
     if failures:
         for failure in failures:
             typer.echo(f"  [FAIL] {failure}", err=True)
@@ -136,16 +184,28 @@ def detector_v4_2_plan_bank_runs(
         cohort_dir=cohort_dir,
         output_root=output_root,
         profile=profile,
+        bank=bank,
     )
+    # An engineering seed reaching a final plan is the failure this command exists to make
+    # impossible, so it is asserted here rather than left to the reader of the .sh file.
+    if bank == "final":
+        planned = sorted({int(c["base_seed"]) for c in commands})
+        if planned != sorted(SEALED_FINAL_BANK_SEEDS):
+            raise typer.BadParameter(
+                f"the final plan derived seeds {planned}, not the sealed set "
+                f"{sorted(SEALED_FINAL_BANK_SEEDS)}. Refusing to write it."
+            )
     plan = {
         "schema": "graph-detector-v4-2-bank-run-plan-v1",
         "protocol": V4_2_PROTOCOL,
+        "bank": bank,
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "manifest": str(manifest_path),
         "manifest_sha256": manifest.get("manifest_sha256"),
         "profile": profile,
         "n_runs": len(commands),
         "runs": commands,
+        "seeds": sorted({int(c["base_seed"]) for c in commands}),
         "generates_nothing": True,
         "why": (
             "the frozen study fixes base_seed=1729 and the bank pre-registers eight other "
@@ -159,17 +219,17 @@ def detector_v4_2_plan_bank_runs(
             "each run's manifest against this same freeze and refuses a mismatch."
         ),
     }
-    atomic_json(output_dir / PLAN_FILENAME, plan)
+    atomic_json(output_dir / BANK_PLAN_FILENAME[bank], plan)
 
-    script = output_dir / SCRIPT_FILENAME
+    script = output_dir / BANK_SCRIPT_FILENAME[bank]
     script.parent.mkdir(parents=True, exist_ok=True)
     script.write_text(
         "\n".join(
             [
                 "#!/usr/bin/env bash",
-                "# GENERATED by `rdl graph-detector-v4-2-plan-bank-runs`. Do not edit:",
-                "# every seed here is pre-registered in ENGINEERING_BANK_MANIFEST.json and",
-                "# `build-bank` verifies the runs against it.",
+                f"# GENERATED by `rdl graph-detector-v4-2-plan-bank-runs --bank {bank}`.",
+                f"# Do not edit: every seed here is pre-registered in {manifest_path.name}",
+                "# and `build-bank` verifies the runs against it.",
                 "set -euo pipefail",
                 "",
                 *[f"# {c['group']} seed {c['base_seed']}\n{c['command']}\n" for c in commands],
@@ -180,7 +240,7 @@ def detector_v4_2_plan_bank_runs(
         newline="\n",
     )
 
-    typer.echo(f"wrote {output_dir / PLAN_FILENAME}")
+    typer.echo(f"wrote {output_dir / BANK_PLAN_FILENAME[bank]}")
     typer.echo(f"wrote {script}")
     typer.echo("")
     for command in commands:

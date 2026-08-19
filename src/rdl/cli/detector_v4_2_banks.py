@@ -85,6 +85,36 @@ ENGINEERING_MANIFEST_FILENAME = "ENGINEERING_BANK_MANIFEST.json"
 BANK_SCHEMA = "graph-detector-v4-2-engineering-bank-v3"
 FINAL_BUDGET_FILENAME = "FINAL_GATE_BANK_BUDGET.json"
 BANK_FILENAME = {"engineering": "ENGINEERING_BANK.json", "final": "FINAL_GATE_BANK.json"}
+# The bank's own identity, carried inside the payload. This was hard-coded to the
+# engineering id for BOTH banks, so a final bank asserted in its own body that it was the
+# engineering one -- and every downstream reader that trusted the payload over the filename
+# would have been right to believe it.
+#
+# This reaches further than a label. `graph-detector-v4-2-bank-audit` reads bank_id out of
+# the payload and uses it as the SALT for the content-addressed audit draw and for every
+# derived audit_id: sha256(bank_id || partition || stratum || pair_sha256). Giving the
+# final bank its own id therefore changes which rows its audit draws and what those rows
+# are called -- which is correct (an audit of the final bank should not be ordered by a
+# string naming the engineering one) and is safe to change now for one reason only: the
+# final bank has never been built, so no committed artifact carries an id derived under the
+# old salt. It must not be changed again after the final bank exists.
+BANK_ID = {
+    "engineering": "detector_v4_2_engineering_v1",
+    "final": "detector_v4_2_final_gate_v1",
+}
+VERIFICATION_FILENAME = {
+    "engineering": "ENGINEERING_BANK_VERIFICATION.json",
+    "final": "FINAL_GATE_BANK_VERIFICATION.json",
+}
+# Written after the FIRST successful final assembly, and the reason a second is refused.
+# The final gate's opening record already enforces "scored once"; nothing enforced "built
+# once", so a disappointing final result could be answered by rebuilding the bank under
+# the same sealed seeds and scoring the new one.
+BUILD_RECORD_FILENAME = {
+    "engineering": "ENGINEERING_BANK_BUILD_RECORD.json",
+    "final": "FINAL_GATE_BANK_BUILD_RECORD.json",
+}
+BUILD_RECORD_SCHEMA = "graph-detector-v4-2-bank-build-record-v1"
 OPENING_RECORD_FILENAME = {
     "engineering": "ENGINEERING_BANK_OPENING_RECORD.json",
     "final": "FINAL_GATE_BANK_OPENING_RECORD.json",
@@ -638,6 +668,24 @@ def detector_v4_2_build_bank(
     """
     if bank not in BANK_FILENAME:
         raise typer.BadParameter(f"--bank must be engineering or final, got {bank!r}")
+
+    # "Built once" is enforced only for the final bank. Rebuilding the ENGINEERING bank is
+    # ordinary work -- it is engineering data, and its gate records its own reopening. The
+    # final bank is generated one time, from sealed seeds, after the humans have passed;
+    # a second build is how a disappointing final result gets a second bank to be measured
+    # on, which is exactly what the seal is for.
+    build_record_path = Path(output_dir) / BUILD_RECORD_FILENAME[bank]
+    if bank == "final" and build_record_path.exists() and not check_only:
+        raise typer.BadParameter(
+            f"{build_record_path} exists: the final bank has already been built, from the "
+            "sealed seeds, once. Building it again would produce a second final surface "
+            "for the same frozen detector, and the one that got reported would be the one "
+            "that scored better. Use --check-only to re-verify the runs against the "
+            "freeze; that writes no bank and is always allowed. A final gate that failed "
+            "means a new detector version and a new, untouched final bank -- not a second "
+            "draw under this one."
+        )
+
     if bank == "final":
         # The seal used to be lifted by editing this function, which is a source change
         # made after the human result is known by the person who wants the bank. It is now
@@ -745,8 +793,11 @@ def detector_v4_2_build_bank(
         f"{len(runs_by_group['retain'])} retain runs against {manifest_path}"
     )
     if check_only:
-        atomic_json(output_dir / "ENGINEERING_BANK_VERIFICATION.json", verification)
-        typer.echo(f"wrote {output_dir / 'ENGINEERING_BANK_VERIFICATION.json'}  (--check-only)")
+        # Per-bank, because --check-only for the final bank used to overwrite the
+        # engineering verification: the operator's last sanity check before the one build
+        # they are allowed destroyed the record of how the other bank was verified.
+        atomic_json(output_dir / VERIFICATION_FILENAME[bank], verification)
+        typer.echo(f"wrote {output_dir / VERIFICATION_FILENAME[bank]}  (--check-only)")
         raise typer.Exit(0)
 
     # Assembly reuses the v4 collector so the bank's row shape is identical to the one the
@@ -833,7 +884,8 @@ def detector_v4_2_build_bank(
 
     payload = {
         "schema": BANK_SCHEMA,
-        "bank_id": "detector_v4_2_engineering_v1",
+        "bank_id": BANK_ID[bank],
+        "bank": bank,
         "protocol": V4_2_PROTOCOL,
         "judge_population": "two_independent_llm_judges",
         "human_grounded": False,
@@ -886,6 +938,64 @@ def detector_v4_2_build_bank(
         json.dumps(payload["partitions"], sort_keys=True, separators=(",", ":"))
     )
     atomic_json(output_dir / BANK_FILENAME[bank], payload)
+
+    # ------------------------------------------------------------ the build record --
+    # Written AFTER the bank, so a record only ever describes a bank that exists, and it
+    # binds the inputs rather than merely naming them: the eight run manifests by hash, the
+    # seed groups, the freeze the runs were verified against, and -- for the final bank --
+    # the unseal record that authorised this build at all.
+    from ..paths import git_dirty, git_sha
+    from .detector_v4_4_unseal import UNSEAL_RECORD_FILENAME
+
+    bank_bytes = (output_dir / BANK_FILENAME[bank]).read_bytes()
+    _dirty = git_dirty()
+    build_record = {
+        "schema": BUILD_RECORD_SCHEMA,
+        "protocol": V4_2_PROTOCOL,
+        "bank": bank,
+        "bank_id": BANK_ID[bank],
+        "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "bank_path": str(output_dir / BANK_FILENAME[bank]),
+        "bank_sha256": hashlib.sha256(bank_bytes).hexdigest(),
+        "bank_content_sha256": payload["content_sha256"],
+        "manifest": str(manifest_path),
+        "manifest_sha256": manifest.get("manifest_sha256"),
+        "budget_sha256": _sha_text(json.dumps(budget, sort_keys=True, separators=(",", ":"))),
+        "seed_groups": {
+            name: sorted(int(s) for s in budget["groups"][name]["seeds"]) for name in GROUPS
+        },
+        "runs": {
+            name: [
+                {
+                    "path": r["path"],
+                    "base_seed": r.get("base_seed"),
+                    "manifest": r.get("manifest"),
+                    "manifest_sha256": r.get("manifest_sha256"),
+                }
+                for r in runs
+            ]
+            for name, runs in sorted(runs_by_group.items())
+        },
+        "n_runs": sum(len(r) for r in runs_by_group.values()),
+        "verification_passed": True,
+        "source_commit": git_sha(short=False),
+        # git_dirty() answers None when git cannot say, and `not None` is True -- which
+        # would record a dirty or unknowable tree as clean. Unknown stays unknown.
+        "git_dirty": _dirty,
+        "clean_tree": (None if _dirty is None else not _dirty),
+        "unseal_record_sha256": (
+            _sha_file(Path(manifest_dir) / UNSEAL_RECORD_FILENAME) if bank == "final" else None
+        ),
+        "rebuild_policy": (
+            "REFUSED. The final bank is generated once, from the sealed seeds, after the "
+            "human validation passes."
+            if bank == "final"
+            else "allowed. The engineering bank is engineering data."
+        ),
+    }
+    atomic_json(build_record_path, build_record)
+    typer.echo(f"wrote {build_record_path}")
+
     typer.echo(
         f"wrote {output_dir / BANK_FILENAME[bank]}  "
         f"(natural {len(natural_rows)}: leaking {len(leaking)}, clean {len(clean)}; "
