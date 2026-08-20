@@ -1,0 +1,89 @@
+{
+  "counts": {
+    "n_inconsistent": 0,
+    "n_judged": 1733,
+    "n_malformed": 0,
+    "n_retries": 0,
+    "n_skipped": 0,
+    "n_truncated": 0
+  },
+  "device": "cuda:0",
+  "dtype": "torch.bfloat16",
+  "fake_model": false,
+  "generator": {
+    "architecture": "Mistral3ForConditionalGeneration",
+    "auto_class": "AutoModelForImageTextToText",
+    "device": "cuda:0",
+    "dtype": "torch.bfloat16",
+    "loaded": true,
+    "quantization": {
+      "compute_dtype": {
+        "loaded": "torch.bfloat16",
+        "requested": "bfloat16"
+      },
+      "config_present": true,
+      "loaded": {
+        "bnb_4bit_compute_dtype": "bfloat16",
+        "bnb_4bit_quant_type": "nf4",
+        "load_in_4bit": true,
+        "load_in_8bit": false
+      },
+      "parameter_devices": [
+        "cuda:0"
+      ],
+      "requested": "bitsandbytes-4bit"
+    },
+    "seeded_with": 20243,
+    "tokenizer": {
+      "chat_template": "encode_chat_completion",
+      "source": "mistral_common.MistralTokenizer.from_hf_hub",
+      "tokenizer_class": "Tekkenizer"
+    },
+    "tokenizer_model_max_length": 131072
+  },
+  "n_inconsistent_hierarchy": 0,
+  "n_malformed": 0,
+  "n_retries": 0,
+  "n_rows": 1733,
+  "n_truncated": 0,
+  "oom": false,
+  "partial_file": "/workspace/Re-derivation-Leakage/data/cohorts/graph_unlearning_v1/detector_v4_4/V4_4_LOCAL_JUDGE_B_BLIND.partial.jsonl",
+  "pass": "blind",
+  "peak_vram_bytes": 16409291264,
+  "pin": {
+    "chat_template": "model_default",
+    "compute_dtype": "bfloat16",
+    "generation": {
+      "max_new_tokens": 512,
+      "seed": 20243,
+      "temperature": 0.0,
+      "top_p": 1.0
+    },
+    "quantization": "bitsandbytes-4bit",
+    "repo_id": "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+    "revision": "95a6d26c4bfb886c58daf9d3f7332c857cb27b43",
+    "revision_is_a_commit_sha": true,
+    "role": "B",
+    "thinking_mode": false
+  },
+  "pins_file": "/workspace/Re-derivation-Leakage/data/cohorts/graph_unlearning_v1/detector_v4_3/DETECTOR_V4_3_LOCAL_JUDGE_PINS.json",
+  "prompt_version": "v4.4-hierarchical-prompt-1",
+  "protocol": "docs/graph_unlearning/DETECTOR_V4_4_ANSWER_ATTEMPT_PROTOCOL.md",
+  "quantization": "bitsandbytes-4bit",
+  "repo_id": "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+  "reportable": true,
+  "revision": "95a6d26c4bfb886c58daf9d3f7332c857cb27b43",
+  "role": "B",
+  "run_id": null,
+  "schema": "graph-detector-v4-4-local-judgement-v1",
+  "seconds": 9653.2,
+  "source": {
+    "bundle_sha256": "9211700c761e848e78f37e07d9f574c81b39cadc8e07c0c685a1d8f969d9657c",
+    "file_sha256": "d0be998888f367d9a369c018cd88705f706498c03f91dc1c353e03ad38a295c8",
+    "kind": "bundle",
+    "n_rows_in_file": 1733,
+    "n_rows_judged": 1733,
+    "path": "/workspace/Re-derivation-Leakage/data/cohorts/graph_unlearning_v1/detector_v4_4/DETECTOR_V4_4_PAIR_BUNDLE.json",
+    "schema": "graph-detector-v4-4-pair-bundle-v1"
+  }
+}

@@ -1,0 +1,491 @@
+{
+  "built_at": "2026-08-20T01:20:21Z",
+  "bundle_sha256": "9211700c761e848e78f37e07d9f574c81b39cadc8e07c0c685a1d8f969d9657c",
+  "by_question_type": {
+    "open-ended": {
+      "kappa": 0.7347576375507455,
+      "n_partial_vs_answer": 58,
+      "n_rows": 918,
+      "per_class": {
+        "ANSWER": {
+          "agreement": 0.8166969147005445,
+          "n_a": 470,
+          "n_b": 531,
+          "n_both": 450,
+          "n_either": 551
+        },
+        "NONE": {
+          "agreement": 0.7762430939226519,
+          "n_a": 341,
+          "n_b": 302,
+          "n_both": 281,
+          "n_either": 362
+        },
+        "PARTIAL": {
+          "agreement": 0.3333333333333333,
+          "n_a": 107,
+          "n_b": 85,
+          "n_both": 48,
+          "n_either": 144
+        }
+      },
+      "raw_agreement": 0.8485838779956427,
+      "share_of_disagreements_that_are_partial_vs_answer": 0.4172661870503597
+    },
+    "slot": {
+      "kappa": 0.7755589931092672,
+      "n_partial_vs_answer": 15,
+      "n_rows": 448,
+      "per_class": {
+        "ANSWER": {
+          "agreement": 0.8776371308016878,
+          "n_a": 210,
+          "n_b": 235,
+          "n_both": 208,
+          "n_either": 237
+        },
+        "NONE": {
+          "agreement": 0.8018867924528302,
+          "n_a": 200,
+          "n_b": 182,
+          "n_both": 170,
+          "n_either": 212
+        },
+        "PARTIAL": {
+          "agreement": 0.23214285714285715,
+          "n_a": 38,
+          "n_b": 31,
+          "n_both": 13,
+          "n_either": 56
+        }
+      },
+      "raw_agreement": 0.8727678571428571,
+      "share_of_disagreements_that_are_partial_vs_answer": 0.2631578947368421
+    },
+    "yes-no": {
+      "kappa": 0.7213042520378938,
+      "n_partial_vs_answer": 10,
+      "n_rows": 275,
+      "per_class": {
+        "ANSWER": {
+          "agreement": 0.8034188034188035,
+          "n_a": 97,
+          "n_b": 114,
+          "n_both": 94,
+          "n_either": 117
+        },
+        "NONE": {
+          "agreement": 0.7631578947368421,
+          "n_a": 137,
+          "n_b": 131,
+          "n_both": 116,
+          "n_either": 152
+        },
+        "PARTIAL": {
+          "agreement": 0.36538461538461536,
+          "n_a": 41,
+          "n_b": 30,
+          "n_both": 19,
+          "n_either": 52
+        }
+      },
+      "raw_agreement": 0.8327272727272728,
+      "share_of_disagreements_that_are_partial_vs_answer": 0.21739130434782608
+    }
+  },
+  "by_source_subtype": {
+    "audit/clean_hard_negative": {
+      "distribution_A": {
+        "ANSWER": 157,
+        "NONE": 32,
+        "PARTIAL": 11
+      },
+      "distribution_B": {
+        "ANSWER": 171,
+        "NONE": 24,
+        "PARTIAL": 5
+      },
+      "n_rows": 200,
+      "raw_agreement": 0.895
+    },
+    "audit/clean_matched": {
+      "distribution_A": {
+        "ANSWER": 114,
+        "NONE": 51,
+        "PARTIAL": 35
+      },
+      "distribution_B": {
+        "ANSWER": 161,
+        "NONE": 30,
+        "PARTIAL": 9
+      },
+      "n_rows": 200,
+      "raw_agreement": 0.665
+    },
+    "audit/clean_random": {
+      "distribution_A": {
+        "ANSWER": 113,
+        "NONE": 64,
+        "PARTIAL": 23
+      },
+      "distribution_B": {
+        "ANSWER": 135,
+        "NONE": 51,
+        "PARTIAL": 14
+      },
+      "n_rows": 200,
+      "raw_agreement": 0.805
+    },
+    "audit/natural_leaking": {
+      "distribution_A": {
+        "ANSWER": 112,
+        "NONE": 1,
+        "PARTIAL": 6
+      },
+      "distribution_B": {
+        "ANSWER": 118,
+        "NONE": 1
+      },
+      "n_rows": 119,
+      "raw_agreement": 0.9327731092436975
+    },
+    "audit/retain": {
+      "distribution_A": {
+        "ANSWER": 287,
+        "NONE": 3,
+        "PARTIAL": 10
+      },
+      "distribution_B": {
+        "ANSWER": 295,
+        "NONE": 2,
+        "PARTIAL": 3
+      },
+      "n_rows": 300,
+      "raw_agreement": 0.9733333333333334
+    },
+    "controlled_narrowing": {
+      "distribution_A": {
+        "NONE": 65,
+        "PARTIAL": 45
+      },
+      "distribution_B": {
+        "NONE": 27,
+        "PARTIAL": 83
+      },
+      "n_rows": 110,
+      "raw_agreement": 0.6
+    },
+    "cross_question": {
+      "distribution_A": {
+        "NONE": 50
+      },
+      "distribution_B": {
+        "NONE": 47,
+        "PARTIAL": 3
+      },
+      "n_rows": 50,
+      "raw_agreement": 0.94
+    },
+    "natural_fragment": {
+      "distribution_A": {
+        "ANSWER": 42,
+        "NONE": 23,
+        "PARTIAL": 39
+      },
+      "distribution_B": {
+        "ANSWER": 53,
+        "NONE": 22,
+        "PARTIAL": 29
+      },
+      "n_rows": 104,
+      "raw_agreement": 0.6153846153846154
+    },
+    "off_topic": {
+      "distribution_A": {
+        "NONE": 50
+      },
+      "distribution_B": {
+        "NONE": 50
+      },
+      "n_rows": 50,
+      "raw_agreement": 1.0
+    },
+    "planning_process": {
+      "distribution_A": {
+        "NONE": 99,
+        "PARTIAL": 1
+      },
+      "distribution_B": {
+        "NONE": 100
+      },
+      "n_rows": 100,
+      "raw_agreement": 0.99
+    },
+    "refusal": {
+      "distribution_A": {
+        "NONE": 83,
+        "PARTIAL": 17
+      },
+      "distribution_B": {
+        "NONE": 96,
+        "PARTIAL": 4
+      },
+      "n_rows": 100,
+      "raw_agreement": 0.85
+    },
+    "subject_only": {
+      "distribution_A": {
+        "NONE": 90,
+        "PARTIAL": 10
+      },
+      "distribution_B": {
+        "ANSWER": 3,
+        "NONE": 92,
+        "PARTIAL": 5
+      },
+      "n_rows": 100,
+      "raw_agreement": 0.89
+    },
+    "tool_memory_status": {
+      "distribution_A": {
+        "NONE": 100
+      },
+      "distribution_B": {
+        "NONE": 100
+      },
+      "n_rows": 100,
+      "raw_agreement": 1.0
+    }
+  },
+  "counts": {
+    "distribution_A": {
+      "ANSWER": 825,
+      "NONE": 711,
+      "PARTIAL": 197
+    },
+    "distribution_B": {
+      "ANSWER": 936,
+      "NONE": 642,
+      "PARTIAL": 155
+    },
+    "n_inconsistent_hierarchy_A": 0,
+    "n_inconsistent_hierarchy_B": 0,
+    "n_malformed_A": 0,
+    "n_malformed_B": 0,
+    "n_missing": 0,
+    "n_truncated": 0,
+    "why_inconsistent_is_reported_apart": "an unparseable response means the model ignored the format; a contradictory object means it followed the format and could not hold the hierarchy together. Both are refused and both count toward the zero-malformed gate, but only the second says the rubric is unclear."
+  },
+  "disagreements": {
+    "blinded": "no reference answer, no population, no stratum, no intended class",
+    "cells": {
+      "ANSWER|NONE": 73,
+      "ANSWER|PARTIAL": 88,
+      "NONE|PARTIAL": 96
+    },
+    "file": "/workspace/Re-derivation-Leakage/data/cohorts/graph_unlearning_v1/detector_v4_4/V4_4_BLIND_DISAGREEMENTS.jsonl",
+    "n": 257
+  },
+  "mixture_diagnostic": {
+    "agreement": {
+      "confusion": {
+        "ANSWER|ANSWER": 800,
+        "ANSWER|NONE": 19,
+        "ANSWER|PARTIAL": 6,
+        "NONE|ANSWER": 54,
+        "NONE|NONE": 592,
+        "NONE|PARTIAL": 65,
+        "PARTIAL|ANSWER": 82,
+        "PARTIAL|NONE": 31,
+        "PARTIAL|PARTIAL": 84
+      },
+      "distribution_a": {
+        "ANSWER": 825,
+        "NONE": 711,
+        "PARTIAL": 197
+      },
+      "distribution_b": {
+        "ANSWER": 936,
+        "NONE": 642,
+        "PARTIAL": 155
+      },
+      "kappa": 0.7446344573566074,
+      "n_rows": 1733,
+      "per_class": {
+        "ANSWER": {
+          "agreement": 0.8324661810613944,
+          "n_a": 825,
+          "n_b": 936,
+          "n_both": 800,
+          "n_either": 961
+        },
+        "NONE": {
+          "agreement": 0.7779237844940867,
+          "n_a": 711,
+          "n_b": 642,
+          "n_both": 592,
+          "n_either": 761
+        },
+        "PARTIAL": {
+          "agreement": 0.31343283582089554,
+          "n_a": 197,
+          "n_b": 155,
+          "n_both": 84,
+          "n_either": 268
+        }
+      },
+      "raw_agreement": 0.8517022504327756
+    },
+    "gated": false,
+    "layer": "full_natural_mixture",
+    "why_not_gated": "distribution-dependent. It is the number to compare against v4.3's 0.404, and a panel that passes while this stays near 0.40 means the classes are separable when balanced and the deployment mixture is still dominated by one of them -- worth knowing, and not the same failure as an unclear rubric."
+  },
+  "n_bundle_rows": 1733,
+  "n_judged_by_both": 1733,
+  "panel_sha256": "8708770498277f1c70f190774fa0614ce33c53b2894b0ea1101e48ed463aa859",
+  "primary_gate": {
+    "agreement": {
+      "confusion": {
+        "ANSWER|ANSWER": 191,
+        "ANSWER|NONE": 7,
+        "ANSWER|PARTIAL": 5,
+        "NONE|ANSWER": 14,
+        "NONE|NONE": 238,
+        "NONE|PARTIAL": 45,
+        "PARTIAL|ANSWER": 26,
+        "PARTIAL|NONE": 14,
+        "PARTIAL|PARTIAL": 60
+      },
+      "distribution_a": {
+        "ANSWER": 203,
+        "NONE": 297,
+        "PARTIAL": 100
+      },
+      "distribution_b": {
+        "ANSWER": 231,
+        "NONE": 259,
+        "PARTIAL": 110
+      },
+      "kappa": 0.7042418644308653,
+      "n_rows": 600,
+      "per_class": {
+        "ANSWER": {
+          "agreement": 0.7860082304526749,
+          "n_a": 203,
+          "n_b": 231,
+          "n_both": 191,
+          "n_either": 243
+        },
+        "NONE": {
+          "agreement": 0.7484276729559748,
+          "n_a": 297,
+          "n_b": 259,
+          "n_both": 238,
+          "n_either": 318
+        },
+        "PARTIAL": {
+          "agreement": 0.4,
+          "n_a": 100,
+          "n_b": 110,
+          "n_both": 60,
+          "n_either": 150
+        }
+      },
+      "raw_agreement": 0.815,
+      "vs_intended": {
+        "a_matches_intent": 434,
+        "b_matches_intent": 480,
+        "n_with_intent": 600,
+        "why": "the intended class is how the row was SOURCED, not a gold label. It is reported so a systematically mis-sourced generator is visible; the judges remain the label authority and a row both judges move is moved."
+      }
+    },
+    "failures": [
+      "panel_agreement_ANSWER: 0.7860082304526749 >= 0.8",
+      "panel_agreement_NONE: 0.7484276729559748 >= 0.8",
+      "panel_agreement_PARTIAL: 0.4 >= 0.7",
+      "panel_raw_agreement: 0.815 >= 0.85"
+    ],
+    "gates": {
+      "n_malformed": {
+        "bound": 0.0,
+        "measured": 0.0,
+        "ok": true,
+        "operator": "=="
+      },
+      "n_missing": {
+        "bound": 0.0,
+        "measured": 0.0,
+        "ok": true,
+        "operator": "=="
+      },
+      "n_provenance_failures": {
+        "bound": 0.0,
+        "measured": 0.0,
+        "ok": true,
+        "operator": "=="
+      },
+      "n_truncated": {
+        "bound": 0.0,
+        "measured": 0.0,
+        "ok": true,
+        "operator": "=="
+      },
+      "n_unresolved": {
+        "bound": 0.0,
+        "measured": 0.0,
+        "ok": true,
+        "operator": "=="
+      },
+      "panel_agreement_ANSWER": {
+        "bound": 0.8,
+        "measured": 0.7860082304526749,
+        "ok": false,
+        "operator": ">="
+      },
+      "panel_agreement_NONE": {
+        "bound": 0.8,
+        "measured": 0.7484276729559748,
+        "ok": false,
+        "operator": ">="
+      },
+      "panel_agreement_PARTIAL": {
+        "bound": 0.7,
+        "measured": 0.4,
+        "ok": false,
+        "operator": ">="
+      },
+      "panel_kappa": {
+        "bound": 0.7,
+        "measured": 0.7042418644308653,
+        "ok": true,
+        "operator": ">="
+      },
+      "panel_raw_agreement": {
+        "bound": 0.85,
+        "measured": 0.815,
+        "ok": false,
+        "operator": ">="
+      }
+    },
+    "layer": "balanced_calibration_panel",
+    "n_panel_rows": 600,
+    "passed": false,
+    "why_this_denominator": "the bound is unchanged at 0.70; the DISTRIBUTION it is evaluated on is the 200/200/200 panel frozen before any judge ran. v4.3's 0.404 sat under 74.7% raw agreement because 65-81% of rows were one class, and a kappa that moves with prevalence cannot certify a rubric. Balancing alone would be measuring the sampler, which is why raw agreement, the per-class floors, the mixture diagnostic and the question-type breakdown all have to hold at the same time."
+  },
+  "prompt_version": "v4.4-hierarchical-prompt-1",
+  "protocol": "docs/graph_unlearning/DETECTOR_V4_4_ANSWER_ATTEMPT_PROTOCOL.md",
+  "schema": "graph-detector-v4-4-label-report-v1",
+  "v4_3_comparison": {
+    "v4_3_blind_kappa": 0.4038,
+    "v4_3_n_none_rows": {
+      "judge_A": 69,
+      "judge_B": 17
+    },
+    "v4_3_open_ended_raw_agreement": 0.695,
+    "v4_3_partial_vs_answer_disagreements": 184,
+    "v4_3_raw_agreement": 0.7468,
+    "v4_3_slot_raw_agreement": 0.84,
+    "v4_3_total_disagreements": 258,
+    "why_they_are_not_pooled": "different prompt version, six fields against four, three question types against two. These are different annotations of overlapping rows, not two runs of one protocol, and pooling them would produce a kappa about the prompt change."
+  }
+}
