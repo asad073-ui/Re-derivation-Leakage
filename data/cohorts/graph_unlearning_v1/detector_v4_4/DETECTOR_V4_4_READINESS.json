@@ -1,0 +1,136 @@
+{
+  "bundle_sha256": "9211700c761e848e78f37e07d9f574c81b39cadc8e07c0c685a1d8f969d9657c",
+  "checked_at": "2026-08-19T14:18:58Z",
+  "checks": [
+    {
+      "check": "torch_installed",
+      "detail": "2.4.1+cu121",
+      "ok": true
+    },
+    {
+      "check": "cuda_available",
+      "detail": "True",
+      "ok": true
+    },
+    {
+      "check": "compute_capability",
+      "detail": "8.6 (need >= 8.6 for bf16 + bitsandbytes 8-bit)",
+      "ok": true
+    },
+    {
+      "check": "vram_gib",
+      "detail": "23.6 (need >= 20)",
+      "ok": true
+    },
+    {
+      "check": "bf16_supported",
+      "detail": "torch.cuda.is_bf16_supported()",
+      "ok": true
+    },
+    {
+      "check": "device_name",
+      "detail": "NVIDIA GeForce RTX 3090",
+      "ok": true
+    },
+    {
+      "check": "transformers_installed",
+      "detail": "4.51.3",
+      "ok": true
+    },
+    {
+      "check": "bitsandbytes_installed",
+      "detail": "0.43.3",
+      "ok": true
+    },
+    {
+      "check": "accelerate_installed",
+      "detail": "0.34.2",
+      "ok": true
+    },
+    {
+      "check": "mistral_common_installed",
+      "detail": "1.11.7",
+      "ok": true
+    },
+    {
+      "check": "free_disk_gib",
+      "detail": "174.3 (need >= 100)",
+      "ok": true
+    },
+    {
+      "check": "judge_A_pinned",
+      "detail": "Qwen/Qwen3-14B@40c069824f42",
+      "ok": true
+    },
+    {
+      "check": "judge_B_pinned",
+      "detail": "mistralai/Mistral-Small-3.2-24B-Instruct-2506@95a6d26c4bfb",
+      "ok": true
+    },
+    {
+      "check": "v4_3_environment_checks",
+      "detail": "0 failures from the shared hardware and library checks",
+      "ok": true
+    },
+    {
+      "check": "v4_4_bundle",
+      "detail": "1733 pairs, sha 9211700c761e",
+      "ok": true
+    },
+    {
+      "check": "v4_4_panel_balanced",
+      "detail": "{'ANSWER': 200, 'NONE': 200, 'PARTIAL': 200} (must be one size for each of NONE/PARTIAL/ANSWER)",
+      "ok": true
+    },
+    {
+      "check": "v4_4_panel_matches_bundle",
+      "detail": "the panel was frozen against the bundle now on disk",
+      "ok": true
+    },
+    {
+      "check": "v4_4_smoke_fixture",
+      "detail": "60 rows (need 60)",
+      "ok": true
+    },
+    {
+      "check": "v4_4_prompt_version",
+      "detail": "v4.4-hierarchical-prompt-1",
+      "ok": true
+    },
+    {
+      "check": "v4_4_encoder_pins_present",
+      "detail": "DETECTOR_V4_2_MODEL_PINS.json @ 71867c591069 (the judge-pin artifact's 'present: false' is a frozen observation from before it existed, and is not rewritten)",
+      "ok": true
+    },
+    {
+      "check": "v4_4_mistral_common_pinned",
+      "detail": "installed 1.11.7, protocol pins 1.11.7. A different Tekken split is a different prompt at a fixed budget, so this is an annotator version, not a library version.",
+      "ok": true
+    },
+    {
+      "check": "v4_4_fresh_audit_plan",
+      "detail": "DETECTOR_V4_4_FRESH_AUDIT_PLAN.json freezes both partitions' sizes BEFORE the bank exists",
+      "ok": true
+    }
+  ],
+  "encoder_pins": {
+    "file": "data/cohorts/graph_unlearning_v1/detector_v4_2/DETECTOR_V4_2_MODEL_PINS.json",
+    "sha256": "71867c5910697a923a6c0c1777bdc56a8c7a4ef8b7b2293c10ed937b6b84a932"
+  },
+  "environment": {
+    "bf16_supported": true,
+    "cuda": "12.1",
+    "driver": null,
+    "free_disk_gib": 174.34,
+    "gpu_name": "NVIDIA GeForce RTX 3090",
+    "mistral_common": "1.11.7",
+    "python": "3.11.9",
+    "torch": "2.4.1+cu121",
+    "vram_gib": 23.56
+  },
+  "n_failures": 0,
+  "prompt_version": "v4.4-hierarchical-prompt-1",
+  "protocol": "docs/graph_unlearning/DETECTOR_V4_4_ANSWER_ATTEMPT_PROTOCOL.md",
+  "ready_for_reportable_gpu_phase": true,
+  "schema": "graph-detector-v4-4-readiness-v1"
+}
